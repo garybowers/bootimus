@@ -281,6 +281,8 @@ bootimus/
 
 ## DHCP Configuration
 
+Configure your DHCP server to point network boot clients to Bootimus. Replace `192.168.1.10` with your Bootimus server IP address.
+
 ### ISC DHCP Server (dhcpd.conf)
 
 ```
@@ -314,6 +316,65 @@ dhcp-boot=tag:ipxe,http://192.168.1.10:8080/menu.ipxe
 dhcp-match=set:efi-x86_64,option:client-arch,7
 dhcp-boot=tag:efi-x86_64,tag:!ipxe,ipxe.efi,192.168.1.10
 ```
+
+### MikroTik RouterOS
+
+Configure via CLI or WebFig:
+
+```
+# Via CLI
+/ip dhcp-server network
+set [find] next-server=192.168.1.10 boot-file-name=undionly.kpxe
+
+# For UEFI support, use DHCP options
+/ip dhcp-server option
+add code=60 name=pxe-client value="'PXEClient'"
+add code=66 name=tftp-server value="'192.168.1.10'"
+add code=67 name=bootfile-bios value="'undionly.kpxe'"
+add code=67 name=bootfile-uefi value="'ipxe.efi'"
+
+/ip dhcp-server network
+set [find] dhcp-option=pxe-client,tftp-server next-server=192.168.1.10
+```
+
+**Via WebFig:**
+1. Navigate to **IP > DHCP Server > Networks**
+2. Double-click your network
+3. Set **Next Server**: `192.168.1.10`
+4. Set **Boot File Name**: `undionly.kpxe` (BIOS) or `ipxe.efi` (UEFI)
+5. Click **OK**
+
+**Note**: MikroTik doesn't natively support iPXE detection. Clients will TFTP boot iPXE, then chain to HTTP automatically.
+
+### Ubiquiti EdgeRouter
+
+Configure via CLI:
+
+```bash
+configure
+
+# Set TFTP server for network boot
+set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 bootfile-server 192.168.1.10
+set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 bootfile-name undionly.kpxe
+
+# For UEFI support (optional)
+set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 subnet-parameters "option arch code 93 = unsigned integer 16;"
+set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 subnet-parameters "if option arch = 00:07 { filename &quot;ipxe.efi&quot;; } else { filename &quot;undionly.kpxe&quot;; }"
+
+commit
+save
+```
+
+**Via Web UI:**
+1. Navigate to **Services > DHCP Server**
+2. Select your DHCP server (e.g., `LAN`)
+3. Under **Actions**, click **Edit**
+4. Scroll to **PXE Settings**:
+   - **Boot File**: `undionly.kpxe` (BIOS) or `ipxe.efi` (UEFI)
+   - **Boot Server**: `192.168.1.10`
+5. Click **Save**
+
+**Note**: Replace `LAN` with your actual shared network name if different.
 
 ## Admin Interface
 

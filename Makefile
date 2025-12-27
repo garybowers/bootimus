@@ -1,17 +1,18 @@
-.PHONY: build docker release
+.PHONY: build run push
 
-DOCKER_USER ?= youruser
+DOCKER_USER ?= garybowers
 VERSION ?= $(shell git describe --tags --always --dirty)
 LDFLAGS := -w -s -X bootimus/cmd.version=$(VERSION)
 
 build:
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags="$(LDFLAGS)" -o bootimus .
-	docker build -t $(DOCKER_USER)/bootimus:$(VERSION) .
-	docker tag $(DOCKER_USER)/bootimus:$(VERSION) $(DOCKER_USER)/bootimus:latest
 
-docker:
+run:
+	docker-compose up -d
+
+push:
+	docker build -f Dockerfile.multistage --build-arg VERSION=$(VERSION) -t $(DOCKER_USER)/bootimus:$(VERSION) .
+	docker tag $(DOCKER_USER)/bootimus:$(VERSION) $(DOCKER_USER)/bootimus:latest
 	docker push $(DOCKER_USER)/bootimus:$(VERSION)
 	docker push $(DOCKER_USER)/bootimus:latest
 
-release:
-	gh release create $(VERSION) bootimus --title "Release $(VERSION)" --notes "Release $(VERSION)"

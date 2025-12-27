@@ -1,0 +1,37 @@
+# Multi-stage build for docker-compose
+# Stage 1: Build the binary
+FROM golang:1.25 AS builder
+
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code (exclude large files)
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY web/ ./web/
+COPY bootloaders/ ./bootloaders/
+COPY main.go .
+
+# Build static binary with version injection
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -a -ldflags="-w -s -X bootimus/cmd.version=${VERSION}" \
+    -o bootimus .
+
+# Stage 2: Runtime
+FROM gcr.io/distroless/static-debian13
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /build/bootimus /app/bootimus
+
+EXPOSE 69/udp 8080/tcp 8081/tcp
+
+USER root
+
+ENTRYPOINT ["/app/bootimus"]
+CMD ["serve"]
