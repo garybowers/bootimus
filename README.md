@@ -478,7 +478,7 @@ docker run -d \
   -p 8080:8080/tcp \
   -p 8081:8081/tcp \
   -v /opt/bootimus/data:/app/data \
-  youruser/bootimus:latest
+  garybowers/bootimus:latest
 ```
 
 ### Docker Compose with PostgreSQL
@@ -488,7 +488,7 @@ version: '3.8'
 
 services:
   bootimus:
-    image: youruser/bootimus:latest
+    image: garybowers/bootimus:latest
     container_name: bootimus
     restart: unless-stopped
     cap_add:
@@ -560,7 +560,7 @@ sudo journalctl -u bootimus -f
 
 ```bash
 # Clone repository
-git clone https://github.com/youruser/bootimus
+git clone https://github.com/garybowers/bootimus
 cd bootimus
 
 # Install dependencies
@@ -702,6 +702,5 @@ Contributions welcome! Please open an issue or pull request.
 
 ## Links
 
-- **GitHub**: https://github.com/youruser/bootimus
-- **Docker Hub**: https://hub.docker.com/r/youruser/bootimus
-- **Documentation**: https://github.com/youruser/bootimus/wiki
+- **GitHub**: https://github.com/garybowers/bootimus
+- **Docker Hub**: https://hub.docker.com/r/garybowers/bootimus
