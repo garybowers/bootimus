@@ -1,0 +1,20 @@
+# Bootimus Configuration File
+# Copy to bootimus.yaml and customize
+
+# Server Configuration
+tftp_port: 69
+http_port: 8080
+admin_port: 8081  # Admin interface on separate port
+boot_dir: ""  # Optional - iPXE bootloaders are embedded in binary
+data_dir: ./data  # Required - contains ISO files
+server_addr: ""  # Auto-detected if empty
+
+# Database Configuration
+db:
+  host: localhost
+  port: 5432
+  user: bootimus
+  password: bootimus
+  name: bootimus
+  sslmode: disable
+  disable: false  # Set to true for SQLite mode (embedded database)

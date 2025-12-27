@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bootimus-db
+    environment:
+      POSTGRES_USER: bootimus
+      POSTGRES_PASSWORD: bootimus
+      POSTGRES_DB: bootimus
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bootimus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bootimus:
+    build: .
+    container_name: bootimus-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BOOTIMUS_DB_HOST: postgres
+      BOOTIMUS_DB_PORT: 5432
+      BOOTIMUS_DB_USER: bootimus
+      BOOTIMUS_DB_PASSWORD: bootimus
+      BOOTIMUS_DB_NAME: bootimus
+      BOOTIMUS_DB_SSLMODE: disable
+      BOOTIMUS_TFTP_PORT: 69
+      BOOTIMUS_HTTP_PORT: 8080
+      BOOTIMUS_ADMIN_PORT: 8081
+    ports:
+      - "69:69/udp"
+      - "8080:8080/tcp"
+      - "8081:8081/tcp"
+    volumes:
+      - ./data:/app/data
+    cap_add:
+      - NET_BIND_SERVICE
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

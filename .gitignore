@@ -1,0 +1,33 @@
+# Binaries
+bootimus
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Boot directory (may contain large files)
+boot/
+
+# Data directory (contains ISOs)
+data/
+
+# Configuration file (may contain secrets)
+bootimus.yaml
+
+# Go workspace file
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+.admin_password

@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bootimus Admin Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: #1e293b;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #38bdf8;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #38bdf8;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #38bdf8;
+        }
+
+        .stat-label {
+            color: #94a3b8;
+            margin-top: 5px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #334155;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 16px;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab:hover {
+            color: #e2e8f0;
+        }
+
+        .tab.active {
+            color: #38bdf8;
+            border-bottom-color: #38bdf8;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .card {
+            background: #1e293b;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .card h2 {
+            color: #38bdf8;
+            margin-bottom: 20px;
+            font-size: 22px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+        }
+
+        th {
+            background: #0f172a;
+            color: #38bdf8;
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background: #334155;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background: #38bdf8;
+            color: #0f172a;
+        }
+
+        .btn-primary:hover {
+            background: #0ea5e9;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+            margin: 0 4px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            overflow-y: auto;
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            color: #38bdf8;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 14px;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #38bdf8;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .badge-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .badge-info {
+            background: #38bdf8;
+            color: #0f172a;
+        }
+
+        .upload-area {
+            border: 2px dashed #334155;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            border-color: #38bdf8;
+            background: #0f172a;
+        }
+
+        .upload-area.dragging {
+            border-color: #10b981;
+            background: #0f172a;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .alert-success {
+            background: #065f46;
+            border-left: 4px solid #10b981;
+        }
+
+        .alert-error {
+            background: #7f1d1d;
+            border-left: 4px solid #ef4444;
+        }
+
+        .alert-info {
+            background: #1e3a5f;
+            border-left: 4px solid #38bdf8;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #94a3b8;
+        }
+
+        .spinner {
+            border: 3px solid #334155;
+            border-top: 3px solid #38bdf8;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 Bootimus Admin Panel</h1>
+            <p>PXE/HTTP Boot Server Management Interface</p>
+        </header>
+
+        <div id="stats-container" class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-clients">-</div>
+                <div class="stat-label">Total Clients</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-active-clients">-</div>
+                <div class="stat-label">Active Clients</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-images">-</div>
+                <div class="stat-label">Total Images</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-enabled-images">-</div>
+                <div class="stat-label">Enabled Images</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-boots">-</div>
+                <div class="stat-label">Total Boots</div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="clients">Clients</button>
+            <button class="tab" data-tab="images">Images</button>
+            <button class="tab" data-tab="logs">Boot Logs</button>
+        </div>
+
+        <!-- Clients Tab -->
+        <div id="clients-tab" class="tab-content active">
+            <div class="card">
+                <h2>Client Management</h2>
+                <button class="btn btn-primary" onclick="showAddClientModal()">+ Add Client</button>
+                <div id="clients-table" class="loading">
+                    <div class="spinner"></div>
+                    Loading clients...
+                </div>
+            </div>
+        </div>
+
+        <!-- Images Tab -->
+        <div id="images-tab" class="tab-content">
+            <div class="card">
+                <h2>Image Management</h2>
+                <button class="btn btn-primary" onclick="showUploadModal()">📤 Upload ISO</button>
+                <button class="btn btn-success" onclick="scanImages()">🔍 Scan for ISOs</button>
+                <div id="images-table" class="loading">
+                    <div class="spinner"></div>
+                    Loading images...
+                </div>
+            </div>
+        </div>
+
+        <!-- Boot Logs Tab -->
+        <div id="logs-tab" class="tab-content">
+            <div class="card">
+                <h2>Boot Logs</h2>
+                <div id="logs-table" class="loading">
+                    <div class="spinner"></div>
+                    Loading logs...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="add-client-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add Client</h2>
+            </div>
+            <form id="add-client-form">
+                <div class="form-group">
+                    <label>MAC Address *</label>
+                    <input type="text" name="mac_address" placeholder="00:11:22:33:44:55" required>
+                </div>
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" name="name" placeholder="Lab Machine 1">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" placeholder="Optional description" rows="3"></textarea>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="enabled" checked>
+                    <label>Enabled</label>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Client</button>
+                <button type="button" class="btn" onclick="closeModal('add-client-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="edit-client-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Client</h2>
+            </div>
+            <form id="edit-client-form">
+                <input type="hidden" name="id">
+                <div class="form-group">
+                    <label>MAC Address</label>
+                    <input type="text" name="mac_address" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" name="name">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" rows="3"></textarea>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="enabled">
+                    <label>Enabled</label>
+                </div>
+                <div class="form-group">
+                    <label>Assigned Images</label>
+                    <select name="images" multiple size="8" id="edit-images-select">
+                    </select>
+                    <small style="color: #94a3b8;">Hold Ctrl/Cmd to select multiple</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Update Client</button>
+                <button type="button" class="btn" onclick="closeModal('edit-client-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="upload-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Upload ISO Image</h2>
+            </div>
+            <form id="upload-form">
+                <div class="form-group">
+                    <div class="upload-area" id="upload-area">
+                        <p>📁 Click to select or drag & drop ISO file</p>
+                        <input type="file" name="file" accept=".iso" style="display:none;" id="file-input">
+                        <p id="file-name" style="margin-top: 10px; color: #38bdf8;"></p>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" placeholder="Optional description" rows="3"></textarea>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="public" checked>
+                    <label>Public (available to all clients)</label>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload</button>
+                <button type="button" class="btn" onclick="closeModal('upload-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
