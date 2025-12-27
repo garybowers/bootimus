@@ -331,6 +331,49 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .info-section {
+            background: #0f172a;
+            padding: 20px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+        }
+
+        .info-section h3 {
+            color: #38bdf8;
+            font-size: 18px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #334155;
+            padding-bottom: 8px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        .info-value {
+            color: #e2e8f0;
+            font-family: monospace;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
@@ -364,13 +407,25 @@
         </div>
 
         <div class="tabs">
-            <button class="tab active" data-tab="clients">Clients</button>
+            <button class="tab active" data-tab="server">Server Info</button>
+            <button class="tab" data-tab="clients">Clients</button>
             <button class="tab" data-tab="images">Images</button>
             <button class="tab" data-tab="logs">Boot Logs</button>
         </div>
 
+        <!-- Server Info Tab -->
+        <div id="server-tab" class="tab-content active">
+            <div class="card">
+                <h2>Server Information</h2>
+                <div id="server-info" class="loading">
+                    <div class="spinner"></div>
+                    Loading server info...
+                </div>
+            </div>
+        </div>
+
         <!-- Clients Tab -->
-        <div id="clients-tab" class="tab-content active">
+        <div id="clients-tab" class="tab-content">
             <div class="card">
                 <h2>Client Management</h2>
                 <button class="btn btn-primary" onclick="showAddClientModal()">+ Add Client</button>

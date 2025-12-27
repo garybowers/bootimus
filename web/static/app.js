@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupForms();
     setupUpload();
     loadStats();
+    loadServerInfo();
     loadClients();
     loadImages();
     loadLogs();
@@ -20,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
         loadStats();
         const activeTab = document.querySelector('.tab.active').dataset.tab;
+        if (activeTab === 'server') loadServerInfo();
         if (activeTab === 'clients') loadClients();
         if (activeTab === 'images') loadImages();
         if (activeTab === 'logs') loadLogs();
@@ -55,6 +57,50 @@ async function loadStats() {
     } catch (err) {
         console.error('Failed to load stats:', err);
     }
+}
+
+// Server Info
+async function loadServerInfo() {
+    try {
+        const res = await fetch(`${API_BASE}/server-info`);
+        const data = await res.json();
+
+        if (data.success) {
+            renderServerInfo(data.data);
+        }
+    } catch (err) {
+        document.getElementById('server-info').innerHTML = '<p class="alert alert-error">Failed to load server info</p>';
+    }
+}
+
+function renderServerInfo(info) {
+    const container = document.getElementById('server-info');
+
+    const html = `
+        <div class="info-grid">
+            <div class="info-section">
+                <h3>Configuration</h3>
+                ${Object.entries(info.configuration || {}).map(([key, value]) => `
+                    <div class="info-item">
+                        <span class="info-label">${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                        <span class="info-value">${value || '<em>not set</em>'}</span>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="info-section">
+                <h3>Environment Variables</h3>
+                ${Object.entries(info.environment || {}).filter(([k, v]) => v).map(([key, value]) => `
+                    <div class="info-item">
+                        <span class="info-label">${key}</span>
+                        <span class="info-value">${value || '<em>not set</em>'}</span>
+                    </div>
+                `).join('')}
+                ${Object.entries(info.environment || {}).every(([k, v]) => !v) ? '<p style="color: #94a3b8; padding: 10px;">No environment variables set</p>' : ''}
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
 }
 
 // Clients

@@ -1103,3 +1103,44 @@ func (h *Handler) DeleteBootloader(w http.ResponseWriter, r *http.Request) {
 		Message: fmt.Sprintf("Bootloader deleted: %s", filename),
 	})
 }
+
+// ============================================================================
+// Server Information
+// ============================================================================
+
+func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	info := map[string]interface{}{
+		"configuration": map[string]string{
+			"data_directory": h.dataDir,
+			"boot_directory": h.bootDir,
+			"database_mode":  func() string {
+				if h.db != nil {
+					return "PostgreSQL"
+				} else if h.sqliteStore != nil {
+					return "SQLite"
+				}
+				return "Disabled"
+			}(),
+		},
+		"environment": map[string]string{
+			"BOOTIMUS_TFTP_PORT":   os.Getenv("BOOTIMUS_TFTP_PORT"),
+			"BOOTIMUS_HTTP_PORT":   os.Getenv("BOOTIMUS_HTTP_PORT"),
+			"BOOTIMUS_ADMIN_PORT":  os.Getenv("BOOTIMUS_ADMIN_PORT"),
+			"BOOTIMUS_DATA_DIR":    os.Getenv("BOOTIMUS_DATA_DIR"),
+			"BOOTIMUS_DB_HOST":     os.Getenv("BOOTIMUS_DB_HOST"),
+			"BOOTIMUS_DB_PORT":     os.Getenv("BOOTIMUS_DB_PORT"),
+			"BOOTIMUS_DB_USER":     os.Getenv("BOOTIMUS_DB_USER"),
+			"BOOTIMUS_DB_NAME":     os.Getenv("BOOTIMUS_DB_NAME"),
+			"BOOTIMUS_DB_SSLMODE":  os.Getenv("BOOTIMUS_DB_SSLMODE"),
+			"BOOTIMUS_DB_DISABLE":  os.Getenv("BOOTIMUS_DB_DISABLE"),
+			"BOOTIMUS_SERVER_ADDR": os.Getenv("BOOTIMUS_SERVER_ADDR"),
+		},
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: info})
+}

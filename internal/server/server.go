@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -298,8 +299,6 @@ func (s *Server) startTFTPServer() error {
 func (s *Server) startHTTPServer() error {
 	log.Printf("Starting HTTP server on port %d...", s.config.HTTPPort)
 
-	isoFS := http.FileServer(http.Dir(s.config.DataDir))
-
 	mux := http.NewServeMux()
 
 	// Main file server for boot files - serve from embedded bootloaders
@@ -342,12 +341,51 @@ func (s *Server) startHTTPServer() error {
 	// Dynamic iPXE menu generation
 	mux.HandleFunc("/menu.ipxe", s.handleIPXEMenu)
 
+	// autoexec.ipxe - chainload to menu.ipxe
+	mux.HandleFunc("/autoexec.ipxe", s.handleAutoexec)
+
 	// ISO file server endpoint
-	mux.Handle("/isos/", http.StripPrefix("/isos/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("HTTP: ISO request %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+	mux.HandleFunc("/isos/", func(w http.ResponseWriter, r *http.Request) {
+		// Strip /isos/ prefix and decode the filename
+		filename := strings.TrimPrefix(r.URL.Path, "/isos/")
+		decodedFilename, err := url.PathUnescape(filename)
+		if err != nil {
+			log.Printf("HTTP: Failed to decode filename %s: %v", filename, err)
+			http.Error(w, "Invalid filename", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("HTTP: ISO request %s %s (decoded: %s) from %s", r.Method, filename, decodedFilename, r.RemoteAddr)
+
+		// Build full path to ISO
+		fullPath := filepath.Join(s.config.DataDir, decodedFilename)
+
+		// Security check: ensure the path is within DataDir
+		cleanPath := filepath.Clean(fullPath)
+		if !strings.HasPrefix(cleanPath, filepath.Clean(s.config.DataDir)) {
+			log.Printf("HTTP: Path traversal attempt: %s", decodedFilename)
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		// Check if file exists
+		fileInfo, err := os.Stat(fullPath)
+		if err != nil {
+			log.Printf("HTTP: File not found: %s (error: %v)", fullPath, err)
+			http.NotFound(w, r)
+			return
+		}
+
+		if fileInfo.IsDir() {
+			log.Printf("HTTP: Requested path is a directory: %s", fullPath)
+			http.Error(w, "Not a file", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("HTTP: Serving ISO %s (%d bytes)", decodedFilename, fileInfo.Size())
 		w.Header().Set("Content-Type", "application/octet-stream")
-		isoFS.ServeHTTP(w, r)
-	})))
+		http.ServeFile(w, r, fullPath)
+	})
 
 	// Health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -420,6 +458,7 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 
 	// Admin API endpoints with REST routing and optional authentication
+	mux.HandleFunc("/api/server-info", authWrap(adminHandler.GetServerInfo))
 	mux.HandleFunc("/api/stats", authWrap(adminHandler.GetStats))
 	mux.HandleFunc("/api/logs", authWrap(adminHandler.GetBootLogs))
 	mux.HandleFunc("/api/scan", authWrap(adminHandler.ScanImages))
@@ -470,6 +509,23 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/bootloaders", authWrap(adminHandler.ListBootloaders))
 	mux.HandleFunc("/api/bootloaders/upload", authWrap(adminHandler.UploadBootloader))
 	mux.HandleFunc("/api/bootloaders/delete", authWrap(adminHandler.DeleteBootloader))
+}
+
+func (s *Server) handleAutoexec(w http.ResponseWriter, r *http.Request) {
+	// autoexec.ipxe chains to menu.ipxe with MAC address
+	macAddress := r.URL.Query().Get("mac")
+	if macAddress == "" {
+		macAddress = "${net0/mac}"
+	}
+
+	log.Printf("autoexec.ipxe requested, chaining to menu.ipxe")
+
+	script := fmt.Sprintf(`#!ipxe
+chain http://%s:%d/menu.ipxe?mac=%s
+`, s.config.ServerAddr, s.config.HTTPPort, macAddress)
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte(script))
 }
 
 func (s *Server) handleIPXEMenu(w http.ResponseWriter, r *http.Request) {
@@ -526,7 +582,7 @@ goto ${selected}
 {{range $index, $img := .Images}}
 :iso{{$index}}
 echo Booting {{$img.Name}}...
-sanboot --no-describe --drive 0x80 http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.Filename}}?mac={{$.MAC}}
+sanboot --no-describe --drive 0x80 http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}}?mac={{$.MAC}}
 goto start
 {{end}}
 
@@ -542,17 +598,19 @@ reboot
 	t, _ := template.New("menu").Parse(tmpl)
 
 	type ImageData struct {
-		Name     string
-		Filename string
-		SizeStr  string
+		Name            string
+		Filename        string
+		EncodedFilename string
+		SizeStr         string
 	}
 
 	imageData := make([]ImageData, len(images))
 	for i, img := range images {
 		imageData[i] = ImageData{
-			Name:     img.Name,
-			Filename: img.Filename,
-			SizeStr:  formatBytes(img.Size),
+			Name:            img.Name,
+			Filename:        img.Filename,
+			EncodedFilename: url.PathEscape(img.Filename),
+			SizeStr:         formatBytes(img.Size),
 		}
 	}
 

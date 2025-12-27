@@ -1,5 +1,5 @@
 services:
-  postgres:
+  bootimus-db:
     image: postgres:16
     container_name: bootimus-db
     environment:
@@ -22,10 +22,11 @@ services:
       dockerfile: Dockerfile.multistage
     container_name: bootimus-server
     depends_on:
-      postgres:
+      bootimus-db:
         condition: service_healthy
     environment:
-      BOOTIMUS_DB_HOST: postgres
+      BOOTIMUS_DATA_DIR: /app/data
+      BOOTIMUS_DB_HOST: bootimus-db
       BOOTIMUS_DB_PORT: 5432
       BOOTIMUS_DB_USER: bootimus
       BOOTIMUS_DB_PASSWORD: bootimus
@@ -43,6 +44,8 @@ services:
     cap_add:
       - NET_BIND_SERVICE
     restart: unless-stopped
+    # Uncomment to disable database mode
+    # command: ["serve", "--db-disable"]
 
 volumes:
   postgres_data:

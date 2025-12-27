@@ -1,0 +1,13 @@
+#!ipxe
+
+# Auto-detect server IP and chain to dynamic menu
+dhcp
+chain http://${next-server}:8080/menu.ipxe?mac=${net0/mac} || goto failed
+
+:failed
+echo Failed to load boot menu
+echo Server: ${next-server}
+echo MAC: ${net0/mac}
+echo Press any key to retry...
+prompt
+goto dhcp
