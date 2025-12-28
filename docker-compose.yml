@@ -25,7 +25,7 @@ services:
       bootimus-db:
         condition: service_healthy
     environment:
-      BOOTIMUS_DATA_DIR: /app/data
+      BOOTIMUS_DATA_DIR: /data
       BOOTIMUS_DB_HOST: bootimus-db
       BOOTIMUS_DB_PORT: 5432
       BOOTIMUS_DB_USER: bootimus
@@ -40,7 +40,7 @@ services:
       - "8080:8080/tcp"
       - "8081:8081/tcp"
     volumes:
-      - ./data:/app/data
+      - ./data:/data
     cap_add:
       - NET_BIND_SERVICE
     restart: unless-stopped

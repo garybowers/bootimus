@@ -1,100 +1,68 @@
 package auth
 
 import (
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
-)
 
-const (
-	passwordFile = ".admin_password"
-	passwordLen  = 32
+	"bootimus/internal/database"
 )
 
 type Manager struct {
-	passwordHash string
-	configDir    string
+	db *database.DB
 }
 
-func NewManager(configDir string) (*Manager, error) {
-	m := &Manager{
-		configDir: configDir,
+func NewManager(db *database.DB) (*Manager, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database is required for authentication")
 	}
 
-	passwordPath := filepath.Join(configDir, passwordFile)
+	m := &Manager{
+		db: db,
+	}
 
-	// Check if password file exists
-	if _, err := os.Stat(passwordPath); os.IsNotExist(err) {
-		// Generate new password on first run
-		password, err := m.generateAndSavePassword(passwordPath)
-		if err != nil {
-			return nil, err
-		}
+	// Ensure admin user exists
+	username, password, created, err := db.EnsureAdminUser()
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure admin user: %w", err)
+	}
 
+	if created {
 		log.Println("╔════════════════════════════════════════════════════════════════╗")
 		log.Println("║                    ADMIN PASSWORD GENERATED                    ║")
 		log.Println("╠════════════════════════════════════════════════════════════════╣")
+		log.Printf("║  Username: %-50s ║\n", username)
 		log.Printf("║  Password: %-50s ║\n", password)
 		log.Println("╠════════════════════════════════════════════════════════════════╣")
-		log.Printf("║  Saved to: %-50s ║\n", passwordPath)
 		log.Println("║  This password will NOT be shown again!                        ║")
-		log.Println("║  Save it now or retrieve it from the file above.               ║")
+		log.Println("║  Save it now or reset it using --reset-admin-password flag    ║")
 		log.Println("╚════════════════════════════════════════════════════════════════╝")
-
-		m.passwordHash = hashPassword(password)
 	} else {
-		// Load existing password hash
-		data, err := os.ReadFile(passwordPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read password file: %w", err)
-		}
-		m.passwordHash = strings.TrimSpace(string(data))
-		log.Printf("Admin authentication enabled (password file: %s)", passwordPath)
+		log.Println("Admin authentication enabled (using database)")
 	}
 
 	return m, nil
 }
 
-func (m *Manager) generateAndSavePassword(path string) (string, error) {
-	// Generate random password
-	bytes := make([]byte, passwordLen)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("failed to generate random password: %w", err)
+// ValidateCredentials validates username and password against the database
+func (m *Manager) ValidateCredentials(username, password string) bool {
+	user, err := m.db.GetUser(username)
+	if err != nil {
+		return false
 	}
 
-	password := base64.URLEncoding.EncodeToString(bytes)[:passwordLen]
-
-	// Hash and save
-	hash := hashPassword(password)
-
-	// Ensure directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", fmt.Errorf("failed to create config directory: %w", err)
+	if !user.Enabled {
+		return false
 	}
 
-	// Save hash to file with restrictive permissions
-	if err := os.WriteFile(path, []byte(hash), 0600); err != nil {
-		return "", fmt.Errorf("failed to write password file: %w", err)
+	if !user.CheckPassword(password) {
+		return false
 	}
 
-	return password, nil
-}
+	// Update last login
+	_ = m.db.UpdateUserLastLogin(username)
 
-func (m *Manager) ValidatePassword(password string) bool {
-	return m.passwordHash == hashPassword(password)
-}
-
-func hashPassword(password string) string {
-	hash := sha256.Sum256([]byte(password))
-	return hex.EncodeToString(hash[:])
+	return true
 }
 
 // BasicAuthMiddleware provides HTTP basic authentication
@@ -102,7 +70,7 @@ func (m *Manager) BasicAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()
 
-		if !ok || username != "admin" || !m.ValidatePassword(password) {
+		if !ok || !m.ValidateCredentials(username, password) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Bootimus Admin"`)
 			http.Error(w, "Unauthorised", http.StatusUnauthorized)
 			return

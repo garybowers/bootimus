@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -34,6 +35,34 @@ func (s *StringSlice) Scan(value interface{}) error {
 	}
 
 	return json.Unmarshal(bytes, s)
+}
+
+// User represents an admin user
+type User struct {
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Username  string    `gorm:"uniqueIndex;not null" json:"username"`
+	Password  string    `gorm:"not null" json:"-"` // Never send password in JSON
+	Enabled   bool      `gorm:"default:true" json:"enabled"`
+	IsAdmin   bool      `gorm:"default:false" json:"is_admin"`
+	LastLogin *time.Time `json:"last_login,omitempty"`
+}
+
+// SetPassword hashes and sets the user's password
+func (u *User) SetPassword(password string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	u.Password = string(hash)
+	return nil
+}
+
+// CheckPassword verifies the password
+func (u *User) CheckPassword(password string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password))
+	return err == nil
 }
 
 // Client represents a network boot client identified by MAC address

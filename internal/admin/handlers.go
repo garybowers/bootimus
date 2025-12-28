@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"bootimus/internal/database"
@@ -23,9 +24,10 @@ type Handler struct {
 	sqliteStore *storage.SQLiteStore
 	dataDir     string
 	bootDir     string
+	version     string
 }
 
-func NewHandler(db *database.DB, dataDir string, bootDir string) *Handler {
+func NewHandler(db *database.DB, dataDir string, bootDir string, version string) *Handler {
 	var sqliteStore *storage.SQLiteStore
 	if db == nil {
 		// Only initialise SQLite if PostgreSQL is disabled
@@ -43,6 +45,7 @@ func NewHandler(db *database.DB, dataDir string, bootDir string) *Handler {
 		sqliteStore: sqliteStore,
 		dataDir:     dataDir,
 		bootDir:     bootDir,
+		version:     version,
 	}
 }
 
@@ -414,7 +417,8 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updates models.Image
+	// Decode into a map to detect which fields are actually present
+	var updates map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
 		return
@@ -428,16 +432,19 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Update fields - merge updates into existing image
-		if updates.Name != "" {
-			image.Name = updates.Name
+		// Update only the fields that are present in the request
+		if name, ok := updates["name"].(string); ok && name != "" {
+			image.Name = name
 		}
-		if updates.Description != "" {
-			image.Description = updates.Description
+		if desc, ok := updates["description"].(string); ok {
+			image.Description = desc
 		}
-		// For boolean fields, always update from request
-		image.Enabled = updates.Enabled
-		image.Public = updates.Public
+		if enabled, ok := updates["enabled"].(bool); ok {
+			image.Enabled = enabled
+		}
+		if public, ok := updates["public"].(bool); ok {
+			image.Public = public
+		}
 
 		if err := h.sqliteStore.UpdateImage(filename, image); err != nil {
 			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
@@ -455,15 +462,19 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update fields
-	if updates.Name != "" {
-		image.Name = updates.Name
+	// Update only the fields that are present in the request
+	if name, ok := updates["name"].(string); ok && name != "" {
+		image.Name = name
 	}
-	if updates.Description != "" {
-		image.Description = updates.Description
+	if desc, ok := updates["description"].(string); ok {
+		image.Description = desc
 	}
-	image.Enabled = updates.Enabled
-	image.Public = updates.Public
+	if enabled, ok := updates["enabled"].(bool); ok {
+		image.Enabled = enabled
+	}
+	if public, ok := updates["public"].(bool); ok {
+		image.Public = public
+	}
 
 	if err := h.db.Save(&image).Error; err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
@@ -628,12 +639,15 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 
 	// Create entry
 	displayName := strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+	publicValue := r.FormValue("public")
+	isPublic := publicValue == "on" || publicValue == "true"
+
 	image := models.Image{
 		Name:     displayName,
 		Filename: header.Filename,
 		Size:     size,
 		Enabled:  true,
-		Public:   r.FormValue("public") == "true",
+		Public:   isPublic,
 	}
 
 	if r.FormValue("description") != "" {
@@ -765,8 +779,7 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Extracting kernel/initrd from ISO: %s", filename)
 
 	// Create extractor
-	cacheDir := filepath.Join(h.dataDir, ".cache")
-	ext, err := extractor.New(cacheDir, h.dataDir)
+	ext, err := extractor.New(h.dataDir)
 	if err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: fmt.Sprintf("Failed to create extractor: %v", err)})
 		return
@@ -980,10 +993,20 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build map of existing ISO files
+	existingFiles := make(map[string]bool)
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".iso") {
+			existingFiles[entry.Name()] = true
+		}
+	}
+
 	var newImages []string
+	var deletedImages []string
 
 	// Use SQLite if database is disabled
 	if h.db == nil {
+		// Add new images and update existing ones
 		for _, entry := range entries {
 			if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".iso") {
 				continue
@@ -995,7 +1018,7 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Check if already exists
-			_, err = h.sqliteStore.GetImage(entry.Name())
+			existing, err := h.sqliteStore.GetImage(entry.Name())
 			if err != nil { // Not found, create new
 				displayName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
 				image := &models.Image{
@@ -1008,18 +1031,63 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 
 				if err := h.sqliteStore.CreateImage(image); err == nil {
 					newImages = append(newImages, entry.Name())
+					log.Printf("Added new image to database: %s", entry.Name())
+				} else {
+					log.Printf("Failed to add image to database: %s - %v", entry.Name(), err)
+				}
+			} else {
+				// Image exists, update size if changed
+				if existing.Size != info.Size() {
+					oldSize := existing.Size
+					existing.Size = info.Size()
+					if err := h.sqliteStore.UpdateImage(existing.Filename, existing); err == nil {
+						log.Printf("Updated image size: %s (%d -> %d bytes)", existing.Filename, oldSize, info.Size())
+					}
 				}
 			}
 		}
 
+		// Remove images that no longer exist on disk
+		allImages, err := h.sqliteStore.ListImages()
+		if err == nil {
+			log.Printf("Checking %d database images against %d filesystem ISOs", len(allImages), len(existingFiles))
+			for _, image := range allImages {
+				if !existingFiles[image.Filename] {
+					// ISO file no longer exists, delete from database
+					log.Printf("Deleting missing image from database: %s (ID: %d)", image.Filename, image.ID)
+					if err := h.sqliteStore.DeleteImage(image.Filename); err == nil {
+						deletedImages = append(deletedImages, image.Filename)
+						log.Printf("Successfully removed missing image from database: %s", image.Filename)
+
+						// Also clean up extracted boot files directory if it exists
+						isoBase := strings.TrimSuffix(image.Filename, filepath.Ext(image.Filename))
+						bootFilesDir := filepath.Join(h.dataDir, isoBase)
+						if _, err := os.Stat(bootFilesDir); err == nil {
+							if err := os.RemoveAll(bootFilesDir); err == nil {
+								log.Printf("Cleaned up boot files directory: %s", bootFilesDir)
+							}
+						}
+					} else {
+						log.Printf("Failed to delete missing image from database: %s - %v", image.Filename, err)
+					}
+				}
+			}
+		}
+
+		msg := fmt.Sprintf("Scan complete. Found %d new images, removed %d missing images.", len(newImages), len(deletedImages))
 		h.sendJSON(w, http.StatusOK, Response{
 			Success: true,
-			Message: fmt.Sprintf("Scan complete. Found %d new images.", len(newImages)),
-			Data:    newImages,
+			Message: msg,
+			Data: map[string]interface{}{
+				"new":     newImages,
+				"deleted": deletedImages,
+			},
 		})
 		return
 	}
 
+	// PostgreSQL mode
+	// Add new images and update existing ones
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".iso") {
 			continue
@@ -1045,14 +1113,55 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 
 			if err := h.db.Create(&image).Error; err == nil {
 				newImages = append(newImages, entry.Name())
+				log.Printf("Added new image to database: %s", entry.Name())
+			} else {
+				log.Printf("Failed to add image to database: %s - %v", entry.Name(), err)
+			}
+		} else {
+			// Image exists, update size if changed
+			if existing.Size != info.Size() {
+				if err := h.db.Model(&existing).Update("size", info.Size()).Error; err == nil {
+					log.Printf("Updated image size: %s (%d -> %d bytes)", entry.Name(), existing.Size, info.Size())
+				}
 			}
 		}
 	}
 
+	// Remove images that no longer exist on disk
+	var allImages []models.Image
+	if err := h.db.Find(&allImages).Error; err == nil {
+		log.Printf("Checking %d database images against %d filesystem ISOs", len(allImages), len(existingFiles))
+		for _, image := range allImages {
+			if !existingFiles[image.Filename] {
+				// ISO file no longer exists, delete from database
+				log.Printf("Deleting missing image from database: %s (ID: %d)", image.Filename, image.ID)
+				if err := h.db.Delete(&image).Error; err == nil {
+					deletedImages = append(deletedImages, image.Filename)
+					log.Printf("Successfully removed missing image from database: %s", image.Filename)
+
+					// Also clean up extracted boot files directory if it exists
+					isoBase := strings.TrimSuffix(image.Filename, filepath.Ext(image.Filename))
+					bootFilesDir := filepath.Join(h.dataDir, isoBase)
+					if _, err := os.Stat(bootFilesDir); err == nil {
+						if err := os.RemoveAll(bootFilesDir); err == nil {
+							log.Printf("Cleaned up boot files directory: %s", bootFilesDir)
+						}
+					}
+				} else {
+					log.Printf("Failed to delete missing image from database: %s - %v", image.Filename, err)
+				}
+			}
+		}
+	}
+
+	msg := fmt.Sprintf("Scan complete. Found %d new images, removed %d missing images.", len(newImages), len(deletedImages))
 	h.sendJSON(w, http.StatusOK, Response{
 		Success: true,
-		Message: fmt.Sprintf("Scan complete. Found %d new images.", len(newImages)),
-		Data:    newImages,
+		Message: msg,
+		Data: map[string]interface{}{
+			"new":     newImages,
+			"deleted": deletedImages,
+		},
 	})
 }
 
@@ -1272,6 +1381,7 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	info := map[string]interface{}{
+		"version": h.version,
 		"configuration": map[string]string{
 			"data_directory": h.dataDir,
 			"boot_directory": h.bootDir,
@@ -1301,3 +1411,431 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: info})
 }
+
+// User Management Endpoints
+
+// ListUsers returns all users
+func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Database required for user management"})
+		return
+	}
+
+	var users []models.User
+	if err := h.db.Find(&users).Error; err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: users})
+}
+
+// CreateUser creates a new user
+func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Database required for user management"})
+		return
+	}
+
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		IsAdmin  bool   `json:"is_admin"`
+		Enabled  bool   `json:"enabled"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request"})
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Username and password are required"})
+		return
+	}
+
+	// Check if user already exists
+	var existing models.User
+	if err := h.db.Where("username = ?", req.Username).First(&existing).Error; err == nil {
+		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "User already exists"})
+		return
+	}
+
+	user := models.User{
+		Username: req.Username,
+		IsAdmin:  req.IsAdmin,
+		Enabled:  req.Enabled,
+	}
+
+	if err := user.SetPassword(req.Password); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Failed to hash password"})
+		return
+	}
+
+	if err := h.db.Create(&user).Error; err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("User created: %s (admin=%v, enabled=%v)", user.Username, user.IsAdmin, user.Enabled)
+	h.sendJSON(w, http.StatusCreated, Response{Success: true, Message: "User created", Data: user})
+}
+
+// UpdateUser updates an existing user
+func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Database required for user management"})
+		return
+	}
+
+	username := r.URL.Query().Get("username")
+	if username == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Username required"})
+		return
+	}
+
+	var user models.User
+	if err := h.db.Where("username = ?", username).First(&user).Error; err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "User not found"})
+		return
+	}
+
+	// Decode into a map to detect which fields are actually present
+	var updates map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+
+	// Update only the fields that are present
+	if enabled, ok := updates["enabled"].(bool); ok {
+		user.Enabled = enabled
+	}
+	if isAdmin, ok := updates["is_admin"].(bool); ok {
+		user.IsAdmin = isAdmin
+	}
+
+	if err := h.db.Save(&user).Error; err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("User updated: %s (admin=%v, enabled=%v)", user.Username, user.IsAdmin, user.Enabled)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "User updated", Data: user})
+}
+
+// DeleteUser deletes a user
+func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Database required for user management"})
+		return
+	}
+
+	username := r.URL.Query().Get("username")
+	if username == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Username required"})
+		return
+	}
+
+	// Prevent deleting the admin user
+	if username == "admin" {
+		h.sendJSON(w, http.StatusForbidden, Response{Success: false, Error: "Cannot delete admin user"})
+		return
+	}
+
+	if err := h.db.Where("username = ?", username).Delete(&models.User{}).Error; err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("User deleted: %s", username)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "User deleted"})
+}
+
+// ResetUserPassword resets a user's password
+func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Database required for user management"})
+		return
+	}
+
+	var req struct {
+		Username    string `json:"username"`
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request"})
+		return
+	}
+
+	if req.Username == "" || req.NewPassword == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Username and new password are required"})
+		return
+	}
+
+	var user models.User
+	if err := h.db.Where("username = ?", req.Username).First(&user).Error; err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "User not found"})
+		return
+	}
+
+	if err := user.SetPassword(req.NewPassword); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Failed to hash password"})
+		return
+	}
+
+	if err := h.db.Save(&user).Error; err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Password reset for user: %s", user.Username)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Password reset successfully"})
+}
+
+// ISO Download Management
+
+type DownloadProgress struct {
+	URL          string  `json:"url"`
+	Filename     string  `json:"filename"`
+	TotalBytes   int64   `json:"total_bytes"`
+	DownloadedBytes int64   `json:"downloaded_bytes"`
+	Percentage   float64 `json:"percentage"`
+	Speed        string  `json:"speed"`
+	Status       string  `json:"status"` // "downloading", "completed", "error"
+	Error        string  `json:"error,omitempty"`
+	StartTime    time.Time `json:"start_time"`
+}
+
+type DownloadManager struct {
+	mu        sync.RWMutex
+	downloads map[string]*DownloadProgress
+}
+
+var downloadMgr = &DownloadManager{
+	downloads: make(map[string]*DownloadProgress),
+}
+
+func (dm *DownloadManager) Add(url, filename string, totalBytes int64) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	dm.downloads[filename] = &DownloadProgress{
+		URL:        url,
+		Filename:   filename,
+		TotalBytes: totalBytes,
+		Status:     "downloading",
+		StartTime:  time.Now(),
+	}
+}
+
+func (dm *DownloadManager) Update(filename string, downloadedBytes int64) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	if progress, ok := dm.downloads[filename]; ok {
+		progress.DownloadedBytes = downloadedBytes
+		if progress.TotalBytes > 0 {
+			progress.Percentage = float64(downloadedBytes) / float64(progress.TotalBytes) * 100
+		}
+
+		elapsed := time.Since(progress.StartTime).Seconds()
+		if elapsed > 0 {
+			bytesPerSec := float64(downloadedBytes) / elapsed
+			progress.Speed = formatBytes(int64(bytesPerSec)) + "/s"
+		}
+	}
+}
+
+func (dm *DownloadManager) Complete(filename string) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	if progress, ok := dm.downloads[filename]; ok {
+		progress.Status = "completed"
+		progress.Percentage = 100
+	}
+}
+
+func (dm *DownloadManager) Error(filename, errMsg string) {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	if progress, ok := dm.downloads[filename]; ok {
+		progress.Status = "error"
+		progress.Error = errMsg
+	}
+}
+
+func (dm *DownloadManager) Get(filename string) *DownloadProgress {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+	return dm.downloads[filename]
+}
+
+func (dm *DownloadManager) GetAll() []*DownloadProgress {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+	result := make([]*DownloadProgress, 0, len(dm.downloads))
+	for _, p := range dm.downloads {
+		result = append(result, p)
+	}
+	return result
+}
+
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// DownloadISO downloads an ISO from a URL
+func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		URL         string `json:"url"`
+		Description string `json:"description"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request"})
+		return
+	}
+
+	if req.URL == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "URL is required"})
+		return
+	}
+
+	// Extract filename from URL
+	filename := filepath.Base(req.URL)
+	if !strings.HasSuffix(strings.ToLower(filename), ".iso") {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "URL must point to an .iso file"})
+		return
+	}
+
+	// Check if file already exists
+	destPath := filepath.Join(h.dataDir, filename)
+	if _, err := os.Stat(destPath); err == nil {
+		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "File already exists"})
+		return
+	}
+
+	// Start download in background
+	go h.downloadISO(req.URL, filename, destPath, req.Description)
+
+	h.sendJSON(w, http.StatusAccepted, Response{
+		Success: true,
+		Message: "Download started",
+		Data: map[string]string{
+			"filename": filename,
+			"url":      req.URL,
+		},
+	})
+}
+
+func (h *Handler) downloadISO(url, filename, destPath, description string) {
+	log.Printf("Starting ISO download: %s from %s", filename, url)
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 0, // No timeout for large downloads
+	}
+
+	resp, err := client.Get(url)
+	if err != nil {
+		log.Printf("Failed to download ISO %s: %v", filename, err)
+		downloadMgr.Error(filename, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errMsg := fmt.Sprintf("HTTP %d: %s", resp.StatusCode, resp.Status)
+		log.Printf("Failed to download ISO %s: %s", filename, errMsg)
+		downloadMgr.Error(filename, errMsg)
+		return
+	}
+
+	// Add to download manager
+	totalBytes := resp.ContentLength
+	downloadMgr.Add(url, filename, totalBytes)
+
+	// Create destination file
+	out, err := os.Create(destPath)
+	if err != nil {
+		log.Printf("Failed to create file %s: %v", destPath, err)
+		downloadMgr.Error(filename, err.Error())
+		return
+	}
+	defer out.Close()
+
+	// Download with progress tracking
+	buffer := make([]byte, 32*1024) // 32KB buffer
+	var downloaded int64
+
+	for {
+		n, err := resp.Body.Read(buffer)
+		if n > 0 {
+			_, writeErr := out.Write(buffer[:n])
+			if writeErr != nil {
+				log.Printf("Failed to write to file %s: %v", destPath, writeErr)
+				downloadMgr.Error(filename, writeErr.Error())
+				os.Remove(destPath)
+				return
+			}
+			downloaded += int64(n)
+			downloadMgr.Update(filename, downloaded)
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("Failed to download ISO %s: %v", filename, err)
+			downloadMgr.Error(filename, err.Error())
+			os.Remove(destPath)
+			return
+		}
+	}
+
+	downloadMgr.Complete(filename)
+	log.Printf("Completed ISO download: %s (%d bytes)", filename, downloaded)
+
+	// Sync to database if available
+	if h.db != nil {
+		isoFiles := []struct{ Name, Filename string; Size int64 }{
+			{Name: strings.TrimSuffix(filename, filepath.Ext(filename)), Filename: filename, Size: downloaded},
+		}
+		if err := h.db.SyncImages(isoFiles); err != nil {
+			log.Printf("Failed to sync downloaded ISO to database: %v", err)
+		}
+	}
+}
+
+// GetDownloadProgress returns the progress of a specific download
+func (h *Handler) GetDownloadProgress(w http.ResponseWriter, r *http.Request) {
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Filename required"})
+		return
+	}
+
+	progress := downloadMgr.Get(filename)
+	if progress == nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Download not found"})
+		return
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: progress})
+}
+
+// ListDownloads returns all active/recent downloads
+func (h *Handler) ListDownloads(w http.ResponseWriter, r *http.Request) {
+	downloads := downloadMgr.GetAll()
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: downloads})
+}
+

@@ -2,7 +2,7 @@
 
 DOCKER_USER ?= garybowers
 VERSION ?= $(shell git describe --tags --always --dirty)
-LDFLAGS := -w -s -X bootimus/cmd.version=$(VERSION)
+LDFLAGS := -w -s -X bootimus/internal/server.Version=$(VERSION)
 
 build:
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags="$(LDFLAGS)" -o bootimus .

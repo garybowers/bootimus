@@ -6,6 +6,87 @@ let clients = [];
 let images = [];
 let currentClient = null;
 
+// Utility Functions
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function openModal(modalId) {
+    document.getElementById(modalId).classList.add('active');
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.remove('active');
+}
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        border-radius: 8px;
+        color: white;
+        font-weight: 500;
+        z-index: 10000;
+        max-width: 400px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        animation: slideIn 0.3s ease-out;
+    `;
+
+    // Set background color based on type
+    if (type === 'success') {
+        notification.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+    } else if (type === 'error') {
+        notification.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+    } else {
+        notification.style.background = 'linear-gradient(135deg, #3b82f6, #2563eb)';
+    }
+
+    notification.textContent = message;
+
+    // Add animation styles if not already present
+    if (!document.getElementById('notification-styles')) {
+        const style = document.createElement('style');
+        style.id = 'notification-styles';
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(400px);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(400px);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    document.body.appendChild(notification);
+
+    // Auto-remove after 4 seconds
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => notification.remove(), 300);
+    }, 4000);
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     setupTabs();
@@ -16,16 +97,25 @@ document.addEventListener('DOMContentLoaded', () => {
     loadClients();
     loadImages();
     loadLogs();
+    loadUsers();
+
+    // Load active sessions
+    loadActiveSessions();
 
     // Refresh every 30 seconds
     setInterval(() => {
         loadStats();
+        loadActiveSessions();
         const activeTab = document.querySelector('.tab.active').dataset.tab;
         if (activeTab === 'server') loadServerInfo();
         if (activeTab === 'clients') loadClients();
         if (activeTab === 'images') loadImages();
         if (activeTab === 'logs') loadLogs();
+        if (activeTab === 'users') loadUsers();
     }, 30000);
+
+    // Refresh active sessions more frequently (every 3 seconds)
+    setInterval(loadActiveSessions, 3000);
 });
 
 // Tab Management
@@ -59,6 +149,68 @@ async function loadStats() {
     }
 }
 
+// Active Sessions
+async function loadActiveSessions() {
+    try {
+        const res = await fetch(`${API_BASE}/active-sessions`);
+        const sessions = await res.json();
+
+        const panel = document.getElementById('active-sessions-panel');
+        const content = document.getElementById('active-sessions-content');
+
+        if (sessions && sessions.length > 0) {
+            panel.style.display = 'block';
+            renderActiveSessions(sessions);
+        } else {
+            panel.style.display = 'none';
+        }
+    } catch (err) {
+        console.error('Failed to load active sessions:', err);
+    }
+}
+
+function renderActiveSessions(sessions) {
+    const content = document.getElementById('active-sessions-content');
+
+    const html = sessions.map(session => {
+        const progress = session.total_bytes > 0
+            ? Math.round((session.bytes_read / session.total_bytes) * 100)
+            : 0;
+
+        const elapsed = Math.round((Date.now() - new Date(session.started_at).getTime()) / 1000);
+        const speed = elapsed > 0 ? (session.bytes_read / elapsed / 1024 / 1024).toFixed(2) : 0;
+
+        return `
+            <div class="session-item">
+                <div class="session-header">
+                    <div>
+                        <div class="session-ip">${session.ip}</div>
+                        <div class="session-filename">${session.filename}</div>
+                    </div>
+                    <div class="session-activity">${session.activity}</div>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${progress}%"></div>
+                </div>
+                <div class="progress-text">
+                    ${formatBytes(session.bytes_read)} / ${formatBytes(session.total_bytes)}
+                    (${progress}%) - ${speed} MB/s - ${elapsed}s elapsed
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    content.innerHTML = html || '<p style="color: #94a3b8;">No active sessions</p>';
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
 // Server Info
 async function loadServerInfo() {
     try {
@@ -77,6 +229,15 @@ function renderServerInfo(info) {
     const container = document.getElementById('server-info');
 
     const html = `
+        ${info.version ? `
+            <div class="info-section" style="margin-bottom: 20px;">
+                <h3>Version</h3>
+                <div class="info-item">
+                    <span class="info-label">Bootimus</span>
+                    <span class="info-value"><code>${info.version}</code></span>
+                </div>
+            </div>
+        ` : ''}
         <div class="info-grid">
             <div class="info-section">
                 <h3>Configuration</h3>
@@ -721,4 +882,376 @@ function formatBytes(bytes) {
     const sizes = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+// Server Logs Viewer
+let logsRefreshInterval = null;
+let autoScrollEnabled = true;
+
+function loadServerLogs() {
+    fetch('/api/logs/buffer')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.logs) {
+                displayLogs(data.logs);
+            }
+        })
+        .catch(error => {
+            console.error('Failed to load logs:', error);
+        });
+}
+
+function displayLogs(logs) {
+    const liveLogsDiv = document.getElementById('live-logs');
+    const wasScrolledToBottom = liveLogsDiv.scrollHeight - liveLogsDiv.clientHeight <= liveLogsDiv.scrollTop + 1;
+
+    liveLogsDiv.innerHTML = '';
+
+    if (logs.length === 0) {
+        liveLogsDiv.innerHTML = '<div style="color: #94a3b8;">No logs available. Logs will appear here as the server runs.</div>';
+        return;
+    }
+
+    logs.forEach(log => {
+        const logEntry = document.createElement('div');
+        logEntry.style.color = '#e2e8f0';
+        logEntry.style.marginBottom = '4px';
+        logEntry.style.fontFamily = 'monospace';
+        logEntry.style.fontSize = '13px';
+        logEntry.textContent = log;
+        liveLogsDiv.appendChild(logEntry);
+    });
+
+    // Auto-scroll to bottom if user was already at bottom or auto-scroll is enabled
+    if (autoScrollEnabled || wasScrolledToBottom) {
+        liveLogsDiv.scrollTop = liveLogsDiv.scrollHeight;
+    }
+}
+
+function connectLiveLogs() {
+    // Immediately load logs
+    loadServerLogs();
+
+    // Start auto-refresh every 2 seconds
+    if (!logsRefreshInterval) {
+        logsRefreshInterval = setInterval(loadServerLogs, 2000);
+    }
+
+    // Update UI
+    const statusSpan = document.getElementById('log-status');
+    const connectBtn = document.getElementById('connect-logs-btn');
+    const disconnectBtn = document.getElementById('disconnect-logs-btn');
+
+    statusSpan.textContent = 'Auto-refreshing (every 2s)';
+    statusSpan.style.color = '#10b981';
+    connectBtn.style.display = 'none';
+    disconnectBtn.style.display = 'inline-block';
+}
+
+function disconnectLiveLogs() {
+    if (logsRefreshInterval) {
+        clearInterval(logsRefreshInterval);
+        logsRefreshInterval = null;
+    }
+
+    const statusSpan = document.getElementById('log-status');
+    const connectBtn = document.getElementById('connect-logs-btn');
+    const disconnectBtn = document.getElementById('disconnect-logs-btn');
+
+    statusSpan.textContent = 'Stopped';
+    statusSpan.style.color = '#94a3b8';
+    connectBtn.style.display = 'inline-block';
+    disconnectBtn.style.display = 'none';
+}
+
+function clearLiveLogs() {
+    document.getElementById('live-logs').innerHTML = '<div style="color: #94a3b8;">Click "Refresh" to load logs...</div>';
+}
+
+// ==================== User Management ====================
+
+function loadUsers() {
+    fetch('/api/users')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderUsersTable(data.data);
+            } else {
+                document.getElementById('users-table').innerHTML =
+                    `<div class="error">Error loading users: ${data.error}</div>`;
+            }
+        })
+        .catch(error => {
+            document.getElementById('users-table').innerHTML =
+                `<div class="error">Error loading users: ${error.message}</div>`;
+        });
+}
+
+function renderUsersTable(users) {
+    if (!users || users.length === 0) {
+        document.getElementById('users-table').innerHTML =
+            '<p style="color: #94a3b8;">No users found</p>';
+        return;
+    }
+
+    let html = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Last Login</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    users.forEach(user => {
+        const role = user.is_admin ? '<span class="badge badge-admin">Admin</span>' : '<span class="badge badge-user">User</span>';
+        const status = user.enabled ? '<span class="badge badge-enabled">Enabled</span>' : '<span class="badge badge-disabled">Disabled</span>';
+        const lastLogin = user.last_login ? new Date(user.last_login).toLocaleString() : 'Never';
+        const created = new Date(user.created_at).toLocaleString();
+
+        html += `
+            <tr>
+                <td><strong>${escapeHtml(user.username)}</strong></td>
+                <td>${role}</td>
+                <td>${status}</td>
+                <td>${lastLogin}</td>
+                <td>${created}</td>
+                <td>
+                    <button class="btn-small" onclick='editUser(${JSON.stringify(user)})'>Edit</button>
+                    <button class="btn-small" onclick='showResetPasswordModal(${JSON.stringify(user)})'>Reset Password</button>
+                    ${user.username !== 'admin' ? `<button class="btn-small btn-danger" onclick="deleteUser('${user.username}')">Delete</button>` : ''}
+                </td>
+            </tr>
+        `;
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('users-table').innerHTML = html;
+}
+
+function showAddUserModal() {
+    document.getElementById('add-user-form').reset();
+    openModal('add-user-modal');
+}
+
+function editUser(user) {
+    const form = document.getElementById('edit-user-form');
+    form.elements['id'].value = user.id;
+    form.elements['username'].value = user.username;
+    form.elements['is_admin'].checked = user.is_admin;
+    form.elements['enabled'].checked = user.enabled;
+    openModal('edit-user-modal');
+}
+
+function showResetPasswordModal(user) {
+    const form = document.getElementById('reset-password-form');
+    form.elements['username'].value = user.username;
+    form.elements['username_display'].value = user.username;
+    form.elements['password'].value = '';
+    openModal('reset-password-modal');
+}
+
+function deleteUser(username) {
+    if (!confirm(`Are you sure you want to delete user "${username}"?`)) {
+        return;
+    }
+
+    fetch(`/api/users?username=${encodeURIComponent(username)}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('User deleted successfully', 'success');
+            loadUsers();
+        } else {
+            showNotification(data.error || 'Failed to delete user', 'error');
+        }
+    })
+    .catch(error => {
+        showNotification('Error: ' + error.message, 'error');
+    });
+}
+
+// Form submission handlers
+document.getElementById('add-user-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+
+    const userData = {
+        username: formData.get('username'),
+        password: formData.get('password'),
+        is_admin: formData.get('is_admin') === 'on',
+        enabled: formData.get('enabled') === 'on'
+    };
+
+    fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('User created successfully', 'success');
+            closeModal('add-user-modal');
+            loadUsers();
+        } else {
+            showNotification(data.error || 'Failed to create user', 'error');
+        }
+    })
+    .catch(error => {
+        showNotification('Error: ' + error.message, 'error');
+    });
+});
+
+document.getElementById('edit-user-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+
+    const userData = {
+        username: formData.get('username'),
+        is_admin: formData.get('is_admin') === 'on',
+        enabled: formData.get('enabled') === 'on'
+    };
+
+    fetch('/api/users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('User updated successfully', 'success');
+            closeModal('edit-user-modal');
+            loadUsers();
+        } else {
+            showNotification(data.error || 'Failed to update user', 'error');
+        }
+    })
+    .catch(error => {
+        showNotification('Error: ' + error.message, 'error');
+    });
+});
+
+document.getElementById('reset-password-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+
+    const resetData = {
+        username: formData.get('username'),
+        new_password: formData.get('password')
+    };
+
+    fetch('/api/users/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resetData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Password reset successfully', 'success');
+            closeModal('reset-password-modal');
+        } else {
+            showNotification(data.error || 'Failed to reset password', 'error');
+        }
+    })
+    .catch(error => {
+        showNotification('Error: ' + error.message, 'error');
+    });
+});
+
+// ==================== ISO Download Management ====================
+
+let downloadProgressInterval = null;
+
+function showDownloadModal() {
+    document.getElementById('download-form').reset();
+    document.getElementById('download-progress-container').style.display = 'none';
+    document.getElementById('download-submit-btn').disabled = false;
+    if (downloadProgressInterval) {
+        clearInterval(downloadProgressInterval);
+        downloadProgressInterval = null;
+    }
+    openModal('download-modal');
+}
+
+document.getElementById('download-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+
+    const downloadData = {
+        url: formData.get('url'),
+        description: formData.get('description')
+    };
+
+    // Disable submit button
+    document.getElementById('download-submit-btn').disabled = true;
+    document.getElementById('download-progress-container').style.display = 'block';
+
+    fetch('/api/images/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(downloadData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Download started: ' + data.data.filename, 'success');
+
+            // Start polling for progress
+            const filename = data.data.filename;
+            downloadProgressInterval = setInterval(() => {
+                checkDownloadProgress(filename);
+            }, 1000);
+        } else {
+            showNotification(data.error || 'Failed to start download', 'error');
+            document.getElementById('download-submit-btn').disabled = false;
+            document.getElementById('download-progress-container').style.display = 'none';
+        }
+    })
+    .catch(error => {
+        showNotification('Error: ' + error.message, 'error');
+        document.getElementById('download-submit-btn').disabled = false;
+        document.getElementById('download-progress-container').style.display = 'none';
+    });
+});
+
+function checkDownloadProgress(filename) {
+    fetch('/api/downloads/progress?filename=' + encodeURIComponent(filename))
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.data) {
+                const progress = data.data;
+                const progressBar = document.getElementById('download-progress-bar');
+                const progressText = document.getElementById('download-progress-text');
+
+                progressBar.style.width = progress.percentage.toFixed(1) + '%';
+                progressText.textContent = progress.percentage.toFixed(1) + '% - ' + (progress.speed || '0 B/s');
+
+                if (progress.status === 'completed') {
+                    clearInterval(downloadProgressInterval);
+                    downloadProgressInterval = null;
+                    showNotification('Download completed: ' + filename, 'success');
+                    closeModal('download-modal');
+                    loadImages(); // Refresh images list
+                } else if (progress.status === 'error') {
+                    clearInterval(downloadProgressInterval);
+                    downloadProgressInterval = null;
+                    showNotification('Download failed: ' + (progress.error || 'Unknown error'), 'error');
+                    document.getElementById('download-submit-btn').disabled = false;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Failed to check download progress:', error);
+        });
 }

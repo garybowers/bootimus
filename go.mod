@@ -10,6 +10,8 @@ require (
 	gorm.io/gorm v1.31.1
 )
 
+require github.com/kdomanski/iso9660 v0.4.0 // indirect
+
 require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
@@ -34,5 +36,5 @@ require (
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
-	gorm.io/driver/sqlite v1.6.0 // indirect
+	gorm.io/driver/sqlite v1.6.0
 )

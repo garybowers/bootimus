@@ -37,8 +37,7 @@ func init() {
 	rootCmd.PersistentFlags().Int("tftp-port", 69, "TFTP server port")
 	rootCmd.PersistentFlags().Int("http-port", 8080, "HTTP server port")
 	rootCmd.PersistentFlags().Int("admin-port", 8081, "Admin interface port")
-	rootCmd.PersistentFlags().String("boot-dir", "", "Optional directory for additional boot files (iPXE bootloaders are embedded)")
-	rootCmd.PersistentFlags().String("data-dir", "./data", "Directory containing ISO images")
+	rootCmd.PersistentFlags().String("data-dir", "./data", "Base data directory (subdirs: isos/, bootloaders/)")
 	rootCmd.PersistentFlags().String("server-addr", "", "Server IP address (auto-detected if not specified)")
 
 	// Database flags
@@ -54,7 +53,6 @@ func init() {
 	viper.BindPFlag("tftp_port", rootCmd.PersistentFlags().Lookup("tftp-port"))
 	viper.BindPFlag("http_port", rootCmd.PersistentFlags().Lookup("http-port"))
 	viper.BindPFlag("admin_port", rootCmd.PersistentFlags().Lookup("admin-port"))
-	viper.BindPFlag("boot_dir", rootCmd.PersistentFlags().Lookup("boot-dir"))
 	viper.BindPFlag("data_dir", rootCmd.PersistentFlags().Lookup("data-dir"))
 	viper.BindPFlag("server_addr", rootCmd.PersistentFlags().Lookup("server-addr"))
 	viper.BindPFlag("db.host", rootCmd.PersistentFlags().Lookup("db-host"))

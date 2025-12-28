@@ -1,6 +1,7 @@
 package database
 
 import (
+	"crypto/rand"
 	"fmt"
 	"log"
 	"time"
@@ -33,7 +34,7 @@ func New(cfg *Config) (*DB, error) {
 	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
@@ -46,6 +47,7 @@ func New(cfg *Config) (*DB, error) {
 func (db *DB) AutoMigrate() error {
 	log.Println("Running database migrations...")
 	return db.DB.AutoMigrate(
+		&models.User{},
 		&models.Client{},
 		&models.Image{},
 		&models.BootLog{},
@@ -148,4 +150,84 @@ func (db *DB) SyncImages(isoFiles []struct{ Name, Filename string; Size int64 })
 	}
 
 	return nil
+}
+
+// User management functions
+
+// EnsureAdminUser ensures an admin user exists, creates one if not
+func (db *DB) EnsureAdminUser() (username, password string, created bool, err error) {
+	var admin models.User
+	err = db.Where("username = ?", "admin").First(&admin).Error
+
+	if err == gorm.ErrRecordNotFound {
+		// Create admin user with random password
+		password = generateRandomPassword(16)
+		admin = models.User{
+			Username: "admin",
+			Enabled:  true,
+			IsAdmin:  true,
+		}
+		if err := admin.SetPassword(password); err != nil {
+			return "", "", false, err
+		}
+		if err := db.Create(&admin).Error; err != nil {
+			return "", "", false, err
+		}
+		return "admin", password, true, nil
+	}
+
+	return "admin", "", false, err
+}
+
+// ResetAdminPassword resets the admin password to a new random one
+func (db *DB) ResetAdminPassword() (string, error) {
+	var admin models.User
+	if err := db.Where("username = ?", "admin").First(&admin).Error; err != nil {
+		return "", err
+	}
+
+	password := generateRandomPassword(16)
+	if err := admin.SetPassword(password); err != nil {
+		return "", err
+	}
+
+	if err := db.Save(&admin).Error; err != nil {
+		return "", err
+	}
+
+	return password, nil
+}
+
+// GetUser retrieves a user by username
+func (db *DB) GetUser(username string) (*models.User, error) {
+	var user models.User
+	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// UpdateUserLastLogin updates the user's last login time
+func (db *DB) UpdateUserLastLogin(username string) error {
+	now := time.Now()
+	return db.Model(&models.User{}).Where("username = ?", username).Update("last_login", now).Error
+}
+
+// generateRandomPassword generates a random password
+func generateRandomPassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[randInt(len(charset))]
+	}
+	return string(b)
+}
+
+func randInt(max int) int {
+	// Simple random int for password generation
+	var b [1]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return 0
+	}
+	return int(b[0]) % max
 }

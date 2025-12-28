@@ -30,10 +30,11 @@
 ### Admin Interface
 - **Web Admin Panel**: Full-featured UI on separate port (8081)
 - **HTTP Basic Auth**: Auto-generated password on first run
+- **User Management**: Multi-user support with role-based access
 - **RESTful API**: Complete REST API for automation
 - **Client Management**: Add/edit/delete clients, assign images
-- **Image Management**: Upload, scan, enable/disable ISOs
-- **Boot Logs**: Real-time boot attempt tracking
+- **Image Management**: Upload, download from URL, scan, enable/disable ISOs
+- **Boot Logs**: Real-time boot attempt tracking with live streaming
 
 ### Deployment
 - **Single Binary**: Fully self-contained with embedded assets
@@ -46,7 +47,7 @@
 ### Docker (Recommended)
 
 ```bash
-# Create data directory for ISOs
+# Create data directory
 mkdir -p data
 
 # Run with SQLite (no database container needed!)
@@ -56,7 +57,7 @@ docker run -d \
   -p 69:69/udp \
   -p 8080:8080/tcp \
   -p 8081:8081/tcp \
-  -v $(pwd)/data:/app/data \
+  -v $(pwd)/data:/data \
   garybowers/bootimus:latest
 
 # Check logs for admin password
@@ -65,6 +66,10 @@ docker logs bootimus | grep "Admin password"
 # Access admin interface
 open http://localhost:8081
 ```
+
+**Directory Structure**: Bootimus automatically creates subdirectories:
+- `/data/isos/` - ISO image files and extracted boot files (in subdirectories per ISO)
+- `/data/bootloaders/` - Custom bootloader files (optional)
 
 ### Standalone Binary
 
@@ -113,8 +118,7 @@ Bootimus uses sensible defaults and requires minimal configuration.
 tftp_port: 69
 http_port: 8080
 admin_port: 8081
-data_dir: ./data          # ISO storage directory
-boot_dir: ""              # Optional (bootloaders are embedded)
+data_dir: ./data          # Base data directory (creates subdirs: isos/, bootloaders/)
 server_addr: ""           # Auto-detected if not specified
 
 # SQLite mode (default - no configuration needed!)
@@ -420,6 +424,9 @@ All admin endpoints require HTTP Basic Auth (`admin:<password>`).
 - `PUT /api/images?filename=<name>` - Update image
 - `DELETE /api/images?filename=<name>` - Delete image
 - `POST /api/images/upload` - Upload ISO (multipart/form-data)
+- `POST /api/images/download` - Download ISO from URL
+- `GET /api/downloads` - List active downloads
+- `GET /api/downloads/progress?filename=<name>` - Get download progress
 - `POST /api/scan` - Scan data directory for new ISOs
 
 **Logs**
@@ -453,6 +460,17 @@ curl -u admin:$ADMIN_PASS -X POST http://localhost:8081/api/images/upload \
   -F "description=Ubuntu 24.04 LTS Server" \
   -F "public=true"
 
+# Download an ISO from URL
+curl -u admin:$ADMIN_PASS -X POST http://localhost:8081/api/images/download \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://releases.ubuntu.com/24.04/ubuntu-24.04-live-server-amd64.iso",
+    "description": "Ubuntu 24.04 LTS Server"
+  }'
+
+# Check download progress
+curl -u admin:$ADMIN_PASS http://localhost:8081/api/downloads/progress?filename=ubuntu-24.04-live-server-amd64.iso
+
 # Assign images to client (SQLite mode)
 curl -u admin:$ADMIN_PASS -X POST http://localhost:8081/api/clients/assign \
   -H "Content-Type: application/json" \
@@ -477,7 +495,7 @@ docker run -d \
   -p 69:69/udp \
   -p 8080:8080/tcp \
   -p 8081:8081/tcp \
-  -v /opt/bootimus/data:/app/data \
+  -v /opt/bootimus/data:/data \
   garybowers/bootimus:latest
 ```
 
@@ -498,7 +516,7 @@ services:
       - "8080:8080/tcp"
       - "8081:8081/tcp"
     volumes:
-      - ./data:/app/data
+      - ./data:/data
       - ./bootimus.yaml:/app/bootimus.yaml
     environment:
       - BOOTIMUS_DB_HOST=postgres

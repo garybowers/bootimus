@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -28,23 +29,165 @@ import (
 	"github.com/pin/tftp/v3"
 )
 
+var Version = "dev" // Overridden at build time
+
 type Config struct {
 	TFTPPort   int
 	HTTPPort   int
 	AdminPort  int
-	BootDir    string
-	DataDir    string
+	BootDir    string // Directory for custom bootloaders (/data/bootloaders)
+	DataDir    string // Directory for ISO images (/data/isos)
 	ServerAddr string
 	DB         *database.DB
 	Auth       *auth.Manager
 }
 
 type Server struct {
-	config      *Config
-	httpServer  *http.Server
-	adminServer *http.Server
-	tftpServer  *tftp.Server
-	wg          sync.WaitGroup
+	config         *Config
+	httpServer     *http.Server
+	adminServer    *http.Server
+	tftpServer     *tftp.Server
+	wg             sync.WaitGroup
+	activeSessions *ActiveSessions
+	logBroadcaster *LogBroadcaster
+}
+
+type ActiveSession struct {
+	IP         string    `json:"ip"`
+	Filename   string    `json:"filename"`
+	StartedAt  time.Time `json:"started_at"`
+	BytesRead  int64     `json:"bytes_read"`
+	TotalBytes int64     `json:"total_bytes"`
+	Activity   string    `json:"activity"` // "downloading", "booting", etc
+}
+
+type ActiveSessions struct {
+	mu       sync.RWMutex
+	sessions map[string]*ActiveSession // key: IP address
+}
+
+type LogBroadcaster struct {
+	mu        sync.RWMutex
+	clients   map[chan string]bool
+	logBuffer []string
+	maxBuffer int
+}
+
+// Global shared log buffer for capturing logs from application start
+var globalLogBuffer struct {
+	mu     sync.RWMutex
+	buffer []string
+}
+
+// LogWriter is a custom writer that captures logs and writes to stdout
+type LogWriter struct{}
+
+func (lw *LogWriter) Write(p []byte) (n int, err error) {
+	msg := string(bytes.TrimRight(p, "\n"))
+
+	// Add to global buffer
+	globalLogBuffer.mu.Lock()
+	globalLogBuffer.buffer = append(globalLogBuffer.buffer, msg)
+	if len(globalLogBuffer.buffer) > 100 {
+		globalLogBuffer.buffer = globalLogBuffer.buffer[1:]
+	}
+	globalLogBuffer.mu.Unlock()
+
+	// Write to stdout
+	return os.Stdout.Write(p)
+}
+
+// InitGlobalLogger sets up the global logger to capture all logs
+func InitGlobalLogger() {
+	log.SetOutput(&LogWriter{})
+	log.SetFlags(log.Ldate | log.Ltime)
+}
+
+func NewLogBroadcaster() *LogBroadcaster {
+	lb := &LogBroadcaster{
+		clients:   make(map[chan string]bool),
+		logBuffer: make([]string, 0, 100),
+		maxBuffer: 100,
+	}
+
+	// Copy global buffer to this broadcaster's buffer
+	globalLogBuffer.mu.RLock()
+	lb.logBuffer = make([]string, len(globalLogBuffer.buffer))
+	copy(lb.logBuffer, globalLogBuffer.buffer)
+	globalLogBuffer.mu.RUnlock()
+
+	return lb
+}
+
+func (lb *LogBroadcaster) Subscribe() chan string {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	ch := make(chan string, 10)
+	lb.clients[ch] = true
+
+	// Send buffered logs to new subscriber
+	for _, msg := range lb.logBuffer {
+		select {
+		case ch <- msg:
+		default:
+		}
+	}
+
+	return ch
+}
+
+func (lb *LogBroadcaster) Unsubscribe(ch chan string) {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	delete(lb.clients, ch)
+	close(ch)
+}
+
+func (lb *LogBroadcaster) Broadcast(msg string) {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	// Add to buffer
+	lb.logBuffer = append(lb.logBuffer, msg)
+	if len(lb.logBuffer) > lb.maxBuffer {
+		lb.logBuffer = lb.logBuffer[1:]
+	}
+
+	// Also add to global buffer
+	globalLogBuffer.mu.Lock()
+	globalLogBuffer.buffer = append(globalLogBuffer.buffer, msg)
+	if len(globalLogBuffer.buffer) > 100 {
+		globalLogBuffer.buffer = globalLogBuffer.buffer[1:]
+	}
+	globalLogBuffer.mu.Unlock()
+
+	// Send to all subscribers
+	for ch := range lb.clients {
+		select {
+		case ch <- msg:
+		default:
+			// Client is slow, skip
+		}
+	}
+}
+
+func (lb *LogBroadcaster) GetLogs() []string {
+	lb.mu.RLock()
+	defer lb.mu.RUnlock()
+
+	// Return a copy of the log buffer
+	logs := make([]string, len(lb.logBuffer))
+	copy(logs, lb.logBuffer)
+	return logs
+}
+
+// Helper method for Server to log and broadcast
+func (s *Server) logAndBroadcast(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	// Just use log.Print - it will be captured by our global logger
+	log.Print(msg)
 }
 
 type ISOImage struct {
@@ -54,10 +197,90 @@ type ISOImage struct {
 	SizeStr  string
 }
 
+// completionLogger wraps http.ResponseWriter to log when file transfer completes
+type completionLogger struct {
+	http.ResponseWriter
+	filename       string
+	remoteAddr     string
+	fileSize       int64
+	startTime      time.Time
+	written        int64
+	logged         bool
+	activeSessions *ActiveSessions
+}
+
+func (w *completionLogger) Write(b []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(b)
+	w.written += int64(n)
+
+	// Update session progress
+	if w.activeSessions != nil {
+		w.activeSessions.Update(w.remoteAddr, w.written)
+	}
+
+	// Log completion when all bytes written (only log once)
+	if !w.logged && w.written >= w.fileSize {
+		duration := time.Since(w.startTime)
+		msg := fmt.Sprintf("ISO: Client %s finished downloading %s (%d MB) in %v",
+			w.remoteAddr, w.filename, w.fileSize/1024/1024, duration.Round(time.Second))
+		// Just use log.Print - it will be captured by our global logger
+		log.Print(msg)
+		w.logged = true
+
+		// Remove from active sessions
+		if w.activeSessions != nil {
+			w.activeSessions.Remove(w.remoteAddr)
+		}
+	}
+
+	return n, err
+}
+
 func New(cfg *Config) *Server {
 	return &Server{
 		config: cfg,
+		activeSessions: &ActiveSessions{
+			sessions: make(map[string]*ActiveSession),
+		},
+		logBroadcaster: NewLogBroadcaster(),
 	}
+}
+
+func (as *ActiveSessions) Add(ip, filename string, totalBytes int64, activity string) {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	as.sessions[ip] = &ActiveSession{
+		IP:         ip,
+		Filename:   filename,
+		StartedAt:  time.Now(),
+		BytesRead:  0,
+		TotalBytes: totalBytes,
+		Activity:   activity,
+	}
+}
+
+func (as *ActiveSessions) Update(ip string, bytesRead int64) {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	if session, ok := as.sessions[ip]; ok {
+		session.BytesRead = bytesRead
+	}
+}
+
+func (as *ActiveSessions) Remove(ip string) {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	delete(as.sessions, ip)
+}
+
+func (as *ActiveSessions) GetAll() []ActiveSession {
+	as.mu.RLock()
+	defer as.mu.RUnlock()
+	sessions := make([]ActiveSession, 0, len(as.sessions))
+	for _, s := range as.sessions {
+		sessions = append(sessions, *s)
+	}
+	return sessions
 }
 
 func (s *Server) Start() error {
@@ -350,12 +573,10 @@ func (s *Server) startHTTPServer() error {
 		filename := strings.TrimPrefix(r.URL.Path, "/isos/")
 		decodedFilename, err := url.PathUnescape(filename)
 		if err != nil {
-			log.Printf("HTTP: Failed to decode filename %s: %v", filename, err)
+			log.Printf("ISO: Failed to decode filename %s: %v", filename, err)
 			http.Error(w, "Invalid filename", http.StatusBadRequest)
 			return
 		}
-
-		log.Printf("HTTP: ISO request %s %s (decoded: %s) from %s", r.Method, filename, decodedFilename, r.RemoteAddr)
 
 		// Build full path to ISO
 		fullPath := filepath.Join(s.config.DataDir, decodedFilename)
@@ -363,7 +584,7 @@ func (s *Server) startHTTPServer() error {
 		// Security check: ensure the path is within DataDir
 		cleanPath := filepath.Clean(fullPath)
 		if !strings.HasPrefix(cleanPath, filepath.Clean(s.config.DataDir)) {
-			log.Printf("HTTP: Path traversal attempt: %s", decodedFilename)
+			log.Printf("ISO: Path traversal attempt: %s from %s", decodedFilename, r.RemoteAddr)
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -371,20 +592,36 @@ func (s *Server) startHTTPServer() error {
 		// Check if file exists
 		fileInfo, err := os.Stat(fullPath)
 		if err != nil {
-			log.Printf("HTTP: File not found: %s (error: %v)", fullPath, err)
+			log.Printf("ISO: File not found: %s", fullPath)
 			http.NotFound(w, r)
 			return
 		}
 
 		if fileInfo.IsDir() {
-			log.Printf("HTTP: Requested path is a directory: %s", fullPath)
+			log.Printf("ISO: Path is a directory: %s", fullPath)
 			http.Error(w, "Not a file", http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("HTTP: Serving ISO %s (%d bytes)", decodedFilename, fileInfo.Size())
+		// Log start of download (first request without Range header)
+		if r.Header.Get("Range") == "" {
+			s.logAndBroadcast("ISO: Client %s started downloading %s (%d MB)", r.RemoteAddr, decodedFilename, fileInfo.Size()/1024/1024)
+			// Add to active sessions
+			s.activeSessions.Add(r.RemoteAddr, decodedFilename, fileInfo.Size(), "downloading")
+		}
+
+		// Wrap ResponseWriter to detect when transfer completes
+		wrappedWriter := &completionLogger{
+			ResponseWriter: w,
+			filename:       decodedFilename,
+			remoteAddr:     r.RemoteAddr,
+			fileSize:       fileInfo.Size(),
+			startTime:      time.Now(),
+			activeSessions: s.activeSessions,
+		}
+
 		w.Header().Set("Content-Type", "application/octet-stream")
-		http.ServeFile(w, r, fullPath)
+		http.ServeFile(wrappedWriter, r, fullPath)
 	})
 
 	// Boot files server endpoint (kernel/initrd)
@@ -393,21 +630,18 @@ func (s *Server) startHTTPServer() error {
 		urlPath := strings.TrimPrefix(r.URL.Path, "/boot/")
 		decodedPath, err := url.PathUnescape(urlPath)
 		if err != nil {
-			log.Printf("HTTP: Failed to decode boot path %s: %v", urlPath, err)
+			log.Printf("Boot: Failed to decode path %s: %v", urlPath, err)
 			http.Error(w, "Invalid path", http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("HTTP: Boot file request %s (decoded: %s) from %s", urlPath, decodedPath, r.RemoteAddr)
+		// Build full path to boot file (in isos directory subdirs)
+		fullPath := filepath.Join(s.config.DataDir, decodedPath)
 
-		// Build full path to boot file (in cache directory)
-		cacheDir := filepath.Join(s.config.DataDir, ".cache")
-		fullPath := filepath.Join(cacheDir, decodedPath)
-
-		// Security check: ensure the path is within cache directory
+		// Security check: ensure the path is within data directory
 		cleanPath := filepath.Clean(fullPath)
-		if !strings.HasPrefix(cleanPath, filepath.Clean(cacheDir)) {
-			log.Printf("HTTP: Path traversal attempt: %s", decodedPath)
+		if !strings.HasPrefix(cleanPath, filepath.Clean(s.config.DataDir)) {
+			log.Printf("Boot: Path traversal attempt: %s from %s", decodedPath, r.RemoteAddr)
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -415,18 +649,21 @@ func (s *Server) startHTTPServer() error {
 		// Check if file exists
 		fileInfo, err := os.Stat(fullPath)
 		if err != nil {
-			log.Printf("HTTP: Boot file not found: %s (error: %v)", fullPath, err)
+			log.Printf("Boot: File not found: %s", decodedPath)
 			http.NotFound(w, r)
 			return
 		}
 
 		if fileInfo.IsDir() {
-			log.Printf("HTTP: Requested path is a directory: %s", fullPath)
+			log.Printf("Boot: Path is a directory: %s", fullPath)
 			http.Error(w, "Not a file", http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("HTTP: Serving boot file %s (%d bytes)", decodedPath, fileInfo.Size())
+		// Only log kernel/initrd fetches, not range requests
+		if r.Header.Get("Range") == "" {
+			s.logAndBroadcast("Boot: Serving %s (%d MB) to %s", decodedPath, fileInfo.Size()/1024/1024, r.RemoteAddr)
+		}
 		w.Header().Set("Content-Type", "application/octet-stream")
 		http.ServeFile(w, r, fullPath)
 	})
@@ -478,7 +715,7 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	log.Println("Setting up admin interface")
 
 	// Create admin handler
-	adminHandler := admin.NewHandler(s.config.DB, s.config.DataDir, s.config.BootDir)
+	adminHandler := admin.NewHandler(s.config.DB, s.config.DataDir, s.config.BootDir, Version)
 
 	// Serve embedded static files
 	staticFS, err := fs.Sub(web.Static, "static")
@@ -557,6 +794,99 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	// Extraction endpoints
 	mux.HandleFunc("/api/images/extract", authWrap(adminHandler.ExtractImage))
 	mux.HandleFunc("/api/images/boot-method", authWrap(adminHandler.SetBootMethod))
+
+	// Active sessions endpoint
+	mux.HandleFunc("/api/active-sessions", authWrap(s.handleActiveSessions))
+
+	// Live logs endpoints
+	mux.HandleFunc("/api/logs/stream", authWrap(s.handleLogsStream))
+	mux.HandleFunc("/api/logs/buffer", authWrap(s.handleLogsBuffer))
+
+	// User management endpoints
+	mux.HandleFunc("/api/users", authWrap(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			adminHandler.ListUsers(w, r)
+		case http.MethodPost:
+			adminHandler.CreateUser(w, r)
+		case http.MethodPut:
+			adminHandler.UpdateUser(w, r)
+		case http.MethodDelete:
+			adminHandler.DeleteUser(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/users/reset-password", authWrap(adminHandler.ResetUserPassword))
+
+	// ISO download endpoints
+	mux.HandleFunc("/api/images/download", authWrap(adminHandler.DownloadISO))
+	mux.HandleFunc("/api/downloads", authWrap(adminHandler.ListDownloads))
+	mux.HandleFunc("/api/downloads/progress", authWrap(adminHandler.GetDownloadProgress))
+}
+
+func (s *Server) handleActiveSessions(w http.ResponseWriter, r *http.Request) {
+	sessions := s.activeSessions.GetAll()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(sessions); err != nil {
+		log.Printf("Failed to encode active sessions: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleLogsBuffer(w http.ResponseWriter, r *http.Request) {
+	logs := s.logBroadcaster.GetLogs()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"logs":    logs,
+	}); err != nil {
+		log.Printf("Failed to encode logs: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
+	// Set headers for SSE
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Subscribe to log broadcaster
+	logChan := s.logBroadcaster.Subscribe()
+	defer s.logBroadcaster.Unsubscribe(logChan)
+
+	// Get context for client disconnect detection
+	ctx := r.Context()
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Send initial connection message
+	fmt.Fprintf(w, "data: {\"type\":\"connected\"}\n\n")
+	flusher.Flush()
+
+	// Stream logs to client
+	for {
+		select {
+		case <-ctx.Done():
+			// Client disconnected
+			return
+		case msg, ok := <-logChan:
+			if !ok {
+				return
+			}
+			// Send log message as JSON
+			fmt.Fprintf(w, "data: {\"type\":\"log\",\"message\":%q}\n\n", msg)
+			flusher.Flush()
+		}
+	}
 }
 
 func (s *Server) handleAutoexec(w http.ResponseWriter, r *http.Request) {
@@ -587,7 +917,7 @@ func (s *Server) handleIPXEMenu(w http.ResponseWriter, r *http.Request) {
 	// Normalise MAC address
 	macAddress = strings.ToLower(strings.ReplaceAll(macAddress, "-", ":"))
 
-	log.Printf("Generating iPXE menu for MAC: %s", macAddress)
+	s.logAndBroadcast("Generating iPXE menu for MAC: %s", macAddress)
 
 	var images []models.Image
 	var err error
@@ -632,7 +962,11 @@ goto ${selected}
 echo Booting {{$img.Name}}...
 {{if eq $img.BootMethod "kernel"}}
 echo Loading kernel and initrd...
+{{if eq $img.Distro "arch"}}
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.BootParams}}http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}} ip=dhcp
+{{else}}
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.BootParams}}iso-url=http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}} ip=dhcp
+{{end}}
 initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/initrd
 boot || goto failed
 {{else}}
@@ -666,6 +1000,7 @@ reboot
 		Extracted       bool
 		BootParams      string
 		CacheDir        string
+		Distro          string
 	}
 
 	imageData := make([]ImageData, len(images))
@@ -680,6 +1015,7 @@ reboot
 			Extracted:       img.Extracted,
 			BootParams:      img.BootParams,
 			CacheDir:        url.PathEscape(cacheDir),
+			Distro:          img.Distro,
 		}
 	}
 

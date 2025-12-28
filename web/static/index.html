@@ -374,6 +374,97 @@
             font-family: monospace;
             text-align: right;
         }
+
+        .session-item {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border-left: 4px solid #10b981;
+        }
+
+        .session-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .session-ip {
+            color: #38bdf8;
+            font-weight: 600;
+        }
+
+        .session-filename {
+            color: #94a3b8;
+            font-size: 14px;
+        }
+
+        .session-activity {
+            color: #10b981;
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #38bdf8);
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 5px;
+        }
+
+        /* User Management Badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-admin {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #fff;
+        }
+
+        .badge-user {
+            background: #334155;
+            color: #94a3b8;
+        }
+
+        .badge-enabled {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #fff;
+        }
+
+        .badge-disabled {
+            background: #475569;
+            color: #94a3b8;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #dc2626, #b91c1c);
+        }
     </style>
 </head>
 <body>
@@ -406,10 +497,17 @@
             </div>
         </div>
 
+        <!-- Active Sessions Panel -->
+        <div id="active-sessions-panel" class="card" style="display: none;">
+            <h2>Active Sessions</h2>
+            <div id="active-sessions-content"></div>
+        </div>
+
         <div class="tabs">
             <button class="tab active" data-tab="server">Server Info</button>
             <button class="tab" data-tab="clients">Clients</button>
             <button class="tab" data-tab="images">Images</button>
+            <button class="tab" data-tab="users">Users</button>
             <button class="tab" data-tab="logs">Boot Logs</button>
         </div>
 
@@ -441,6 +539,7 @@
             <div class="card">
                 <h2>Image Management</h2>
                 <button class="btn btn-primary" onclick="showUploadModal()">📤 Upload ISO</button>
+                <button class="btn btn-primary" onclick="showDownloadModal()">⬇️ Download ISO</button>
                 <button class="btn btn-success" onclick="scanImages()">🔍 Scan for ISOs</button>
                 <div id="images-table" class="loading">
                     <div class="spinner"></div>
@@ -449,10 +548,35 @@
             </div>
         </div>
 
+        <!-- Users Tab -->
+        <div id="users-tab" class="tab-content">
+            <div class="card">
+                <h2>User Management</h2>
+                <button class="btn btn-primary" onclick="showAddUserModal()">+ Add User</button>
+                <div id="users-table" class="loading">
+                    <div class="spinner"></div>
+                    Loading users...
+                </div>
+            </div>
+        </div>
+
         <!-- Boot Logs Tab -->
         <div id="logs-tab" class="tab-content">
             <div class="card">
-                <h2>Boot Logs</h2>
+                <h2>Server Logs</h2>
+                <div style="margin-bottom: 10px;">
+                    <button class="btn btn-sm btn-success" id="connect-logs-btn" onclick="connectLiveLogs()">Start Auto-Refresh</button>
+                    <button class="btn btn-sm btn-danger" id="disconnect-logs-btn" onclick="disconnectLiveLogs()" style="display: none;">Stop Auto-Refresh</button>
+                    <button class="btn btn-sm" onclick="loadServerLogs()">Refresh Now</button>
+                    <button class="btn btn-sm" onclick="clearLiveLogs()">Clear</button>
+                    <span id="log-status" style="margin-left: 10px; color: #94a3b8; font-size: 12px;"></span>
+                </div>
+                <div id="live-logs" style="background: #0f172a; padding: 15px; border-radius: 6px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 13px; line-height: 1.5;">
+                    <div style="color: #94a3b8;">Click "Refresh Now" to load server logs...</div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>Boot Attempt History</h2>
                 <div id="logs-table" class="loading">
                     <div class="spinner"></div>
                     Loading logs...
@@ -548,6 +672,111 @@
                 </div>
                 <button type="submit" class="btn btn-primary">Upload</button>
                 <button type="button" class="btn" onclick="closeModal('upload-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Download ISO Modal -->
+    <div id="download-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Download ISO from URL</h2>
+            </div>
+            <form id="download-form">
+                <div class="form-group">
+                    <label>ISO URL *</label>
+                    <input type="url" name="url" placeholder="https://example.com/image.iso" required>
+                    <small style="color: #94a3b8;">Direct link to .iso file</small>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" placeholder="Optional description" rows="3"></textarea>
+                </div>
+                <div id="download-progress-container" style="display: none; margin-top: 15px;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="download-progress-bar" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text" id="download-progress-text">0% - 0 B/s</div>
+                </div>
+                <button type="submit" class="btn btn-primary" id="download-submit-btn">Start Download</button>
+                <button type="button" class="btn" onclick="closeModal('download-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- User Management Modals -->
+    <div id="add-user-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add User</h2>
+            </div>
+            <form id="add-user-form">
+                <div class="form-group">
+                    <label>Username *</label>
+                    <input type="text" name="username" placeholder="Username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password *</label>
+                    <input type="password" name="password" placeholder="Password" required minlength="8">
+                    <small style="color: #94a3b8;">Minimum 8 characters</small>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="is_admin">
+                    <label>Administrator</label>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="enabled" checked>
+                    <label>Enabled</label>
+                </div>
+                <button type="submit" class="btn btn-primary">Create User</button>
+                <button type="button" class="btn" onclick="closeModal('add-user-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="edit-user-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit User</h2>
+            </div>
+            <form id="edit-user-form">
+                <input type="hidden" name="id">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username" readonly>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="is_admin">
+                    <label>Administrator</label>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="enabled">
+                    <label>Enabled</label>
+                </div>
+                <button type="submit" class="btn btn-primary">Update User</button>
+                <button type="button" class="btn" onclick="closeModal('edit-user-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="reset-password-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Reset Password</h2>
+            </div>
+            <form id="reset-password-form">
+                <input type="hidden" name="username">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username_display" readonly>
+                </div>
+                <div class="form-group">
+                    <label>New Password *</label>
+                    <input type="password" name="password" placeholder="New password" required minlength="8">
+                    <small style="color: #94a3b8;">Minimum 8 characters</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Reset Password</button>
+                <button type="button" class="btn" onclick="closeModal('reset-password-modal')">Cancel</button>
             </form>
         </div>
     </div>

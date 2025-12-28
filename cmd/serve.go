@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -25,6 +24,8 @@ const (
 
 var version = "dev" // Overridden at build time
 
+var resetAdminPassword bool
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the PXE/HTTP boot server",
@@ -34,6 +35,7 @@ var serveCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(serveCmd)
+	serveCmd.Flags().BoolVar(&resetAdminPassword, "reset-admin-password", false, "Reset admin password to a new random value")
 }
 
 func printBanner() {
@@ -50,27 +52,28 @@ func printBanner() {
 }
 
 func runServe(cmd *cobra.Command, args []string) {
+	// Initialize global logger to capture all logs
+	server.InitGlobalLogger()
+
 	// Print banner
 	printBanner()
 
-	// Get directories - don't auto-create them
-	bootDir := viper.GetString("boot_dir")
+	// Get base data directory
 	dataDir := viper.GetString("data_dir")
 
-	// Boot directory is now optional (bootloaders are embedded)
-	if bootDir != "" {
-		if _, err := os.Stat(bootDir); os.IsNotExist(err) {
-			log.Printf("Info: Boot directory does not exist (using embedded bootloaders): %s", bootDir)
+	// Create directory structure if it doesn't exist
+	isoDir := dataDir + "/isos"
+	bootloadersDir := dataDir + "/bootloaders"
+
+	for _, dir := range []string{dataDir, isoDir, bootloadersDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Fatalf("Failed to create directory %s: %v", dir, err)
 		}
-	} else {
-		log.Println("Using embedded iPXE bootloaders (no boot directory configured)")
 	}
 
-	// Data directory check
-	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
-		log.Printf("Warning: Data directory does not exist: %s", dataDir)
-		log.Printf("Create it with: mkdir -p %s", dataDir)
-	}
+	log.Printf("Data directory structure initialized at: %s", dataDir)
+	log.Printf("  - ISOs: %s", isoDir)
+	log.Printf("  - Bootloaders: %s", bootloadersDir)
 
 	// Auto-detect server address if not specified
 	serverAddr := viper.GetString("server_addr")
@@ -122,25 +125,45 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Println("Running in SQLite mode (PostgreSQL disabled)")
 	}
 
-	// Initialise authentication manager
-	// Use current working directory for config if no config file is set
-	configDir := "."
-	if viper.ConfigFileUsed() != "" {
-		configDir = filepath.Dir(viper.ConfigFileUsed())
+	// Handle admin password reset if requested
+	if resetAdminPassword {
+		if db == nil {
+			log.Fatalf("Database is required for password reset. Please enable database in config.")
+		}
+
+		password, err := db.ResetAdminPassword()
+		if err != nil {
+			log.Fatalf("Failed to reset admin password: %v", err)
+		}
+
+		log.Println("╔════════════════════════════════════════════════════════════════╗")
+		log.Println("║                  ADMIN PASSWORD RESET                          ║")
+		log.Println("╠════════════════════════════════════════════════════════════════╣")
+		log.Printf("║  Username: %-50s ║\n", "admin")
+		log.Printf("║  New Password: %-46s ║\n", password)
+		log.Println("╠════════════════════════════════════════════════════════════════╣")
+		log.Println("║  This password will NOT be shown again!                        ║")
+		log.Println("║  Save it now before continuing.                                ║")
+		log.Println("╚════════════════════════════════════════════════════════════════╝")
+		log.Println("\nContinuing to start server...")
 	}
 
-	authMgr, err := auth.NewManager(configDir)
+	// Initialise authentication manager
+	authMgr, err := auth.NewManager(db)
 	if err != nil {
 		log.Fatalf("Failed to initialise authentication: %v", err)
 	}
+
+	// Set version in server package
+	server.Version = version
 
 	// Create server config
 	cfg := &server.Config{
 		TFTPPort:   viper.GetInt("tftp_port"),
 		HTTPPort:   viper.GetInt("http_port"),
 		AdminPort:  viper.GetInt("admin_port"),
-		BootDir:    bootDir,
-		DataDir:    dataDir,
+		BootDir:    bootloadersDir,
+		DataDir:    isoDir,
 		ServerAddr: serverAddr,
 		DB:         db,
 		Auth:       authMgr,
