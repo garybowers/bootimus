@@ -250,6 +250,8 @@ function renderImagesTable() {
                     <th>Size</th>
                     <th>Status</th>
                     <th>Visibility</th>
+                    <th>Boot Method</th>
+                    <th>Distro</th>
                     <th>Boot Count</th>
                     <th>Actions</th>
                 </tr>
@@ -270,8 +272,32 @@ function renderImagesTable() {
                                 ${img.public ? 'Public' : 'Private'}
                             </span>
                         </td>
+                        <td>
+                            ${img.boot_method === 'kernel' ?
+                                '<span class="badge badge-success">Kernel/Initrd</span>' :
+                                '<span class="badge badge-info">SAN Boot</span>'
+                            }
+                            ${img.extracted && img.boot_method === 'sanboot' ?
+                                '<br><button class="btn btn-sm" style="margin-top: 4px;" onclick="setBootMethod(\''+img.filename+'\', \'kernel\')">Switch to Kernel</button>' :
+                                ''
+                            }
+                            ${img.boot_method === 'kernel' ?
+                                '<br><button class="btn btn-sm" style="margin-top: 4px;" onclick="setBootMethod(\''+img.filename+'\', \'sanboot\')">Switch to SAN</button>' :
+                                ''
+                            }
+                        </td>
+                        <td>
+                            ${img.extracted ?
+                                (img.distro ? '<span class="badge badge-info">'+img.distro+'</span>' : '<span class="badge badge-success">✓ Extracted</span>') :
+                                (img.extraction_error ? '<span class="badge badge-danger" title="'+img.extraction_error+'">Error</span>' : '')
+                            }
+                        </td>
                         <td>${img.boot_count || 0}</td>
                         <td>
+                            ${!img.extracted ?
+                                '<button class="btn btn-success btn-sm" onclick="extractImage(\''+img.filename+'\', \''+img.name+'\')">Extract Kernel</button>' :
+                                ''
+                            }
                             <button class="btn btn-primary btn-sm" onclick="toggleImage('${img.filename}', ${img.enabled})">
                                 ${img.enabled ? 'Disable' : 'Enable'}
                             </button>
@@ -357,6 +383,49 @@ async function scanImages() {
         }
     } catch (err) {
         showAlert('Failed to scan images', 'error');
+    }
+}
+
+async function extractImage(filename, name) {
+    if (!confirm(`Extract kernel and initrd from ${name}?\n\nThis will mount the ISO and extract boot files for direct kernel booting.`)) return;
+
+    try {
+        showAlert('Extracting... this may take a moment', 'info');
+        const res = await fetch(`${API_BASE}/images/extract?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
+        const data = await res.json();
+
+        if (data.success) {
+            showAlert(data.message || 'Extraction successful', 'success');
+            loadImages();
+        } else {
+            showAlert(data.error || 'Extraction failed', 'error');
+        }
+    } catch (err) {
+        showAlert('Failed to extract image', 'error');
+    }
+}
+
+async function setBootMethod(filename, method) {
+    try {
+        const res = await fetch(`${API_BASE}/images/boot-method`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                filename: filename,
+                boot_method: method
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showAlert(`Boot method set to ${method}`, 'success');
+            loadImages();
+        } else {
+            showAlert(data.error || 'Failed to set boot method', 'error');
+        }
+    } catch (err) {
+        showAlert('Failed to set boot method', 'error');
     }
 }
 

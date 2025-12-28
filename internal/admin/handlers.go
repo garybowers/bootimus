@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"bootimus/internal/database"
+	"bootimus/internal/extractor"
 	"bootimus/internal/models"
 	"bootimus/internal/storage"
 )
@@ -722,6 +724,161 @@ func (h *Handler) AssignImages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Images assigned to client"})
+}
+
+// ============================================================================
+// ISO Kernel/Initrd Extraction
+// ============================================================================
+
+func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing filename parameter"})
+		return
+	}
+
+	// Only supported with database mode
+	if h.db == nil {
+		h.sendJSON(w, http.StatusNotImplemented, Response{Success: false, Error: "Extraction not supported in no-database mode"})
+		return
+	}
+
+	// Get the image from database
+	var image models.Image
+	if err := h.db.Where("filename = ?", filename).First(&image).Error; err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+		return
+	}
+
+	// Check if already extracted
+	if image.Extracted && image.BootMethod == "kernel" {
+		h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Image already extracted", Data: image})
+		return
+	}
+
+	// Import extractor package
+	log.Printf("Extracting kernel/initrd from ISO: %s", filename)
+
+	// Create extractor
+	cacheDir := filepath.Join(h.dataDir, ".cache")
+	ext, err := extractor.New(cacheDir, h.dataDir)
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: fmt.Sprintf("Failed to create extractor: %v", err)})
+		return
+	}
+
+	// Extract boot files
+	isoPath := filepath.Join(h.dataDir, filename)
+	bootFiles, err := ext.Extract(isoPath)
+	if err != nil {
+		// Save error to database
+		image.ExtractionError = err.Error()
+		h.db.Save(&image)
+
+		h.sendJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to extract boot files: %v", err),
+		})
+		return
+	}
+
+	// Save metadata
+	if err := ext.SaveMetadata(filename, bootFiles); err != nil {
+		log.Printf("Failed to save extraction metadata: %v", err)
+	}
+
+	// Update database with extraction info
+	now := time.Now()
+	image.Extracted = true
+	image.Distro = bootFiles.Distro
+	image.BootMethod = "kernel"
+	image.KernelPath = bootFiles.Kernel
+	image.InitrdPath = bootFiles.Initrd
+	image.BootParams = bootFiles.BootParams + " "
+	image.ExtractionError = ""
+	image.ExtractedAt = &now
+
+	if err := h.db.Save(&image).Error; err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Successfully extracted %s: distro=%s, kernel=%s, initrd=%s",
+		filename, bootFiles.Distro, bootFiles.Kernel, bootFiles.Initrd)
+
+	h.sendJSON(w, http.StatusOK, Response{
+		Success: true,
+		Message: fmt.Sprintf("Successfully extracted %s boot files", bootFiles.Distro),
+		Data:    image,
+	})
+}
+
+func (h *Handler) SetBootMethod(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	var req struct {
+		Filename   string `json:"filename"`
+		BootMethod string `json:"boot_method"` // "sanboot" or "kernel"
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+
+	if req.Filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing filename"})
+		return
+	}
+
+	if req.BootMethod != "sanboot" && req.BootMethod != "kernel" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid boot method (must be 'sanboot' or 'kernel')"})
+		return
+	}
+
+	// Only supported with database mode
+	if h.db == nil {
+		h.sendJSON(w, http.StatusNotImplemented, Response{Success: false, Error: "Boot method selection not supported in no-database mode"})
+		return
+	}
+
+	// Get the image
+	var image models.Image
+	if err := h.db.Where("filename = ?", req.Filename).First(&image).Error; err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+		return
+	}
+
+	// If switching to kernel method, ensure extraction has been done
+	if req.BootMethod == "kernel" && !image.Extracted {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Cannot use kernel boot method: image not extracted. Please extract first.",
+		})
+		return
+	}
+
+	// Update boot method
+	image.BootMethod = req.BootMethod
+	if err := h.db.Save(&image).Error; err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Boot method changed for %s: %s", req.Filename, req.BootMethod)
+	h.sendJSON(w, http.StatusOK, Response{
+		Success: true,
+		Message: fmt.Sprintf("Boot method set to %s", req.BootMethod),
+		Data:    image,
+	})
 }
 
 // ============================================================================

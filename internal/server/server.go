@@ -387,6 +387,50 @@ func (s *Server) startHTTPServer() error {
 		http.ServeFile(w, r, fullPath)
 	})
 
+	// Boot files server endpoint (kernel/initrd)
+	mux.HandleFunc("/boot/", func(w http.ResponseWriter, r *http.Request) {
+		// Strip /boot/ prefix and decode the path
+		urlPath := strings.TrimPrefix(r.URL.Path, "/boot/")
+		decodedPath, err := url.PathUnescape(urlPath)
+		if err != nil {
+			log.Printf("HTTP: Failed to decode boot path %s: %v", urlPath, err)
+			http.Error(w, "Invalid path", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("HTTP: Boot file request %s (decoded: %s) from %s", urlPath, decodedPath, r.RemoteAddr)
+
+		// Build full path to boot file (in cache directory)
+		cacheDir := filepath.Join(s.config.DataDir, ".cache")
+		fullPath := filepath.Join(cacheDir, decodedPath)
+
+		// Security check: ensure the path is within cache directory
+		cleanPath := filepath.Clean(fullPath)
+		if !strings.HasPrefix(cleanPath, filepath.Clean(cacheDir)) {
+			log.Printf("HTTP: Path traversal attempt: %s", decodedPath)
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		// Check if file exists
+		fileInfo, err := os.Stat(fullPath)
+		if err != nil {
+			log.Printf("HTTP: Boot file not found: %s (error: %v)", fullPath, err)
+			http.NotFound(w, r)
+			return
+		}
+
+		if fileInfo.IsDir() {
+			log.Printf("HTTP: Requested path is a directory: %s", fullPath)
+			http.Error(w, "Not a file", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("HTTP: Serving boot file %s (%d bytes)", decodedPath, fileInfo.Size())
+		w.Header().Set("Content-Type", "application/octet-stream")
+		http.ServeFile(w, r, fullPath)
+	})
+
 	// Health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -509,6 +553,10 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/bootloaders", authWrap(adminHandler.ListBootloaders))
 	mux.HandleFunc("/api/bootloaders/upload", authWrap(adminHandler.UploadBootloader))
 	mux.HandleFunc("/api/bootloaders/delete", authWrap(adminHandler.DeleteBootloader))
+
+	// Extraction endpoints
+	mux.HandleFunc("/api/images/extract", authWrap(adminHandler.ExtractImage))
+	mux.HandleFunc("/api/images/boot-method", authWrap(adminHandler.SetBootMethod))
 }
 
 func (s *Server) handleAutoexec(w http.ResponseWriter, r *http.Request) {
@@ -571,7 +619,7 @@ func (s *Server) generateIPXEMenu(images []models.Image, macAddress string) stri
 menu Bootimus - Boot Menu
 item --gap -- Available Images:
 {{range $index, $img := .Images}}
-item iso{{$index}} {{$img.Name}} ({{$img.SizeStr}})
+item iso{{$index}} {{$img.Name}} ({{$img.SizeStr}}){{if $img.Extracted}} [kernel]{{end}}
 {{end}}
 item --gap -- Options:
 item shell Drop to iPXE shell
@@ -582,9 +630,21 @@ goto ${selected}
 {{range $index, $img := .Images}}
 :iso{{$index}}
 echo Booting {{$img.Name}}...
-sanboot --no-describe --drive 0x80 http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}}?mac={{$.MAC}}
+{{if eq $img.BootMethod "kernel"}}
+echo Loading kernel and initrd...
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.BootParams}}iso-url=http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}} ip=dhcp
+initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/initrd
+boot || goto failed
+{{else}}
+sanboot --no-describe --drive 0x80 http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}}?mac={{$.MAC}} || goto failed
+{{end}}
 goto start
 {{end}}
+
+:failed
+echo Boot failed! Press any key to return to menu...
+prompt
+goto start
 
 :shell
 echo Type 'exit' to return to menu
@@ -602,15 +662,24 @@ reboot
 		Filename        string
 		EncodedFilename string
 		SizeStr         string
+		BootMethod      string
+		Extracted       bool
+		BootParams      string
+		CacheDir        string
 	}
 
 	imageData := make([]ImageData, len(images))
 	for i, img := range images {
+		cacheDir := strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename))
 		imageData[i] = ImageData{
 			Name:            img.Name,
 			Filename:        img.Filename,
 			EncodedFilename: url.PathEscape(img.Filename),
 			SizeStr:         formatBytes(img.Size),
+			BootMethod:      img.BootMethod,
+			Extracted:       img.Extracted,
+			BootParams:      img.BootParams,
+			CacheDir:        url.PathEscape(cacheDir),
 		}
 	}
 
