@@ -56,6 +56,8 @@ Please raise a issue for any unexpected behaviour you encounter.
 - **Boot Logging**: Track every boot attempt with statistics
 
 ### Admin Interface
+
+
 - **Web Admin Panel**: Full-featured UI on separate port (8081)
 - **HTTP Basic Auth**: Auto-generated password on first run
 - **User Management**: Multi-user support with role-based access
@@ -63,6 +65,19 @@ Please raise a issue for any unexpected behaviour you encounter.
 - **Client Management**: Add/edit/delete clients, assign images
 - **Image Management**: Upload, download from URL, scan, enable/disable ISOs
 - **Boot Logs**: Real-time boot attempt tracking with live streaming
+
+** Admin Interface **
+<img src="docs/admin_1.png" alt="Admin Interface" width="800" height="600">
+
+** Upload ISOs from your machine to the server without SCP/SFTP/Rsync etc. **
+<img src="docs/admin_2.png" alt="Admin Interface" width="800" height="600">
+
+** Download ISOs from a download link without having to download locally **
+<img src="docs/admin_3.png" alt="Admin Interface" width="800" height="600">
+
+
+
+
 
 ### Deployment
 - **Single Binary**: Fully self-contained with embedded assets
