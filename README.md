@@ -8,9 +8,16 @@ Please raise a issue for any unexpected behaviour you encounter.
 
 ## Tested Images 
 
+### Arch Based
  - archlinux-2025.12.01-x86_64.iso [✅]
+
+### RHEL Based
  - Rocky-10.1-x86_64-minimal.iso [✅]
+ - Fedora-KDE-Desktop-Live-43-1.6.x86_64.iso [✅]
+
+### Debian/Ubuntu Based
  - ubuntu-24.04-live-server-amd64.iso [✅]
+ - debian-12.iso [✅]
 
 
 ## Roadmap
