@@ -421,8 +421,8 @@ function renderClientsTable() {
                         <td>${client.boot_count || 0}</td>
                         <td>${client.last_boot ? new Date(client.last_boot).toLocaleString() : 'Never'}</td>
                         <td>
-                            <button class="btn btn-primary btn-sm" onclick="editClient('${escapeHtml(client.mac_address)}')">Edit & Assign Images</button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteClient('${escapeHtml(client.mac_address)}')">Delete</button>
+                            <button class="btn btn-primary btn-sm" onclick="editClient('${client.mac_address}')">Edit & Assign Images</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteClient('${client.mac_address}')">Delete</button>
                         </td>
                     </tr>
                 `).join('')}
@@ -443,27 +443,44 @@ async function editClient(mac) {
         const res = await fetch(`${API_BASE}/clients?mac=${encodeURIComponent(mac)}`);
         const data = await res.json();
 
+        console.log('Edit client API response:', data);
+
         if (data.success) {
             currentClient = data.data;
+            console.log('Current client data:', currentClient);
+
             const form = document.getElementById('edit-client-form');
-            form.mac_address.value = currentClient.mac_address;
-            form.name.value = currentClient.name || '';
-            form.description.value = currentClient.description || '';
-            form.enabled.checked = currentClient.enabled;
+
+            // Set form values
+            form.querySelector('[name="mac_address"]').value = currentClient.mac_address || mac || '';
+            form.querySelector('[name="name"]').value = currentClient.name || '';
+            form.querySelector('[name="description"]').value = currentClient.description || '';
+            form.querySelector('[name="enabled"]').checked = currentClient.enabled || false;
+
+            console.log('Form values after setting:', {
+                mac: form.querySelector('[name="mac_address"]').value,
+                name: form.querySelector('[name="name"]').value,
+                description: form.querySelector('[name="description"]').value,
+                enabled: form.querySelector('[name="enabled"]').checked
+            });
 
             // Populate images select
             const select = document.getElementById('edit-images-select');
-            select.innerHTML = images.map(img => `
-                <option value="${img.filename}" ${(currentClient.images || []).some(i => i.filename === img.filename) ? 'selected' : ''}>
-                    ${img.name}
-                </option>
-            `).join('');
+            console.log('Current client images:', currentClient.images);
+            console.log('Available images:', images);
+
+            select.innerHTML = images.map(img => {
+                const isSelected = (currentClient.images || []).some(i => i.filename === img.filename);
+                console.log(`Image ${img.name}: selected=${isSelected}`);
+                return `<option value="${img.filename}" ${isSelected ? 'selected' : ''}>${img.name}</option>`;
+            }).join('');
 
             showModal('edit-client-modal');
         } else {
             showAlert(data.error || 'Failed to load client', 'error');
         }
     } catch (err) {
+        console.error('Error in editClient:', err);
         showAlert('Failed to load client', 'error');
     }
 }
@@ -932,7 +949,7 @@ function setupForms() {
             const selectedFilenames = Array.from(document.getElementById('edit-images-select').selectedOptions)
                 .map(opt => opt.value);
 
-            const res2 = await fetch(`${API_BASE}/clients/assign`, {
+            const res2 = await fetch(`${API_BASE}/assign-images`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

@@ -757,16 +757,38 @@ func (h *Handler) AssignImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// DB mode - support both MAC address lookup and direct client ID
 	var client models.Client
-	if err := h.db.First(&client, req.ClientID).Error; err != nil {
-		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Client not found"})
+	if req.MACAddress != "" {
+		// Look up client by MAC address
+		if err := h.db.Where("mac_address = ?", req.MACAddress).First(&client).Error; err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Client not found"})
+			return
+		}
+	} else if req.ClientID > 0 {
+		// Look up client by ID (legacy support)
+		if err := h.db.First(&client, req.ClientID).Error; err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Client not found"})
+			return
+		}
+	} else {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing mac_address or client_id"})
 		return
 	}
 
 	var images []models.Image
-	if err := h.db.Find(&images, req.ImageIDs).Error; err != nil {
-		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
-		return
+	if len(req.ImageFilenames) > 0 {
+		// Look up images by filenames
+		if err := h.db.Where("filename IN ?", req.ImageFilenames).Find(&images).Error; err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+	} else if len(req.ImageIDs) > 0 {
+		// Look up images by IDs (legacy support)
+		if err := h.db.Find(&images, req.ImageIDs).Error; err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
 	}
 
 	// Replace associations
@@ -775,6 +797,7 @@ func (h *Handler) AssignImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("Images assigned to client (DB mode): %s -> %v", client.MACAddress, req.ImageFilenames)
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Images assigned to client"})
 }
 
