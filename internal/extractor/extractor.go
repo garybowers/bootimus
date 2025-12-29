@@ -67,6 +67,7 @@ func (e *Extractor) detectAndExtract(img *iso9660.Image, isoPath string) (*BootF
 		name     string
 		detector func(*iso9660.Image) (*BootFiles, error)
 	}{
+		{"Windows", e.detectWindows},
 		{"Ubuntu/Debian Family", e.detectUbuntuDebian},
 		{"Arch Linux Family", e.detectArch},
 		{"Fedora/RHEL Family", e.detectFedoraRHEL},
@@ -122,6 +123,14 @@ func detectDistroName(img *iso9660.Image, isoPath string) string {
 
 	// Check for common distribution names in filename
 	distroPatterns := map[string]string{
+		"windows":  "windows",
+		"win10":    "windows",
+		"win11":    "windows",
+		"win7":     "windows",
+		"win8":     "windows",
+		"server2022": "windows",
+		"server2019": "windows",
+		"server2016": "windows",
 		"popos":    "popos",
 		"pop-os":   "popos",
 		"pop_os":   "popos",
@@ -455,6 +464,31 @@ func (e *Extractor) detectOpenSUSE(img *iso9660.Image) (*BootFiles, error) {
 	return nil, fmt.Errorf("not OpenSUSE")
 }
 
+// detectWindows detects Windows ISOs and extracts boot files for wimboot
+func (e *Extractor) detectWindows(img *iso9660.Image) (*BootFiles, error) {
+	// Check for Windows boot files
+	// Standard Windows ISO structure has these files
+	bcdPath := "/boot/bcd"
+	bootSdiPath := "/boot/boot.sdi"
+	bootWimPath := "/sources/boot.wim"
+
+	// Try alternative paths (some Windows ISOs use different structures)
+	if !fileExists(img, bcdPath) {
+		bcdPath = "/efi/microsoft/boot/bcd"
+	}
+
+	if fileExists(img, bcdPath) && fileExists(img, bootSdiPath) && fileExists(img, bootWimPath) {
+		return &BootFiles{
+			Kernel:     bcdPath,        // We'll use Kernel field for BCD
+			Initrd:     bootSdiPath,    // Initrd field for boot.sdi
+			Distro:     "windows",
+			BootParams: bootWimPath,    // BootParams field for boot.wim path
+		}, nil
+	}
+
+	return nil, fmt.Errorf("not Windows ISO")
+}
+
 // cacheBootFiles copies boot files to ISO subdirectory and extracts full ISO contents for HTTP boot
 func (e *Extractor) cacheBootFiles(files *BootFiles, img *iso9660.Image, isoPath string) error {
 	// Create subdirectory based on ISO filename within the isos directory
@@ -465,6 +499,36 @@ func (e *Extractor) cacheBootFiles(files *BootFiles, img *iso9660.Image, isoPath
 		return fmt.Errorf("failed to create boot files subdirectory: %w", err)
 	}
 
+	// Handle Windows ISOs differently
+	if files.Distro == "windows" {
+		// For Windows, extract BCD, boot.sdi, and boot.wim
+		// Kernel field contains BCD path
+		bcdDest := filepath.Join(bootFilesDir, "bcd")
+		if err := extractFile(img, files.Kernel, bcdDest); err != nil {
+			return fmt.Errorf("failed to extract BCD: %w", err)
+		}
+		files.Kernel = bcdDest
+
+		// Initrd field contains boot.sdi path
+		bootSdiDest := filepath.Join(bootFilesDir, "boot.sdi")
+		if err := extractFile(img, files.Initrd, bootSdiDest); err != nil {
+			return fmt.Errorf("failed to extract boot.sdi: %w", err)
+		}
+		files.Initrd = bootSdiDest
+
+		// BootParams field contains boot.wim path
+		bootWimDest := filepath.Join(bootFilesDir, "boot.wim")
+		if err := extractFile(img, files.BootParams, bootWimDest); err != nil {
+			return fmt.Errorf("failed to extract boot.wim: %w", err)
+		}
+		// Store boot.wim path in BootParams
+		files.BootParams = bootWimDest
+
+		log.Printf("Extracted Windows boot files: BCD, boot.sdi, boot.wim to %s", bootFilesDir)
+		return nil
+	}
+
+	// Linux distros: Extract kernel and initrd
 	// Extract and copy kernel
 	kernelDest := filepath.Join(bootFilesDir, "vmlinuz")
 	if err := extractFile(img, files.Kernel, kernelDest); err != nil {

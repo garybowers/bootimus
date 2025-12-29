@@ -984,7 +984,14 @@ echo Loading kernel and initrd...
 {{if $img.AutoInstallEnabled}}
 echo Auto-install enabled for this image
 {{end}}
-{{if eq $img.Distro "arch"}}
+{{if eq $img.Distro "windows"}}
+echo Loading Windows boot files via wimboot...
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/wimboot
+initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/bcd BCD
+initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/boot.sdi boot.sdi
+initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/boot.wim boot.wim
+boot || goto failed
+{{else if eq $img.Distro "arch"}}
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}archiso_http_srv=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ ip=dhcp
 {{else if or (eq $img.Distro "fedora") (eq $img.Distro "centos")}}
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}root=live:http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}} rd.live.image inst.repo=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ inst.stage2=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ rd.neednet=1 ip=dhcp
@@ -995,7 +1002,9 @@ kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz vfs
 {{else}}
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}iso-url=http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}} ip=dhcp
 {{end}}
+{{if ne $img.Distro "windows"}}
 initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/initrd
+{{end}}
 boot || goto failed
 {{else}}
 sanboot --no-describe --drive 0x80 http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}}?mac={{$.MAC}} || goto failed

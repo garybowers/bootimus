@@ -932,8 +932,9 @@ func checkSanbootCompatibility(distro, filename string) (bool, string) {
 		return true, ""
 	}
 
-	// Most Linux distributions are NOT sanboot compatible
+	// Most Linux distributions and Windows are NOT sanboot compatible
 	incompatibleDistros := map[string]string{
+		"windows":  "Windows requires boot file extraction. Use 'Extract Kernel/Initrd' to extract boot files for wimboot support.",
 		"ubuntu":   "Ubuntu requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
 		"debian":   "Debian requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
 		"fedora":   "Fedora requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
