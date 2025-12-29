@@ -606,16 +606,22 @@ sudo journalctl -u bootimus -f
 
 ### Local Build
 
+**Requirements:**
+- Go 1.21 or later
+
 ```bash
 # Clone repository
 git clone https://github.com/garybowers/bootimus
 cd bootimus
 
-# Install dependencies
+# Install Go dependencies
 go mod download
 
-# Build
-make build DOCKER_USER=youruser
+# Build (static binary, no CGO required)
+make build
+
+# Or build manually:
+CGO_ENABLED=0 go build -o bootimus .
 
 # Run
 ./bootimus serve
@@ -623,12 +629,17 @@ make build DOCKER_USER=youruser
 
 ### Multi-Architecture Build
 
+**Bootimus compiles to fully static binaries with no CGO dependencies**, making cross-compilation trivial:
+
 ```bash
 # Build for AMD64
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bootimus-amd64
 
 # Build for ARM64
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o bootimus-arm64
+
+# Build for ARM (32-bit, e.g., Raspberry Pi)
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o bootimus-armv7
 
 # Build Docker images
 make build DOCKER_USER=youruser

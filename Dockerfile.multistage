@@ -15,13 +15,13 @@ COPY web/ ./web/
 COPY bootloaders/ ./bootloaders/
 COPY main.go .
 
-# Build static binary with version injection
+# Build static binary with version injection (pure Go, no CGO)
 ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -a -ldflags="-w -s -X bootimus/cmd.version=${VERSION}" \
     -o bootimus .
 
-# Stage 2: Runtime
+# Stage 2: Runtime (static binary, no libc needed)
 FROM gcr.io/distroless/static-debian13
 
 WORKDIR /app

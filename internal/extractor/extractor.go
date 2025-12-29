@@ -467,17 +467,61 @@ func (e *Extractor) detectOpenSUSE(img *iso9660.Image) (*BootFiles, error) {
 // detectWindows detects Windows ISOs and extracts boot files for wimboot
 func (e *Extractor) detectWindows(img *iso9660.Image) (*BootFiles, error) {
 	// Check for Windows boot files
-	// Standard Windows ISO structure has these files
-	bcdPath := "/boot/bcd"
-	bootSdiPath := "/boot/boot.sdi"
-	bootWimPath := "/sources/boot.wim"
-
-	// Try alternative paths (some Windows ISOs use different structures)
-	if !fileExists(img, bcdPath) {
-		bcdPath = "/efi/microsoft/boot/bcd"
+	// Try multiple path variations (case variations, different locations)
+	bcdPaths := []string{
+		"/boot/bcd",
+		"/BOOT/BCD",
+		"/efi/microsoft/boot/bcd",
+		"/EFI/MICROSOFT/BOOT/BCD",
+		"/efi/boot/bootx64.efi", // UEFI boot
 	}
 
-	if fileExists(img, bcdPath) && fileExists(img, bootSdiPath) && fileExists(img, bootWimPath) {
+	bootSdiPaths := []string{
+		"/boot/boot.sdi",
+		"/BOOT/BOOT.SDI",
+	}
+
+	bootWimPaths := []string{
+		"/sources/boot.wim",
+		"/SOURCES/BOOT.WIM",
+	}
+
+	// Find BCD
+	var bcdPath string
+	for _, path := range bcdPaths {
+		log.Printf("Checking for BCD at: %s", path)
+		if fileExists(img, path) {
+			bcdPath = path
+			log.Printf("Found BCD at: %s", path)
+			break
+		}
+	}
+
+	// Find boot.sdi
+	var bootSdiPath string
+	for _, path := range bootSdiPaths {
+		log.Printf("Checking for boot.sdi at: %s", path)
+		if fileExists(img, path) {
+			bootSdiPath = path
+			log.Printf("Found boot.sdi at: %s", path)
+			break
+		}
+	}
+
+	// Find boot.wim
+	var bootWimPath string
+	for _, path := range bootWimPaths {
+		log.Printf("Checking for boot.wim at: %s", path)
+		if fileExists(img, path) {
+			bootWimPath = path
+			log.Printf("Found boot.wim at: %s", path)
+			break
+		}
+	}
+
+	// Check if we found all required files
+	if bcdPath != "" && bootSdiPath != "" && bootWimPath != "" {
+		log.Printf("Detected Windows ISO - BCD: %s, boot.sdi: %s, boot.wim: %s", bcdPath, bootSdiPath, bootWimPath)
 		return &BootFiles{
 			Kernel:     bcdPath,        // We'll use Kernel field for BCD
 			Initrd:     bootSdiPath,    // Initrd field for boot.sdi
@@ -486,7 +530,7 @@ func (e *Extractor) detectWindows(img *iso9660.Image) (*BootFiles, error) {
 		}, nil
 	}
 
-	return nil, fmt.Errorf("not Windows ISO")
+	return nil, fmt.Errorf("not Windows ISO (found: BCD=%v, boot.sdi=%v, boot.wim=%v)", bcdPath != "", bootSdiPath != "", bootWimPath != "")
 }
 
 // cacheBootFiles copies boot files to ISO subdirectory and extracts full ISO contents for HTTP boot
@@ -743,11 +787,19 @@ func findFile(img *iso9660.Image, path string) (*iso9660.File, error) {
 			return nil, fmt.Errorf("failed to get children: %w", err)
 		}
 
+		// Debug: list all children names
+		var childNames []string
+		for _, child := range children {
+			childNames = append(childNames, child.Name())
+		}
+		log.Printf("Looking for '%s' in directory, found children: %v", part, childNames)
+
 		// Find matching child
 		found := false
 		for _, child := range children {
 			// Case-insensitive comparison (ISO9660 is typically uppercase)
 			if strings.EqualFold(child.Name(), part) {
+				log.Printf("Matched '%s' with '%s'", part, child.Name())
 				current = child
 				found = true
 				break
@@ -755,6 +807,7 @@ func findFile(img *iso9660.Image, path string) (*iso9660.File, error) {
 		}
 
 		if !found {
+			log.Printf("Path component '%s' not found in %v", part, childNames)
 			return nil, fmt.Errorf("path not found: %s (missing: %s)", path, part)
 		}
 
