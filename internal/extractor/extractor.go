@@ -12,10 +12,11 @@ import (
 
 // BootFiles represents extracted kernel and initrd
 type BootFiles struct {
-	Kernel     string
-	Initrd     string
-	BootParams string
-	Distro     string
+	Kernel       string
+	Initrd       string
+	BootParams   string
+	Distro       string
+	ExtractedDir string // Directory containing full ISO extraction for HTTP boot
 }
 
 // Extractor handles ISO mounting and boot file extraction
@@ -93,12 +94,12 @@ func (e *Extractor) detectUbuntuDebian(img *iso9660.Image) (*BootFiles, error) {
 		distro     string
 		bootParams string
 	}{
-		{"/casper/vmlinuz", "/casper/initrd", "ubuntu", "boot=casper "},
-		{"/casper/vmlinuz", "/casper/initrd.lz", "ubuntu", "boot=casper "},
+		{"/casper/vmlinuz", "/casper/initrd", "ubuntu", "boot=casper fetch= "},
+		{"/casper/vmlinuz", "/casper/initrd.lz", "ubuntu", "boot=casper fetch= "},
 		{"/install/vmlinuz", "/install/initrd.gz", "debian", ""},
 		{"/install.amd/vmlinuz", "/install.amd/initrd.gz", "debian", ""},
-		{"/live/vmlinuz", "/live/initrd.img", "debian", "boot=live "},
-		{"/live/vmlinuz1", "/live/initrd1.img", "debian", "boot=live "},
+		{"/live/vmlinuz", "/live/initrd.img", "debian", "boot=live fetch= "},
+		{"/live/vmlinuz1", "/live/initrd1.img", "debian", "boot=live fetch= "},
 	}
 
 	for _, p := range paths {
@@ -125,7 +126,7 @@ func (e *Extractor) detectFedoraRHEL(img *iso9660.Image) (*BootFiles, error) {
 			Kernel:     kernel,
 			Initrd:     initrd,
 			Distro:     "fedora",
-			BootParams: "inst.stage2=",
+			BootParams: "", // inst.repo will be set by menu template
 		}, nil
 	}
 
@@ -142,7 +143,7 @@ func (e *Extractor) detectCentOS(img *iso9660.Image) (*BootFiles, error) {
 			Kernel:     kernel,
 			Initrd:     initrd,
 			Distro:     "centos",
-			BootParams: "inst.repo=",
+			BootParams: "", // inst.repo will be set by menu template
 		}, nil
 	}
 
@@ -159,7 +160,7 @@ func (e *Extractor) detectArch(img *iso9660.Image) (*BootFiles, error) {
 			Kernel:     kernel,
 			Initrd:     initrd,
 			Distro:     "arch",
-			BootParams: "archisobasedir=arch archiso_http_srv=",
+			BootParams: "archisobasedir=arch ", // archiso_http_srv will be appended by menu template
 		}, nil
 	}
 
@@ -183,7 +184,7 @@ func (e *Extractor) detectOpenSUSE(img *iso9660.Image) (*BootFiles, error) {
 	return nil, fmt.Errorf("not OpenSUSE")
 }
 
-// cacheBootFiles copies boot files to ISO subdirectory
+// cacheBootFiles copies boot files to ISO subdirectory and extracts full ISO contents for HTTP boot
 func (e *Extractor) cacheBootFiles(files *BootFiles, img *iso9660.Image, isoPath string) error {
 	// Create subdirectory based on ISO filename within the isos directory
 	isoBase := strings.TrimSuffix(filepath.Base(isoPath), filepath.Ext(isoPath))
@@ -207,6 +208,20 @@ func (e *Extractor) cacheBootFiles(files *BootFiles, img *iso9660.Image, isoPath
 	}
 	files.Initrd = initrdDest
 
+	// Extract full ISO contents for HTTP boot (for distributions that need it)
+	// Create an "iso" subdirectory to hold the extracted contents
+	extractedDir := filepath.Join(bootFilesDir, "iso")
+	if err := os.MkdirAll(extractedDir, 0755); err != nil {
+		return fmt.Errorf("failed to create extracted ISO directory: %w", err)
+	}
+
+	// Extract the entire ISO contents
+	if err := extractFullISO(img, extractedDir); err != nil {
+		return fmt.Errorf("failed to extract full ISO contents: %w", err)
+	}
+
+	files.ExtractedDir = extractedDir
+
 	return nil
 }
 
@@ -217,6 +232,7 @@ func (e *Extractor) GetCachedBootFiles(isoFilename string) (*BootFiles, error) {
 
 	kernelPath := filepath.Join(bootFilesDir, "vmlinuz")
 	initrdPath := filepath.Join(bootFilesDir, "initrd")
+	extractedDir := filepath.Join(bootFilesDir, "iso")
 
 	if !fileExistsOnDisk(kernelPath) || !fileExistsOnDisk(initrdPath) {
 		return nil, fmt.Errorf("cached files not found")
@@ -240,10 +256,11 @@ func (e *Extractor) GetCachedBootFiles(isoFilename string) (*BootFiles, error) {
 	}
 
 	return &BootFiles{
-		Kernel:     kernelPath,
-		Initrd:     initrdPath,
-		Distro:     distro,
-		BootParams: bootParams,
+		Kernel:       kernelPath,
+		Initrd:       initrdPath,
+		Distro:       distro,
+		BootParams:   bootParams,
+		ExtractedDir: extractedDir,
 	}, nil
 }
 
@@ -345,4 +362,85 @@ func extractFile(img *iso9660.Image, isoPath, destPath string) error {
 
 	_, err = io.Copy(dest, reader)
 	return err
+}
+
+// extractFullISO extracts the entire ISO contents to a directory
+func extractFullISO(img *iso9660.Image, destDir string) error {
+	root, err := img.RootDir()
+	if err != nil {
+		return fmt.Errorf("failed to get root directory: %w", err)
+	}
+
+	return extractDirectory(root, destDir, "")
+}
+
+// extractDirectory recursively extracts a directory and its contents
+func extractDirectory(dir *iso9660.File, destBase, relPath string) error {
+	children, err := dir.GetChildren()
+	if err != nil {
+		return fmt.Errorf("failed to get children: %w", err)
+	}
+
+	for _, child := range children {
+		childName := sanitizeFilename(child.Name())
+
+		// Skip if sanitization resulted in empty name
+		if childName == "" {
+			continue
+		}
+
+		childRelPath := filepath.Join(relPath, childName)
+		childDestPath := filepath.Join(destBase, childRelPath)
+
+		if child.IsDir() {
+			// Create directory
+			if err := os.MkdirAll(childDestPath, 0755); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", childDestPath, err)
+			}
+
+			// Recursively extract subdirectory
+			if err := extractDirectory(child, destBase, childRelPath); err != nil {
+				return err
+			}
+		} else {
+			// Extract file
+			reader := child.Reader()
+			dest, err := os.Create(childDestPath)
+			if err != nil {
+				return fmt.Errorf("failed to create file %s: %w", childDestPath, err)
+			}
+
+			_, copyErr := io.Copy(dest, reader)
+			dest.Close()
+
+			if copyErr != nil {
+				return fmt.Errorf("failed to copy file %s: %w", childDestPath, copyErr)
+			}
+		}
+	}
+
+	return nil
+}
+
+// sanitizeFilename removes invalid characters from ISO filenames
+func sanitizeFilename(name string) string {
+	// Remove version suffix (;1, ;2, etc.) from ISO9660 filenames
+	if idx := strings.Index(name, ";"); idx != -1 {
+		name = name[:idx]
+	}
+
+	// Remove trailing dots (common in ISO9660)
+	name = strings.TrimRight(name, ".")
+
+	// Remove null bytes and other invalid characters
+	var result strings.Builder
+	for _, r := range name {
+		// Only allow alphanumeric, dots, dashes, underscores, and spaces
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+		   (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' || r == ' ' {
+			result.WriteRune(r)
+		}
+	}
+
+	return result.String()
 }

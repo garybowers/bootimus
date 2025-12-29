@@ -11,6 +11,7 @@ import (
 	"bootimus/internal/auth"
 	"bootimus/internal/database"
 	"bootimus/internal/server"
+	"bootimus/internal/storage"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -82,19 +83,26 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Printf("Auto-detected server IP: %s", serverAddr)
 	}
 
-	// Setup database if not disabled
+	// Setup database - either PostgreSQL or SQLite
 	var db *database.DB
+	var sqliteStore *storage.SQLiteStore
+	var userStore database.UserStore
 	var err error
 
-	if !viper.GetBool("db.disable") {
+	// Check if PostgreSQL configuration is provided
+	pgHost := viper.GetString("db.host")
+	if pgHost != "" {
+		// Use PostgreSQL if host is configured
 		dbCfg := &database.Config{
-			Host:     viper.GetString("db.host"),
+			Host:     pgHost,
 			Port:     viper.GetInt("db.port"),
 			User:     viper.GetString("db.user"),
 			Password: viper.GetString("db.password"),
 			DBName:   viper.GetString("db.name"),
 			SSLMode:  viper.GetString("db.sslmode"),
 		}
+
+		log.Printf("Connecting to PostgreSQL database at %s:%d...", pgHost, viper.GetInt("db.port"))
 
 		// Retry database connection with exponential backoff
 		maxRetries := 10
@@ -120,18 +128,22 @@ func runServe(cmd *cobra.Command, args []string) {
 			log.Fatalf("Failed to run database migrations: %v", err)
 		}
 
-		log.Println("Database connected and migrations completed")
+		log.Println("Database connected and migrations completed (PostgreSQL)")
+		userStore = db
 	} else {
-		log.Println("Running in SQLite mode (PostgreSQL disabled)")
+		// Use SQLite if no PostgreSQL host configured
+		log.Printf("No PostgreSQL configuration found, using local SQLite database")
+		sqliteStore, err = storage.NewSQLiteStore(dataDir)
+		if err != nil {
+			log.Fatalf("Failed to initialize SQLite store: %v", err)
+		}
+		log.Printf("Local database initialized at %s/bootimus.db (SQLite)", dataDir)
+		userStore = sqliteStore
 	}
 
 	// Handle admin password reset if requested
 	if resetAdminPassword {
-		if db == nil {
-			log.Fatalf("Database is required for password reset. Please enable database in config.")
-		}
-
-		password, err := db.ResetAdminPassword()
+		password, err := userStore.ResetAdminPassword()
 		if err != nil {
 			log.Fatalf("Failed to reset admin password: %v", err)
 		}
@@ -149,7 +161,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	// Initialise authentication manager
-	authMgr, err := auth.NewManager(db)
+	authMgr, err := auth.NewManager(userStore)
 	if err != nil {
 		log.Fatalf("Failed to initialise authentication: %v", err)
 	}
@@ -159,14 +171,16 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	// Create server config
 	cfg := &server.Config{
-		TFTPPort:   viper.GetInt("tftp_port"),
-		HTTPPort:   viper.GetInt("http_port"),
-		AdminPort:  viper.GetInt("admin_port"),
-		BootDir:    bootloadersDir,
-		DataDir:    isoDir,
-		ServerAddr: serverAddr,
-		DB:         db,
-		Auth:       authMgr,
+		TFTPPort:    viper.GetInt("tftp_port"),
+		HTTPPort:    viper.GetInt("http_port"),
+		AdminPort:   viper.GetInt("admin_port"),
+		BootDir:     bootloadersDir,
+		DataDir:     dataDir, // Base data directory (/data)
+		ISODir:      isoDir,  // ISO subdirectory (/data/isos)
+		ServerAddr:  serverAddr,
+		DB:          db,
+		SQLiteStore: sqliteStore,
+		Auth:        authMgr,
 	}
 
 	// Create and start server

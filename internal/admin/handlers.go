@@ -17,33 +17,24 @@ import (
 	"bootimus/internal/extractor"
 	"bootimus/internal/models"
 	"bootimus/internal/storage"
+	"bootimus/internal/sysstats"
 )
 
 type Handler struct {
 	db          *database.DB
 	sqliteStore *storage.SQLiteStore
-	dataDir     string
+	dataDir     string // Base data directory (/data) - for SQLite database
+	isoDir      string // ISO directory (/data/isos) - for ISO files
 	bootDir     string
 	version     string
 }
 
-func NewHandler(db *database.DB, dataDir string, bootDir string, version string) *Handler {
-	var sqliteStore *storage.SQLiteStore
-	if db == nil {
-		// Only initialise SQLite if PostgreSQL is disabled
-		var err error
-		sqliteStore, err = storage.NewSQLiteStore(dataDir)
-		if err != nil {
-			log.Printf("Failed to initialise SQLite store: %v", err)
-		} else {
-			log.Printf("SQLite database initialised: %s/bootimus.db", dataDir)
-		}
-	}
-
+func NewHandler(db *database.DB, sqliteStore *storage.SQLiteStore, dataDir string, isoDir string, bootDir string, version string) *Handler {
 	return &Handler{
 		db:          db,
 		sqliteStore: sqliteStore,
 		dataDir:     dataDir,
+		isoDir:      isoDir,
 		bootDir:     bootDir,
 		version:     version,
 	}
@@ -273,9 +264,9 @@ func (h *Handler) DeleteClient(w http.ResponseWriter, r *http.Request) {
 
 // syncFilesystemToDatabase ensures all ISO files on disk are represented in the database
 func (h *Handler) syncFilesystemToDatabase() {
-	entries, err := os.ReadDir(h.dataDir)
+	entries, err := os.ReadDir(h.isoDir)
 	if err != nil {
-		log.Printf("Failed to read data directory for sync: %v", err)
+		log.Printf("Failed to read ISO directory for sync: %v", err)
 		return
 	}
 
@@ -502,11 +493,22 @@ func (h *Handler) DeleteImage(w http.ResponseWriter, r *http.Request) {
 	if h.db == nil {
 		// Delete from filesystem if requested
 		if deleteFile {
-			filePath := filepath.Join(h.dataDir, filename)
+			filePath := filepath.Join(h.isoDir, filename)
 			if err := os.Remove(filePath); err != nil {
 				log.Printf("Failed to delete file %s: %v", filePath, err)
 			} else {
 				log.Printf("Deleted ISO file: %s", filename)
+			}
+
+			// Also clean up extracted kernel directory if it exists
+			isoBase := strings.TrimSuffix(filename, filepath.Ext(filename))
+			extractedDir := filepath.Join(h.isoDir, isoBase)
+			if _, err := os.Stat(extractedDir); err == nil {
+				if err := os.RemoveAll(extractedDir); err != nil {
+					log.Printf("Failed to delete extracted directory %s: %v", extractedDir, err)
+				} else {
+					log.Printf("Cleaned up extracted kernel directory: %s", extractedDir)
+				}
 			}
 		}
 
@@ -529,18 +531,30 @@ func (h *Handler) DeleteImage(w http.ResponseWriter, r *http.Request) {
 
 	// Delete from filesystem if requested
 	if deleteFile && image.Filename != "" {
-		filePath := filepath.Join(h.dataDir, image.Filename)
+		filePath := filepath.Join(h.isoDir, image.Filename)
 		if err := os.Remove(filePath); err != nil {
 			log.Printf("Failed to delete file %s: %v", filePath, err)
 		}
+
+		// Also clean up extracted kernel directory if it exists
+		isoBase := strings.TrimSuffix(image.Filename, filepath.Ext(image.Filename))
+		extractedDir := filepath.Join(h.isoDir, isoBase)
+		if _, err := os.Stat(extractedDir); err == nil {
+			if err := os.RemoveAll(extractedDir); err != nil {
+				log.Printf("Failed to delete extracted directory %s: %v", extractedDir, err)
+			} else {
+				log.Printf("Cleaned up extracted kernel directory: %s", extractedDir)
+			}
+		}
 	}
 
-	// Delete from database
-	if err := h.db.Delete(&image).Error; err != nil {
+	// Delete from database (hard delete to avoid unique constraint issues on re-upload)
+	if err := h.db.Unscoped().Delete(&image).Error; err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
 	}
 
+	log.Printf("Image deleted (PostgreSQL mode): %s", filename)
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Image deleted"})
 }
 
@@ -575,7 +589,7 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Starting ISO upload: %s (size: %d bytes)", header.Filename, header.Size)
 
 	// Check if file already exists on filesystem (filesystem is source of truth)
-	filePath := filepath.Join(h.dataDir, header.Filename)
+	filePath := filepath.Join(h.isoDir, header.Filename)
 	if _, err := os.Stat(filePath); err == nil {
 		log.Printf("Upload rejected: file already exists on filesystem: %s", header.Filename)
 		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "An image with this filename already exists"})
@@ -756,17 +770,25 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only supported with database mode
-	if h.db == nil {
-		h.sendJSON(w, http.StatusNotImplemented, Response{Success: false, Error: "Extraction not supported in no-database mode"})
-		return
-	}
+	// Get the image from database (works with both PostgreSQL and SQLite)
+	var image *models.Image
+	var err error
 
-	// Get the image from database
-	var image models.Image
-	if err := h.db.Where("filename = ?", filename).First(&image).Error; err != nil {
-		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
-		return
+	if h.db == nil {
+		// SQLite mode
+		image, err = h.sqliteStore.GetImage(filename)
+		if err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+			return
+		}
+	} else {
+		// PostgreSQL mode
+		var dbImage models.Image
+		if err := h.db.Where("filename = ?", filename).First(&dbImage).Error; err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+			return
+		}
+		image = &dbImage
 	}
 
 	// Check if already extracted
@@ -779,19 +801,24 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Extracting kernel/initrd from ISO: %s", filename)
 
 	// Create extractor
-	ext, err := extractor.New(h.dataDir)
+	ext, err := extractor.New(h.isoDir)
 	if err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: fmt.Sprintf("Failed to create extractor: %v", err)})
 		return
 	}
 
 	// Extract boot files
-	isoPath := filepath.Join(h.dataDir, filename)
+	isoPath := filepath.Join(h.isoDir, filename)
 	bootFiles, err := ext.Extract(isoPath)
 	if err != nil {
 		// Save error to database
 		image.ExtractionError = err.Error()
-		h.db.Save(&image)
+
+		if h.db == nil {
+			h.sqliteStore.UpdateImage(filename, image)
+		} else {
+			h.db.Save(image)
+		}
 
 		h.sendJSON(w, http.StatusInternalServerError, Response{
 			Success: false,
@@ -816,9 +843,18 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	image.ExtractionError = ""
 	image.ExtractedAt = &now
 
-	if err := h.db.Save(&image).Error; err != nil {
-		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
-		return
+	if h.db == nil {
+		// SQLite mode
+		if err := h.sqliteStore.UpdateImage(filename, image); err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+	} else {
+		// PostgreSQL mode
+		if err := h.db.Save(image).Error; err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
 	}
 
 	log.Printf("Successfully extracted %s: distro=%s, kernel=%s, initrd=%s",
@@ -857,17 +893,25 @@ func (h *Handler) SetBootMethod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only supported with database mode
-	if h.db == nil {
-		h.sendJSON(w, http.StatusNotImplemented, Response{Success: false, Error: "Boot method selection not supported in no-database mode"})
-		return
-	}
+	// Get the image (works with both PostgreSQL and SQLite)
+	var image *models.Image
+	var err error
 
-	// Get the image
-	var image models.Image
-	if err := h.db.Where("filename = ?", req.Filename).First(&image).Error; err != nil {
-		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
-		return
+	if h.db == nil {
+		// SQLite mode
+		image, err = h.sqliteStore.GetImage(req.Filename)
+		if err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+			return
+		}
+	} else {
+		// PostgreSQL mode
+		var dbImage models.Image
+		if err := h.db.Where("filename = ?", req.Filename).First(&dbImage).Error; err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+			return
+		}
+		image = &dbImage
 	}
 
 	// If switching to kernel method, ensure extraction has been done
@@ -881,9 +925,19 @@ func (h *Handler) SetBootMethod(w http.ResponseWriter, r *http.Request) {
 
 	// Update boot method
 	image.BootMethod = req.BootMethod
-	if err := h.db.Save(&image).Error; err != nil {
-		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
-		return
+
+	if h.db == nil {
+		// SQLite mode
+		if err := h.sqliteStore.UpdateImage(req.Filename, image); err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+	} else {
+		// PostgreSQL mode
+		if err := h.db.Save(image).Error; err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
 	}
 
 	log.Printf("Boot method changed for %s: %s", req.Filename, req.BootMethod)
@@ -987,7 +1041,7 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := os.ReadDir(h.dataDir)
+	entries, err := os.ReadDir(h.isoDir)
 	if err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
@@ -1061,7 +1115,7 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 
 						// Also clean up extracted boot files directory if it exists
 						isoBase := strings.TrimSuffix(image.Filename, filepath.Ext(image.Filename))
-						bootFilesDir := filepath.Join(h.dataDir, isoBase)
+						bootFilesDir := filepath.Join(h.isoDir, isoBase)
 						if _, err := os.Stat(bootFilesDir); err == nil {
 							if err := os.RemoveAll(bootFilesDir); err == nil {
 								log.Printf("Cleaned up boot files directory: %s", bootFilesDir)
@@ -1141,7 +1195,7 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 
 					// Also clean up extracted boot files directory if it exists
 					isoBase := strings.TrimSuffix(image.Filename, filepath.Ext(image.Filename))
-					bootFilesDir := filepath.Join(h.dataDir, isoBase)
+					bootFilesDir := filepath.Join(h.isoDir, isoBase)
 					if _, err := os.Stat(bootFilesDir); err == nil {
 						if err := os.RemoveAll(bootFilesDir); err == nil {
 							log.Printf("Cleaned up boot files directory: %s", bootFilesDir)
@@ -1380,10 +1434,18 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get system statistics
+	monitoredPaths := sysstats.GetMonitoredPaths(h.dataDir)
+	sysStats, err := sysstats.GetStats(monitoredPaths)
+	if err != nil {
+		log.Printf("Failed to get system stats: %v", err)
+	}
+
 	info := map[string]interface{}{
 		"version": h.version,
 		"configuration": map[string]string{
 			"data_directory": h.dataDir,
+			"iso_directory":  h.isoDir,
 			"boot_directory": h.bootDir,
 			"database_mode":  func() string {
 				if h.db != nil {
@@ -1407,6 +1469,7 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 			"BOOTIMUS_DB_DISABLE":  os.Getenv("BOOTIMUS_DB_DISABLE"),
 			"BOOTIMUS_SERVER_ADDR": os.Getenv("BOOTIMUS_SERVER_ADDR"),
 		},
+		"system_stats": sysStats,
 	}
 
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: info})
@@ -1417,10 +1480,17 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 // ListUsers returns all users
 func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	if h.db == nil {
-		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Database required for user management"})
+		// SQLite mode
+		users, err := h.sqliteStore.ListUsers()
+		if err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+		h.sendJSON(w, http.StatusOK, Response{Success: true, Data: users})
 		return
 	}
 
+	// PostgreSQL mode
 	var users []models.User
 	if err := h.db.Find(&users).Error; err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
@@ -1432,11 +1502,6 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 // CreateUser creates a new user
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
-	if h.db == nil {
-		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Database required for user management"})
-		return
-	}
-
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -1454,13 +1519,6 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user already exists
-	var existing models.User
-	if err := h.db.Where("username = ?", req.Username).First(&existing).Error; err == nil {
-		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "User already exists"})
-		return
-	}
-
 	user := models.User{
 		Username: req.Username,
 		IsAdmin:  req.IsAdmin,
@@ -1472,9 +1530,29 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.db.Create(&user).Error; err != nil {
-		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
-		return
+	if h.db == nil {
+		// SQLite mode - check if user exists
+		if _, err := h.sqliteStore.GetUser(req.Username); err == nil {
+			h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "User already exists"})
+			return
+		}
+
+		if err := h.sqliteStore.CreateUser(&user); err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+	} else {
+		// PostgreSQL mode - check if user exists
+		var existing models.User
+		if err := h.db.Where("username = ?", req.Username).First(&existing).Error; err == nil {
+			h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "User already exists"})
+			return
+		}
+
+		if err := h.db.Create(&user).Error; err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
 	}
 
 	log.Printf("User created: %s (admin=%v, enabled=%v)", user.Username, user.IsAdmin, user.Enabled)
@@ -1483,20 +1561,9 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 // UpdateUser updates an existing user
 func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	if h.db == nil {
-		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Database required for user management"})
-		return
-	}
-
 	username := r.URL.Query().Get("username")
 	if username == "" {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Username required"})
-		return
-	}
-
-	var user models.User
-	if err := h.db.Where("username = ?", username).First(&user).Error; err != nil {
-		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "User not found"})
 		return
 	}
 
@@ -1504,6 +1571,39 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	var updates map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+
+	if h.db == nil {
+		// SQLite mode
+		user, err := h.sqliteStore.GetUser(username)
+		if err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "User not found"})
+			return
+		}
+
+		// Update only the fields that are present
+		if enabled, ok := updates["enabled"].(bool); ok {
+			user.Enabled = enabled
+		}
+		if isAdmin, ok := updates["is_admin"].(bool); ok {
+			user.IsAdmin = isAdmin
+		}
+
+		if err := h.sqliteStore.UpdateUser(username, user); err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+
+		log.Printf("User updated: %s (admin=%v, enabled=%v)", user.Username, user.IsAdmin, user.Enabled)
+		h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "User updated", Data: user})
+		return
+	}
+
+	// PostgreSQL mode
+	var user models.User
+	if err := h.db.Where("username = ?", username).First(&user).Error; err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "User not found"})
 		return
 	}
 
@@ -1526,11 +1626,6 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 // DeleteUser deletes a user
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	if h.db == nil {
-		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Database required for user management"})
-		return
-	}
-
 	username := r.URL.Query().Get("username")
 	if username == "" {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Username required"})
@@ -1543,9 +1638,18 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.db.Where("username = ?", username).Delete(&models.User{}).Error; err != nil {
-		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
-		return
+	if h.db == nil {
+		// SQLite mode
+		if err := h.sqliteStore.DeleteUser(username); err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+	} else {
+		// PostgreSQL mode
+		if err := h.db.Where("username = ?", username).Delete(&models.User{}).Error; err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
 	}
 
 	log.Printf("User deleted: %s", username)
@@ -1554,11 +1658,6 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 // ResetUserPassword resets a user's password
 func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
-	if h.db == nil {
-		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Database required for user management"})
-		return
-	}
-
 	var req struct {
 		Username    string `json:"username"`
 		NewPassword string `json:"new_password"`
@@ -1574,6 +1673,30 @@ func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.db == nil {
+		// SQLite mode
+		user, err := h.sqliteStore.GetUser(req.Username)
+		if err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "User not found"})
+			return
+		}
+
+		if err := user.SetPassword(req.NewPassword); err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Failed to hash password"})
+			return
+		}
+
+		if err := h.sqliteStore.UpdateUser(req.Username, user); err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+
+		log.Printf("Password reset for user: %s", user.Username)
+		h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Password reset successfully"})
+		return
+	}
+
+	// PostgreSQL mode
 	var user models.User
 	if err := h.db.Where("username = ?", req.Username).First(&user).Error; err != nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "User not found"})
@@ -1718,7 +1841,7 @@ func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if file already exists
-	destPath := filepath.Join(h.dataDir, filename)
+	destPath := filepath.Join(h.isoDir, filename)
 	if _, err := os.Stat(destPath); err == nil {
 		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "File already exists"})
 		return
@@ -1837,5 +1960,140 @@ func (h *Handler) GetDownloadProgress(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListDownloads(w http.ResponseWriter, r *http.Request) {
 	downloads := downloadMgr.GetAll()
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: downloads})
+}
+
+// ============================================================================
+// Auto-Install Script Management
+// ============================================================================
+
+// GetAutoInstallScript returns the auto-install script for an image
+func (h *Handler) GetAutoInstallScript(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing filename parameter"})
+		return
+	}
+
+	var image *models.Image
+	var err error
+
+	if h.db == nil {
+		// SQLite mode
+		image, err = h.sqliteStore.GetImage(filename)
+		if err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+			return
+		}
+	} else {
+		// PostgreSQL mode
+		var dbImage models.Image
+		if err := h.db.Where("filename = ?", filename).First(&dbImage).Error; err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+			return
+		}
+		image = &dbImage
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{
+		Success: true,
+		Data: map[string]interface{}{
+			"script":        image.AutoInstallScript,
+			"enabled":       image.AutoInstallEnabled,
+			"script_type":   image.AutoInstallScriptType,
+		},
+	})
+}
+
+// UpdateAutoInstallScript updates the auto-install script for an image
+func (h *Handler) UpdateAutoInstallScript(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing filename parameter"})
+		return
+	}
+
+	var req struct {
+		Script     string `json:"script"`
+		Enabled    bool   `json:"enabled"`
+		ScriptType string `json:"script_type"` // "preseed", "kickstart", "autounattend"
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+
+	// Validate script type
+	validTypes := map[string]bool{
+		"preseed":      true,
+		"kickstart":    true,
+		"autounattend": true,
+		"autoinstall":  true, // Ubuntu autoinstall (cloud-init)
+	}
+
+	if req.ScriptType != "" && !validTypes[req.ScriptType] {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Invalid script_type. Must be one of: preseed, kickstart, autounattend, autoinstall",
+		})
+		return
+	}
+
+	var image *models.Image
+	var err error
+
+	if h.db == nil {
+		// SQLite mode
+		image, err = h.sqliteStore.GetImage(filename)
+		if err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+			return
+		}
+
+		image.AutoInstallScript = req.Script
+		image.AutoInstallEnabled = req.Enabled
+		image.AutoInstallScriptType = req.ScriptType
+
+		if err := h.sqliteStore.UpdateImage(filename, image); err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+	} else {
+		// PostgreSQL mode
+		var dbImage models.Image
+		if err := h.db.Where("filename = ?", filename).First(&dbImage).Error; err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+			return
+		}
+
+		dbImage.AutoInstallScript = req.Script
+		dbImage.AutoInstallEnabled = req.Enabled
+		dbImage.AutoInstallScriptType = req.ScriptType
+
+		if err := h.db.Save(&dbImage).Error; err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+		image = &dbImage
+	}
+
+	log.Printf("Auto-install script updated for %s: enabled=%v, type=%s, size=%d bytes",
+		filename, image.AutoInstallEnabled, image.AutoInstallScriptType, len(image.AutoInstallScript))
+
+	h.sendJSON(w, http.StatusOK, Response{
+		Success: true,
+		Message: "Auto-install script updated",
+		Data:    image,
+	})
 }
 

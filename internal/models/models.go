@@ -105,6 +105,10 @@ type Image struct {
 	BootParams      string     `json:"boot_params,omitempty"`
 	ExtractionError string     `json:"extraction_error,omitempty"`
 	ExtractedAt     *time.Time `json:"extracted_at,omitempty"`
+	// Unattended installation fields
+	AutoInstallScript     string `gorm:"type:text" json:"auto_install_script,omitempty"`      // Script content (preseed, kickstart, autounattend.xml)
+	AutoInstallEnabled    bool   `gorm:"default:false" json:"auto_install_enabled"`           // Enable auto-install script injection
+	AutoInstallScriptType string `json:"auto_install_script_type,omitempty"`                  // "preseed", "kickstart", "autounattend"
 }
 
 // BootLog represents a log entry for boot attempts

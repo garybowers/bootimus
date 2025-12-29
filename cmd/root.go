@@ -17,7 +17,7 @@ var rootCmd = &cobra.Command{
 	Long: `Bootimus is a network boot server that provides:
 - TFTP server for PXE boot
 - HTTP server for iPXE and ISO serving
-- PostgreSQL-backed MAC address and image access control
+- Database-backed MAC address and image access control (SQLite or PostgreSQL)
 - Auto-generated boot menus based on client permissions`,
 }
 
@@ -40,14 +40,13 @@ func init() {
 	rootCmd.PersistentFlags().String("data-dir", "./data", "Base data directory (subdirs: isos/, bootloaders/)")
 	rootCmd.PersistentFlags().String("server-addr", "", "Server IP address (auto-detected if not specified)")
 
-	// Database flags
-	rootCmd.PersistentFlags().String("db-host", "localhost", "PostgreSQL host")
+	// Database flags (PostgreSQL - if not set, SQLite is used)
+	rootCmd.PersistentFlags().String("db-host", "", "PostgreSQL host (if empty, uses SQLite)")
 	rootCmd.PersistentFlags().Int("db-port", 5432, "PostgreSQL port")
 	rootCmd.PersistentFlags().String("db-user", "bootimus", "PostgreSQL user")
 	rootCmd.PersistentFlags().String("db-password", "", "PostgreSQL password")
 	rootCmd.PersistentFlags().String("db-name", "bootimus", "PostgreSQL database name")
 	rootCmd.PersistentFlags().String("db-sslmode", "disable", "PostgreSQL SSL mode")
-	rootCmd.PersistentFlags().Bool("db-disable", false, "Disable PostgreSQL (use embedded SQLite database)")
 
 	// Bind flags to viper
 	viper.BindPFlag("tftp_port", rootCmd.PersistentFlags().Lookup("tftp-port"))
@@ -61,7 +60,6 @@ func init() {
 	viper.BindPFlag("db.password", rootCmd.PersistentFlags().Lookup("db-password"))
 	viper.BindPFlag("db.name", rootCmd.PersistentFlags().Lookup("db-name"))
 	viper.BindPFlag("db.sslmode", rootCmd.PersistentFlags().Lookup("db-sslmode"))
-	viper.BindPFlag("db.disable", rootCmd.PersistentFlags().Lookup("db-disable"))
 }
 
 func initConfig() {

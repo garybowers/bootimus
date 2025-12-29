@@ -8,7 +8,7 @@
 - ✅ **Lightweight**: Runs anywhere - Docker, systemd, bare metal (amd64/arm64)
 - ✅ **Database-backed**: Track boot logs, client statistics, and granular MAC-based access control
 - ✅ **Production-ready**: Proper logging, metrics, API-first design, multi-arch Docker images
-- ✅ **Open Source**: Apache 2.0 license, actively maintained
+- ✅ **Open Source**: Apache 2.0 licence, actively maintained
 
 ## Features
 
@@ -25,7 +25,6 @@
 - **PostgreSQL Optional**: Scale to enterprise with PostgreSQL backend
 - **MAC Address Access Control**: Fine-grained per-client ISO permissions
 - **Boot Logging**: Track every boot attempt with statistics
-- **Filesystem Fallback**: Run without database for simple deployments
 
 ### Admin Interface
 - **Web Admin Panel**: Full-featured UI on separate port (8081)
@@ -41,6 +40,24 @@
 - **Docker Ready**: Multi-arch images (amd64/arm64) on Docker Hub
 - **Systemd Support**: Production systemd service files
 - **Zero Config**: Sensible defaults, works out of the box
+
+## Comparison: Bootimus vs iVentoy
+
+| Feature | Bootimus | iVentoy |
+|---------|----------|---------|
+| **Language** | Go | C |
+| **Single Binary** | ✅ Yes | ❌ No |
+| **Embedded Bootloaders** | ✅ Yes | ❌ No |
+| **Database** | SQLite / PostgreSQL | File-based |
+| **Web UI** | ✅ Modern REST API | Basic HTML |
+| **Authentication** | HTTP Basic Auth | None |
+| **Boot Logging** | ✅ Full tracking | Limited |
+| **MAC-based ACL** | ✅ Granular | ❌ No |
+| **ISO Upload** | ✅ Web upload | Manual copy |
+| **Docker Support** | ✅ Multi-arch | Limited |
+| **API-First** | ✅ RESTful API | ❌ No |
+| **Multi-tenancy** | ✅ Client isolation | ❌ No |
+| **Licence** | Apache 2.0 | GPL |
 
 ## Quick Start
 
@@ -121,19 +138,18 @@ admin_port: 8081
 data_dir: ./data          # Base data directory (creates subdirs: isos/, bootloaders/)
 server_addr: ""           # Auto-detected if not specified
 
-# SQLite mode (default - no configuration needed!)
-db:
-  disable: false          # false = use SQLite, true = no database
+# Database configuration
+# If no db.host is specified, SQLite is used automatically (default)
+# SQLite database will be created at: {data_dir}/bootimus.db
 
-# PostgreSQL mode (optional)
+# PostgreSQL mode (optional - only configure if you want PostgreSQL)
 # db:
-#   host: localhost
+#   host: localhost       # If empty/unset, SQLite is used instead
 #   port: 5432
 #   user: bootimus
 #   password: bootimus
 #   name: bootimus
 #   sslmode: disable
-#   disable: false
 ```
 
 ### Environment Variables
@@ -145,9 +161,8 @@ export BOOTIMUS_HTTP_PORT=8080
 export BOOTIMUS_ADMIN_PORT=8081
 export BOOTIMUS_DATA_DIR=/var/lib/bootimus/data
 
-# Database settings
-export BOOTIMUS_DB_DISABLE=false        # Use SQLite
-# export BOOTIMUS_DB_HOST=postgres      # Use PostgreSQL
+# Database settings (if using PostgreSQL)
+# export BOOTIMUS_DB_HOST=postgres      # If empty, SQLite is used
 # export BOOTIMUS_DB_PASSWORD=secret
 
 ./bootimus serve
@@ -180,15 +195,6 @@ db:
   password: secretpassword
   name: bootimus
   sslmode: require
-  disable: false
-```
-
-### No Database Mode
-
-Filesystem-only mode (all ISOs public to all clients):
-
-```bash
-./bootimus serve --db-disable
 ```
 
 ## Architecture
@@ -278,10 +284,6 @@ bootimus/
 - Private images: Assigned per MAC address
 - Disabled clients: Cannot boot any images
 - Boot attempts logged with success/failure
-
-**No Database Mode**:
-- All ISOs available to all clients
-- No logging or statistics
 
 ## DHCP Configuration
 
@@ -642,9 +644,6 @@ ls -la data/bootimus.db
 
 # For PostgreSQL, test connection
 psql -h localhost -U bootimus -d bootimus
-
-# Run in no-database mode
-./bootimus serve --db-disable
 ```
 
 ### No ISOs in Menu
@@ -679,38 +678,20 @@ sqlite3 data/bootimus.db "SELECT * FROM boot_logs ORDER BY created_at DESC LIMIT
 psql -h localhost -U bootimus -d bootimus -c "SELECT * FROM boot_logs ORDER BY created_at DESC LIMIT 10;"
 ```
 
-## Comparison: Bootimus vs iVentoy
-
-| Feature | Bootimus | iVentoy |
-|---------|----------|---------|
-| **Language** | Go | C |
-| **Single Binary** | ✅ Yes | ❌ No |
-| **Embedded Bootloaders** | ✅ Yes | ❌ No |
-| **Database** | SQLite + PostgreSQL | File-based |
-| **Web UI** | ✅ Modern REST API | Basic HTML |
-| **Authentication** | HTTP Basic Auth | None |
-| **Boot Logging** | ✅ Full tracking | Limited |
-| **MAC-based ACL** | ✅ Granular | ❌ No |
-| **ISO Upload** | ✅ Web upload | Manual copy |
-| **Docker Support** | ✅ Multi-arch | Limited |
-| **API-First** | ✅ RESTful API | ❌ No |
-| **Multi-tenancy** | ✅ Client isolation | ❌ No |
-| **License** | Apache 2.0 | GPL |
-
 ## Security Considerations
 
 - **Read-only TFTP**: TFTP server is read-only (no write operations)
-- **Path Sanitization**: All file paths sanitized to prevent directory traversal
-- **MAC Address Verification**: ISOs served only to authorized clients
+- **Path Sanitisation**: All file paths sanitised to prevent directory traversal
+- **MAC Address Verification**: ISOs served only to authorised clients
 - **Admin Authentication**: HTTP Basic Auth with SHA-256 password hashing
 - **Separate Admin Port**: Admin interface isolated from boot network (port 8081)
 - **Database Security**: SQLite file permissions, PostgreSQL SSL support
 - **Audit Logs**: All boot attempts logged with client/image/success tracking
 - **Firewall**: Limit TFTP/HTTP ports to local network only
 
-## License
+## Licence
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+Licensed under the Apache Licence, Version 2.0. See [LICENSE](LICENSE) for details.
 
 Copyright 2025 Bootimus Contributors
 

@@ -9,20 +9,21 @@ import (
 )
 
 type Manager struct {
-	db *database.DB
+	userStore database.UserStore
 }
 
-func NewManager(db *database.DB) (*Manager, error) {
-	if db == nil {
-		return nil, fmt.Errorf("database is required for authentication")
+func NewManager(userStore database.UserStore) (*Manager, error) {
+	m := &Manager{
+		userStore: userStore,
 	}
 
-	m := &Manager{
-		db: db,
+	// UserStore should always be provided (either PostgreSQL or SQLite)
+	if userStore == nil {
+		return nil, fmt.Errorf("userStore is required for authentication")
 	}
 
 	// Ensure admin user exists
-	username, password, created, err := db.EnsureAdminUser()
+	username, password, created, err := userStore.EnsureAdminUser()
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure admin user: %w", err)
 	}
@@ -38,7 +39,7 @@ func NewManager(db *database.DB) (*Manager, error) {
 		log.Println("║  Save it now or reset it using --reset-admin-password flag    ║")
 		log.Println("╚════════════════════════════════════════════════════════════════╝")
 	} else {
-		log.Println("Admin authentication enabled (using database)")
+		log.Println("Admin authentication enabled")
 	}
 
 	return m, nil
@@ -46,7 +47,7 @@ func NewManager(db *database.DB) (*Manager, error) {
 
 // ValidateCredentials validates username and password against the database
 func (m *Manager) ValidateCredentials(username, password string) bool {
-	user, err := m.db.GetUser(username)
+	user, err := m.userStore.GetUser(username)
 	if err != nil {
 		return false
 	}
@@ -60,7 +61,7 @@ func (m *Manager) ValidateCredentials(username, password string) bool {
 	}
 
 	// Update last login
-	_ = m.db.UpdateUserLastLogin(username)
+	_ = m.userStore.UpdateUserLastLogin(username)
 
 	return true
 }

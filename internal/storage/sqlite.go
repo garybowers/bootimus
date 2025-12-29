@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"crypto/rand"
 	"fmt"
 	"path/filepath"
 
@@ -27,7 +28,7 @@ func NewSQLiteStore(dataDir string) (*SQLiteStore, error) {
 	}
 
 	// Run migrations
-	if err := db.AutoMigrate(&models.Client{}, &models.Image{}, &models.BootLog{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Client{}, &models.Image{}, &models.BootLog{}); err != nil {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
@@ -56,7 +57,7 @@ func (s *SQLiteStore) CreateClient(client *models.Client) error {
 }
 
 func (s *SQLiteStore) UpdateClient(mac string, client *models.Client) error {
-	return s.db.Model(&models.Client{}).Where("mac_address = ?", mac).Updates(client).Error
+	return s.db.Model(&models.Client{}).Where("mac_address = ?", mac).Save(client).Error
 }
 
 func (s *SQLiteStore) DeleteClient(mac string) error {
@@ -85,11 +86,12 @@ func (s *SQLiteStore) CreateImage(image *models.Image) error {
 }
 
 func (s *SQLiteStore) UpdateImage(filename string, image *models.Image) error {
-	return s.db.Model(&models.Image{}).Where("filename = ?", filename).Updates(image).Error
+	return s.db.Model(&models.Image{}).Where("filename = ?", filename).Save(image).Error
 }
 
 func (s *SQLiteStore) DeleteImage(filename string) error {
-	return s.db.Where("filename = ?", filename).Delete(&models.Image{}).Error
+	// Use Unscoped to perform hard delete (avoid unique constraint issues on re-upload)
+	return s.db.Unscoped().Where("filename = ?", filename).Delete(&models.Image{}).Error
 }
 
 // Client-Image associations
@@ -145,6 +147,81 @@ func (s *SQLiteStore) GetBootLogs(limit int) ([]models.BootLog, error) {
 	return logs, nil
 }
 
+// User management operations
+func (s *SQLiteStore) EnsureAdminUser() (username, password string, created bool, err error) {
+	var admin models.User
+	err = s.db.Where("username = ?", "admin").First(&admin).Error
+
+	if err == gorm.ErrRecordNotFound {
+		// Create admin user with random password
+		password = generateRandomPassword(16)
+		admin = models.User{
+			Username: "admin",
+			Enabled:  true,
+			IsAdmin:  true,
+		}
+		if err := admin.SetPassword(password); err != nil {
+			return "", "", false, err
+		}
+		if err := s.db.Create(&admin).Error; err != nil {
+			return "", "", false, err
+		}
+		return "admin", password, true, nil
+	}
+
+	return "admin", "", false, err
+}
+
+func (s *SQLiteStore) ResetAdminPassword() (string, error) {
+	var admin models.User
+	if err := s.db.Where("username = ?", "admin").First(&admin).Error; err != nil {
+		return "", err
+	}
+
+	password := generateRandomPassword(16)
+	if err := admin.SetPassword(password); err != nil {
+		return "", err
+	}
+
+	if err := s.db.Save(&admin).Error; err != nil {
+		return "", err
+	}
+
+	return password, nil
+}
+
+func (s *SQLiteStore) GetUser(username string) (*models.User, error) {
+	var user models.User
+	if err := s.db.Where("username = ?", username).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (s *SQLiteStore) UpdateUserLastLogin(username string) error {
+	return s.db.Model(&models.User{}).Where("username = ?", username).Update("last_login", gorm.Expr("CURRENT_TIMESTAMP")).Error
+}
+
+func (s *SQLiteStore) ListUsers() ([]*models.User, error) {
+	var users []*models.User
+	if err := s.db.Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func (s *SQLiteStore) CreateUser(user *models.User) error {
+	return s.db.Create(user).Error
+}
+
+func (s *SQLiteStore) UpdateUser(username string, user *models.User) error {
+	return s.db.Model(&models.User{}).Where("username = ?", username).Save(user).Error
+}
+
+func (s *SQLiteStore) DeleteUser(username string) error {
+	return s.db.Where("username = ?", username).Delete(&models.User{}).Error
+}
+
 // Close closes the database connection
 func (s *SQLiteStore) Close() error {
 	db, err := s.db.DB()
@@ -152,4 +229,22 @@ func (s *SQLiteStore) Close() error {
 		return err
 	}
 	return db.Close()
+}
+
+// Helper functions for password generation
+func generateRandomPassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[randInt(len(charset))]
+	}
+	return string(b)
+}
+
+func randInt(max int) int {
+	var b [1]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return 0
+	}
+	return int(b[0]) % max
 }

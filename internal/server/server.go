@@ -24,6 +24,7 @@ import (
 	"bootimus/internal/auth"
 	"bootimus/internal/database"
 	"bootimus/internal/models"
+	"bootimus/internal/storage"
 	"bootimus/web"
 
 	"github.com/pin/tftp/v3"
@@ -32,14 +33,16 @@ import (
 var Version = "dev" // Overridden at build time
 
 type Config struct {
-	TFTPPort   int
-	HTTPPort   int
-	AdminPort  int
-	BootDir    string // Directory for custom bootloaders (/data/bootloaders)
-	DataDir    string // Directory for ISO images (/data/isos)
-	ServerAddr string
-	DB         *database.DB
-	Auth       *auth.Manager
+	TFTPPort    int
+	HTTPPort    int
+	AdminPort   int
+	BootDir     string               // Directory for custom bootloaders (/data/bootloaders)
+	DataDir     string               // Base data directory (/data)
+	ISODir      string               // ISO directory (/data/isos)
+	ServerAddr  string
+	DB          *database.DB         // PostgreSQL database (nil if using SQLite)
+	SQLiteStore *storage.SQLiteStore // SQLite store (nil if using PostgreSQL)
+	Auth        *auth.Manager
 }
 
 type Server struct {
@@ -287,6 +290,7 @@ func (s *Server) Start() error {
 	log.Printf("Starting Bootimus - PXE/HTTP Boot Server")
 	log.Printf("Boot directory: %s", s.config.BootDir)
 	log.Printf("Data directory: %s", s.config.DataDir)
+	log.Printf("ISO directory: %s", s.config.ISODir)
 	log.Printf("TFTP Port: %d", s.config.TFTPPort)
 	log.Printf("HTTP Port: %d", s.config.HTTPPort)
 	log.Printf("Admin Port: %d", s.config.AdminPort)
@@ -390,7 +394,7 @@ func (s *Server) Shutdown() error {
 func (s *Server) scanISOs() ([]ISOImage, error) {
 	var isos []ISOImage
 
-	entries, err := os.ReadDir(s.config.DataDir)
+	entries, err := os.ReadDir(s.config.ISODir)
 	if err != nil {
 		return nil, err
 	}
@@ -579,11 +583,11 @@ func (s *Server) startHTTPServer() error {
 		}
 
 		// Build full path to ISO
-		fullPath := filepath.Join(s.config.DataDir, decodedFilename)
+		fullPath := filepath.Join(s.config.ISODir, decodedFilename)
 
-		// Security check: ensure the path is within DataDir
+		// Security check: ensure the path is within ISODir
 		cleanPath := filepath.Clean(fullPath)
-		if !strings.HasPrefix(cleanPath, filepath.Clean(s.config.DataDir)) {
+		if !strings.HasPrefix(cleanPath, filepath.Clean(s.config.ISODir)) {
 			log.Printf("ISO: Path traversal attempt: %s from %s", decodedFilename, r.RemoteAddr)
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
@@ -636,11 +640,11 @@ func (s *Server) startHTTPServer() error {
 		}
 
 		// Build full path to boot file (in isos directory subdirs)
-		fullPath := filepath.Join(s.config.DataDir, decodedPath)
+		fullPath := filepath.Join(s.config.ISODir, decodedPath)
 
-		// Security check: ensure the path is within data directory
+		// Security check: ensure the path is within ISO directory
 		cleanPath := filepath.Clean(fullPath)
-		if !strings.HasPrefix(cleanPath, filepath.Clean(s.config.DataDir)) {
+		if !strings.HasPrefix(cleanPath, filepath.Clean(s.config.ISODir)) {
 			log.Printf("Boot: Path traversal attempt: %s from %s", decodedPath, r.RemoteAddr)
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
@@ -676,6 +680,9 @@ func (s *Server) startHTTPServer() error {
 
 	// API endpoint to list ISOs
 	mux.HandleFunc("/api/isos", s.handleListISOs)
+
+	// Auto-install script serving endpoint (public, no auth)
+	mux.HandleFunc("/autoinstall/", s.handleAutoInstallScript)
 
 	addr := fmt.Sprintf(":%d", s.config.HTTPPort)
 	s.httpServer = &http.Server{
@@ -714,8 +721,8 @@ func (s *Server) startAdminServer() error {
 func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	log.Println("Setting up admin interface")
 
-	// Create admin handler
-	adminHandler := admin.NewHandler(s.config.DB, s.config.DataDir, s.config.BootDir, Version)
+	// Create admin handler (pass both DB and SQLiteStore, handler will use whichever is available)
+	adminHandler := admin.NewHandler(s.config.DB, s.config.SQLiteStore, s.config.DataDir, s.config.ISODir, s.config.BootDir, Version)
 
 	// Serve embedded static files
 	staticFS, err := fs.Sub(web.Static, "static")
@@ -823,6 +830,18 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/images/download", authWrap(adminHandler.DownloadISO))
 	mux.HandleFunc("/api/downloads", authWrap(adminHandler.ListDownloads))
 	mux.HandleFunc("/api/downloads/progress", authWrap(adminHandler.GetDownloadProgress))
+
+	// Auto-install script endpoints
+	mux.HandleFunc("/api/images/autoinstall", authWrap(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			adminHandler.GetAutoInstallScript(w, r)
+		case http.MethodPut:
+			adminHandler.UpdateAutoInstallScript(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
 }
 
 func (s *Server) handleActiveSessions(w http.ResponseWriter, r *http.Request) {
@@ -962,10 +981,17 @@ goto ${selected}
 echo Booting {{$img.Name}}...
 {{if eq $img.BootMethod "kernel"}}
 echo Loading kernel and initrd...
+{{if $img.AutoInstallEnabled}}
+echo Auto-install enabled for this image
+{{end}}
 {{if eq $img.Distro "arch"}}
-kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.BootParams}}http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}} ip=dhcp
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}archiso_http_srv=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ ip=dhcp
+{{else if or (eq $img.Distro "fedora") (eq $img.Distro "centos")}}
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}inst.repo=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ ip=dhcp
+{{else if or (eq $img.Distro "ubuntu") (eq $img.Distro "debian")}}
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/filesystem.squashfs ip=dhcp
 {{else}}
-kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.BootParams}}iso-url=http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}} ip=dhcp
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}iso-url=http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}} ip=dhcp
 {{end}}
 initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/initrd
 boot || goto failed
@@ -992,30 +1018,62 @@ reboot
 	t, _ := template.New("menu").Parse(tmpl)
 
 	type ImageData struct {
-		Name            string
-		Filename        string
-		EncodedFilename string
-		SizeStr         string
-		BootMethod      string
-		Extracted       bool
-		BootParams      string
-		CacheDir        string
-		Distro          string
+		Name                string
+		Filename            string
+		EncodedFilename     string
+		SizeStr             string
+		BootMethod          string
+		Extracted           bool
+		BootParams          string
+		CacheDir            string
+		Distro              string
+		AutoInstallEnabled  bool
+		AutoInstallURL      string
+		AutoInstallParam    string
 	}
 
 	imageData := make([]ImageData, len(images))
 	for i, img := range images {
 		cacheDir := strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename))
+
+		// Build auto-install URL and parameter if enabled
+		autoInstallURL := ""
+		autoInstallParam := ""
+		if img.AutoInstallEnabled && img.AutoInstallScript != "" {
+			autoInstallURL = fmt.Sprintf("http://%s:%d/autoinstall/%s", s.config.ServerAddr, s.config.HTTPPort, url.PathEscape(img.Filename))
+
+			// Set appropriate boot parameter based on script type and distro
+			switch img.AutoInstallScriptType {
+			case "preseed":
+				// Debian/Ubuntu preseed
+				autoInstallParam = fmt.Sprintf("auto=true priority=critical url=%s ", autoInstallURL)
+			case "kickstart":
+				// Red Hat/CentOS/Fedora kickstart
+				autoInstallParam = fmt.Sprintf("inst.ks=%s ", autoInstallURL)
+			case "autoinstall":
+				// Ubuntu autoinstall (cloud-init)
+				autoInstallParam = fmt.Sprintf("autoinstall ds=nocloud-net;s=%s/ ", autoInstallURL)
+			case "autounattend":
+				// Windows autounattend.xml - not typically used via kernel params
+				autoInstallParam = ""
+			default:
+				autoInstallParam = fmt.Sprintf("autoinstall=%s ", autoInstallURL)
+			}
+		}
+
 		imageData[i] = ImageData{
-			Name:            img.Name,
-			Filename:        img.Filename,
-			EncodedFilename: url.PathEscape(img.Filename),
-			SizeStr:         formatBytes(img.Size),
-			BootMethod:      img.BootMethod,
-			Extracted:       img.Extracted,
-			BootParams:      img.BootParams,
-			CacheDir:        url.PathEscape(cacheDir),
-			Distro:          img.Distro,
+			Name:               img.Name,
+			Filename:           img.Filename,
+			EncodedFilename:    url.PathEscape(img.Filename),
+			SizeStr:            formatBytes(img.Size),
+			BootMethod:         img.BootMethod,
+			Extracted:          img.Extracted,
+			BootParams:         img.BootParams,
+			CacheDir:           url.PathEscape(cacheDir),
+			Distro:             img.Distro,
+			AutoInstallEnabled: img.AutoInstallEnabled,
+			AutoInstallURL:     autoInstallURL,
+			AutoInstallParam:   autoInstallParam,
 		}
 	}
 
@@ -1061,6 +1119,64 @@ func (s *Server) handleListISOs(w http.ResponseWriter, r *http.Request) {
 	for _, img := range images {
 		fmt.Fprintf(w, "  - %s (%s)\n", img.Name, formatBytes(img.Size))
 	}
+}
+
+// handleAutoInstallScript serves auto-install scripts for unattended installations
+// URL format: /autoinstall/{filename}
+// Example: /autoinstall/ubuntu-22.04.iso returns the preseed/autoinstall script for that image
+func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request) {
+	// Extract filename from path
+	path := strings.TrimPrefix(r.URL.Path, "/autoinstall/")
+	if path == "" {
+		http.Error(w, "Missing image filename in path", http.StatusBadRequest)
+		return
+	}
+
+	// Get image from database
+	var image *models.Image
+	var err error
+
+	if s.config.SQLiteStore != nil {
+		image, err = s.config.SQLiteStore.GetImage(path)
+	} else if s.config.DB != nil {
+		var dbImage models.Image
+		err = s.config.DB.Where("filename = ?", path).First(&dbImage).Error
+		if err == nil {
+			image = &dbImage
+		}
+	}
+
+	if err != nil || image == nil {
+		http.Error(w, "Image not found", http.StatusNotFound)
+		return
+	}
+
+	// Check if auto-install is enabled and script exists
+	if !image.AutoInstallEnabled || image.AutoInstallScript == "" {
+		http.Error(w, "Auto-install not configured for this image", http.StatusNotFound)
+		return
+	}
+
+	// Set appropriate content type based on script type
+	contentType := "text/plain"
+	switch image.AutoInstallScriptType {
+	case "preseed":
+		contentType = "text/plain; charset=utf-8"
+	case "kickstart":
+		contentType = "text/plain; charset=utf-8"
+	case "autounattend":
+		contentType = "application/xml; charset=utf-8"
+	case "autoinstall":
+		contentType = "text/yaml; charset=utf-8"
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(image.AutoInstallScript)))
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(image.AutoInstallScript))
+
+	log.Printf("Served auto-install script for %s (type: %s, size: %d bytes)",
+		image.Filename, image.AutoInstallScriptType, len(image.AutoInstallScript))
 }
 
 func convertISOsToImages(isos []ISOImage) []models.Image {

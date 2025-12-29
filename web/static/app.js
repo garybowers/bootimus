@@ -107,12 +107,17 @@ document.addEventListener('DOMContentLoaded', () => {
         loadStats();
         loadActiveSessions();
         const activeTab = document.querySelector('.tab.active').dataset.tab;
-        if (activeTab === 'server') loadServerInfo();
         if (activeTab === 'clients') loadClients();
         if (activeTab === 'images') loadImages();
         if (activeTab === 'logs') loadLogs();
         if (activeTab === 'users') loadUsers();
     }, 30000);
+
+    // Refresh server info more frequently for live stats (every 5 seconds)
+    setInterval(() => {
+        const activeTab = document.querySelector('.tab.active').dataset.tab;
+        if (activeTab === 'server') loadServerInfo();
+    }, 5000);
 
     // Refresh active sessions more frequently (every 3 seconds)
     setInterval(loadActiveSessions, 3000);
@@ -228,16 +233,102 @@ async function loadServerInfo() {
 function renderServerInfo(info) {
     const container = document.getElementById('server-info');
 
+    const sysStats = info.system_stats || {};
+
     const html = `
-        ${info.version ? `
+        ${info.version || sysStats.host ? `
             <div class="info-section" style="margin-bottom: 20px;">
-                <h3>Version</h3>
+                <h3>System Information</h3>
+                ${info.version ? `
                 <div class="info-item">
-                    <span class="info-label">Bootimus</span>
+                    <span class="info-label">Bootimus Version</span>
                     <span class="info-value"><code>${info.version}</code></span>
+                </div>
+                ` : ''}
+                ${sysStats.host ? `
+                    ${sysStats.host.platform ? `
+                    <div class="info-item">
+                        <span class="info-label">Operating System</span>
+                        <span class="info-value">${sysStats.host.platform} ${sysStats.host.platform_version || ''}</span>
+                    </div>
+                    ` : sysStats.host.os ? `
+                    <div class="info-item">
+                        <span class="info-label">Operating System</span>
+                        <span class="info-value">${sysStats.host.os}</span>
+                    </div>
+                    ` : ''}
+                    ${sysStats.host.architecture ? `
+                    <div class="info-item">
+                        <span class="info-label">Architecture</span>
+                        <span class="info-value">${sysStats.host.architecture}</span>
+                    </div>
+                    ` : ''}
+                ` : ''}
+                ${sysStats.uptime ? `
+                <div class="info-item">
+                    <span class="info-label">Server Uptime</span>
+                    <span class="info-value">${sysStats.uptime}</span>
+                </div>
+                ` : ''}
+            </div>
+        ` : ''}
+
+        ${sysStats.cpu || sysStats.memory || (sysStats.disk && sysStats.disk.length) ? `
+            <div style="margin-bottom: 30px;">
+                <h3 style="margin-bottom: 15px;">System Resources</h3>
+                <div class="stats-grid">
+                    ${sysStats.cpu ? `
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <div class="stat-card-title">CPU Usage</div>
+                            <div class="stat-card-value" style="color: ${sysStats.cpu.usage_percent > 80 ? '#ef4444' : sysStats.cpu.usage_percent > 60 ? '#f59e0b' : '#10b981'}">
+                                ${sysStats.cpu.usage_percent.toFixed(1)}%
+                            </div>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${sysStats.cpu.usage_percent}%; background: ${sysStats.cpu.usage_percent > 80 ? '#ef4444' : sysStats.cpu.usage_percent > 60 ? '#f59e0b' : '#10b981'}"></div>
+                        </div>
+                        <div class="stat-card-info">${sysStats.cpu.cores} CPU cores available</div>
+                    </div>
+                    ` : ''}
+
+                    ${sysStats.memory ? `
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <div class="stat-card-title">Memory Usage</div>
+                            <div class="stat-card-value" style="color: ${sysStats.memory.used_percent > 80 ? '#ef4444' : sysStats.memory.used_percent > 60 ? '#f59e0b' : '#10b981'}">
+                                ${sysStats.memory.used_percent.toFixed(1)}%
+                            </div>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${sysStats.memory.used_percent}%; background: ${sysStats.memory.used_percent > 80 ? '#ef4444' : sysStats.memory.used_percent > 60 ? '#f59e0b' : '#10b981'}"></div>
+                        </div>
+                        <div class="stat-card-info">
+                            ${formatBytes(sysStats.memory.used)} / ${formatBytes(sysStats.memory.total)} (${formatBytes(sysStats.memory.free)} free)
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    ${(sysStats.disk || []).map(disk => `
+                    <div class="stat-card">
+                        <div class="stat-card-header">
+                            <div class="stat-card-title">Disk: ${disk.path}</div>
+                            <div class="stat-card-value" style="color: ${disk.used_percent > 80 ? '#ef4444' : disk.used_percent > 60 ? '#f59e0b' : '#10b981'}">
+                                ${disk.used_percent.toFixed(1)}%
+                            </div>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${disk.used_percent}%; background: ${disk.used_percent > 80 ? '#ef4444' : disk.used_percent > 60 ? '#f59e0b' : '#10b981'}"></div>
+                        </div>
+                        <div class="stat-card-info">
+                            ${formatBytes(disk.used)} / ${formatBytes(disk.total)} (${formatBytes(disk.free)} free)
+                        </div>
+                    </div>
+                    `).join('')}
                 </div>
             </div>
         ` : ''}
+
         <div class="info-grid">
             <div class="info-section">
                 <h3>Configuration</h3>
@@ -262,6 +353,14 @@ function renderServerInfo(info) {
     `;
 
     container.innerHTML = html;
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 // Clients
@@ -464,6 +563,9 @@ function renderImagesTable() {
                             </button>
                             <button class="btn btn-primary btn-sm" onclick="togglePublic('${img.filename}', ${img.public})">
                                 ${img.public ? 'Make Private' : 'Make Public'}
+                            </button>
+                            <button class="btn btn-info btn-sm" onclick="showAutoInstallModal('${img.filename}', '${img.name}')">
+                                ${img.auto_install_enabled ? '⚙️ Auto-Install' : 'Auto-Install'}
                             </button>
                             <button class="btn btn-danger btn-sm" onclick="deleteImage('${img.filename}', '${img.name}')">Delete</button>
                         </td>
@@ -1254,4 +1356,65 @@ function checkDownloadProgress(filename) {
         .catch(error => {
             console.error('Failed to check download progress:', error);
         });
+}
+
+// Auto-Install Script Management
+async function showAutoInstallModal(filename, name) {
+    document.getElementById('autoinstall-image-filename').value = filename;
+    document.getElementById('autoinstall-image-name').textContent = name;
+
+    // Load current auto-install configuration
+    try {
+        const res = await fetch(`${API_BASE}/images/autoinstall?filename=${encodeURIComponent(filename)}`);
+        const data = await res.json();
+
+        if (data.success && data.data) {
+            document.getElementById('autoinstall-enabled').checked = data.data.auto_install_enabled || false;
+            document.getElementById('autoinstall-script-type').value = data.data.auto_install_script_type || 'preseed';
+            document.getElementById('autoinstall-script').value = data.data.auto_install_script || '';
+        } else {
+            // Default values for new configuration
+            document.getElementById('autoinstall-enabled').checked = false;
+            document.getElementById('autoinstall-script-type').value = 'preseed';
+            document.getElementById('autoinstall-script').value = '';
+        }
+    } catch (err) {
+        console.error('Failed to load auto-install config:', err);
+        document.getElementById('autoinstall-enabled').checked = false;
+        document.getElementById('autoinstall-script-type').value = 'preseed';
+        document.getElementById('autoinstall-script').value = '';
+    }
+
+    openModal('autoinstall-modal');
+}
+
+async function saveAutoInstallScript() {
+    const filename = document.getElementById('autoinstall-image-filename').value;
+    const enabled = document.getElementById('autoinstall-enabled').checked;
+    const scriptType = document.getElementById('autoinstall-script-type').value;
+    const script = document.getElementById('autoinstall-script').value;
+
+    try {
+        const res = await fetch(`${API_BASE}/images/autoinstall?filename=${encodeURIComponent(filename)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                auto_install_enabled: enabled,
+                auto_install_script_type: scriptType,
+                auto_install_script: script
+            })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+            showNotification('Auto-install configuration saved', 'success');
+            closeModal('autoinstall-modal');
+            loadImages(); // Refresh images list
+        } else {
+            showNotification('Failed to save auto-install configuration: ' + data.error, 'error');
+        }
+    } catch (err) {
+        showNotification('Failed to save auto-install configuration', 'error');
+        console.error(err);
+    }
 }
