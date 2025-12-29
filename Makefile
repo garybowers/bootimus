@@ -5,7 +5,7 @@ VERSION ?= $(shell git describe --tags --always --dirty)
 LDFLAGS := -w -s -X bootimus/internal/server.Version=$(VERSION)
 
 build:
-	CGO_ENABLED=0 GOOS=linux go build -ldflags="$(LDFLAGS)" -o bootimus .
+	CGO_ENABLED=1 GOOS=linux go build -ldflags="$(LDFLAGS)" -o bootimus .
 
 run:
 	docker-compose up -d
