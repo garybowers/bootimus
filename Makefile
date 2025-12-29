@@ -11,8 +11,13 @@ run:
 	docker-compose up -d
 
 push:
-	docker build -f Dockerfile.multistage --build-arg VERSION=$(VERSION) -t $(DOCKER_USER)/bootimus:$(VERSION) .
-	docker tag $(DOCKER_USER)/bootimus:$(VERSION) $(DOCKER_USER)/bootimus:latest
-	docker push $(DOCKER_USER)/bootimus:$(VERSION)
-	docker push $(DOCKER_USER)/bootimus:latest
+	docker buildx create --use --name bootimus-builder --driver docker-container || docker buildx use bootimus-builder
+	docker buildx build -f Dockerfile.multistage \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg VERSION=$(VERSION) \
+		-t $(DOCKER_USER)/bootimus:$(VERSION) \
+		-t $(DOCKER_USER)/bootimus:latest \
+		--push \
+		--no-cache \
+		.
 
