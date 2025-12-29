@@ -22,6 +22,7 @@ Please raise a issue for any unexpected behaviour you encounter.
 
 ## Roadmap
 
+- NixOS and maybe inject a nixconfig to the image ?
 - FreeBSD Support
 - NetBSD Support
 - OpenBSD Support
