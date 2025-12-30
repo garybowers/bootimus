@@ -51,6 +51,7 @@ func (db *DB) AutoMigrate() error {
 		&models.Client{},
 		&models.Image{},
 		&models.BootLog{},
+		&models.CustomFile{},
 	)
 }
 

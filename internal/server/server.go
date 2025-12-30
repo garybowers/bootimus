@@ -28,6 +28,7 @@ import (
 	"bootimus/web"
 
 	"github.com/pin/tftp/v3"
+	"gorm.io/gorm"
 )
 
 var Version = "dev" // Overridden at build time
@@ -684,6 +685,9 @@ func (s *Server) startHTTPServer() error {
 	// Auto-install script serving endpoint (public, no auth)
 	mux.HandleFunc("/autoinstall/", s.handleAutoInstallScript)
 
+	// Custom files serving endpoint (public, with access control)
+	mux.HandleFunc("/files/", s.handleCustomFile)
+
 	addr := fmt.Sprintf(":%d", s.config.HTTPPort)
 	s.httpServer = &http.Server{
 		Addr:    addr,
@@ -842,6 +846,24 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
+
+	// Custom file management endpoints
+	mux.HandleFunc("/api/files", authWrap(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			// Check if ID parameter is provided for single file retrieval
+			if r.URL.Query().Get("id") != "" {
+				adminHandler.GetCustomFile(w, r)
+			} else {
+				adminHandler.ListCustomFiles(w, r)
+			}
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/files/upload", authWrap(adminHandler.UploadCustomFile))
+	mux.HandleFunc("/api/files/update", authWrap(adminHandler.UpdateCustomFile))
+	mux.HandleFunc("/api/files/delete", authWrap(adminHandler.DeleteCustomFile))
 }
 
 func (s *Server) handleActiveSessions(w http.ResponseWriter, r *http.Request) {
@@ -993,6 +1015,8 @@ initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/boot.wim bo
 boot || goto failed
 {{else if eq $img.Distro "arch"}}
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}archiso_http_srv=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ ip=dhcp
+{{else if eq $img.Distro "nixos"}}
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}ip=dhcp
 {{else if or (eq $img.Distro "fedora") (eq $img.Distro "centos")}}
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}root=live:http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}} rd.live.image inst.repo=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ inst.stage2=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ rd.neednet=1 ip=dhcp
 {{else if or (eq $img.Distro "ubuntu") (eq $img.Distro "debian")}}
@@ -1134,9 +1158,125 @@ func (s *Server) handleListISOs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleCustomFile serves custom files to clients
+// URL format: /files/{filename}
+// Public files are accessible to all clients
+// Image-specific files are accessible to any client (they're just organized by image)
+func (s *Server) handleCustomFile(w http.ResponseWriter, r *http.Request) {
+	// Extract filename from path
+	filename := strings.TrimPrefix(r.URL.Path, "/files/")
+	if filename == "" {
+		http.Error(w, "Missing filename in path", http.StatusBadRequest)
+		return
+	}
+
+	// Decode filename
+	decodedFilename, err := url.PathUnescape(filename)
+	if err != nil {
+		log.Printf("CustomFile: Failed to decode filename %s: %v", filename, err)
+		http.Error(w, "Invalid filename", http.StatusBadRequest)
+		return
+	}
+
+	// Clean filename for security
+	cleanFilename := filepath.Clean(decodedFilename)
+	if cleanFilename == "." || cleanFilename == ".." || strings.Contains(cleanFilename, "..") {
+		log.Printf("CustomFile: Path traversal attempt: %s from %s", decodedFilename, r.RemoteAddr)
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Get file metadata from database
+	var file *models.CustomFile
+	if s.config.SQLiteStore != nil {
+		file, err = s.config.SQLiteStore.GetCustomFileByFilename(cleanFilename)
+	} else if s.config.DB != nil {
+		var dbFile models.CustomFile
+		err = s.config.DB.Preload("Image").Where("filename = ?", cleanFilename).First(&dbFile).Error
+		if err == nil {
+			file = &dbFile
+		}
+	}
+
+	if err != nil || file == nil {
+		log.Printf("CustomFile: File not found in database: %s", cleanFilename)
+		http.NotFound(w, r)
+		return
+	}
+
+	// Determine file path based on whether it's public or image-specific
+	var fullPath string
+	if file.Public {
+		// Public files are stored in /data/files/
+		fullPath = filepath.Join(s.config.DataDir, "files", cleanFilename)
+	} else if file.ImageID != nil && file.Image != nil {
+		// Image-specific files are stored in /data/isos/{image-name}/files/
+		imageName := strings.TrimSuffix(file.Image.Filename, filepath.Ext(file.Image.Filename))
+		fullPath = filepath.Join(s.config.ISODir, imageName, "files", cleanFilename)
+	} else {
+		log.Printf("CustomFile: Invalid file configuration for %s", cleanFilename)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Security check: ensure the path is within allowed directories
+	cleanPath := filepath.Clean(fullPath)
+	dataDir := filepath.Clean(s.config.DataDir)
+	if !strings.HasPrefix(cleanPath, dataDir) {
+		log.Printf("CustomFile: Path traversal attempt: %s from %s", cleanFilename, r.RemoteAddr)
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Check if file exists
+	fileInfo, err := os.Stat(fullPath)
+	if err != nil {
+		log.Printf("CustomFile: File not found on disk: %s", fullPath)
+		http.NotFound(w, r)
+		return
+	}
+
+	if fileInfo.IsDir() {
+		log.Printf("CustomFile: Path is a directory: %s", fullPath)
+		http.Error(w, "Not a file", http.StatusBadRequest)
+		return
+	}
+
+	// Increment download count in background
+	go func() {
+		if s.config.SQLiteStore != nil {
+			s.config.SQLiteStore.IncrementFileDownloadCount(file.ID)
+		} else if s.config.DB != nil {
+			s.config.DB.Model(&models.CustomFile{}).Where("id = ?", file.ID).Updates(map[string]interface{}{
+				"download_count": gorm.Expr("download_count + 1"),
+				"last_download":  gorm.Expr("CURRENT_TIMESTAMP"),
+			})
+		}
+	}()
+
+	// Set content type
+	contentType := file.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+
+	// Serve file
+	log.Printf("CustomFile: Serving %s to %s (size: %d bytes, public: %v, image: %v)",
+		cleanFilename, r.RemoteAddr, fileInfo.Size(), file.Public,
+		func() string {
+			if file.Image != nil {
+				return file.Image.Name
+			}
+			return "none"
+		}())
+	http.ServeFile(w, r, fullPath)
+}
+
 // handleAutoInstallScript serves auto-install scripts for unattended installations
 // URL format: /autoinstall/{filename}
 // Example: /autoinstall/ubuntu-22.04.iso returns the preseed/autoinstall script for that image
+
 func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request) {
 	// Extract filename from path
 	path := strings.TrimPrefix(r.URL.Path, "/autoinstall/")
@@ -1170,6 +1310,20 @@ func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Get custom files for this image
+	var customFiles []*models.CustomFile
+	if s.config.SQLiteStore != nil {
+		customFiles, _ = s.config.SQLiteStore.ListCustomFilesByImage(image.ID)
+	} else if s.config.DB != nil {
+		s.config.DB.Where("image_id = ? AND auto_install = ?", image.ID, true).Find(&customFiles)
+	}
+
+	// Inject file download commands into the script
+	script := image.AutoInstallScript
+	if len(customFiles) > 0 && image.Distro == "arch" {
+		script = s.injectArchFileDownloads(script, customFiles)
+	}
+
 	// Set appropriate content type based on script type
 	contentType := "text/plain"
 	switch image.AutoInstallScriptType {
@@ -1184,12 +1338,55 @@ func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(image.AutoInstallScript)))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(script)))
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(image.AutoInstallScript))
+	w.Write([]byte(script))
 
-	log.Printf("Served auto-install script for %s (type: %s, size: %d bytes)",
-		image.Filename, image.AutoInstallScriptType, len(image.AutoInstallScript))
+	log.Printf("Served auto-install script for %s (type: %s, size: %d bytes, files: %d)",
+		image.Filename, image.AutoInstallScriptType, len(script), len(customFiles))
+}
+
+// injectArchFileDownloads injects file download commands into Arch Linux autoinstall scripts
+func (s *Server) injectArchFileDownloads(script string, files []*models.CustomFile) string {
+	if len(files) == 0 {
+		return script
+	}
+
+	// Get server IP
+	serverIP := GetOutboundIP()
+	serverPort := "8080" // Main server port
+
+	// Build download commands for Arch installation
+	var downloadCommands strings.Builder
+	downloadCommands.WriteString("\n\n# Download custom files from Bootimus\n")
+
+	for _, file := range files {
+		destPath := file.DestinationPath
+		if destPath == "" {
+			// Default to /root/ if no destination specified
+			destPath = "/root/" + file.Filename
+		}
+
+		// Create directory if needed
+		destDir := filepath.Dir(destPath)
+		if destDir != "/" && destDir != "." {
+			downloadCommands.WriteString(fmt.Sprintf("arch-chroot /mnt mkdir -p %s\n", destDir))
+		}
+
+		// Download file using wget
+		downloadCommands.WriteString(fmt.Sprintf(
+			"arch-chroot /mnt wget -q http://%s:%s/files/%s -O %s\n",
+			serverIP, serverPort, file.Filename, destPath,
+		))
+
+		// Make executable if it's a script
+		if strings.HasSuffix(file.Filename, ".sh") {
+			downloadCommands.WriteString(fmt.Sprintf("arch-chroot /mnt chmod +x %s\n", destPath))
+		}
+	}
+
+	// Append download commands to the script
+	return script + downloadCommands.String()
 }
 
 func convertISOsToImages(isos []ISOImage) []models.Image {

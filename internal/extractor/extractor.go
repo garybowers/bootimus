@@ -74,6 +74,7 @@ func (e *Extractor) detectAndExtract(img *iso9660.Image, isoPath string) (*BootF
 		{"CentOS/Rocky/Alma Family", e.detectCentOS},
 		{"FreeBSD", e.detectFreeBSD},
 		{"OpenSUSE", e.detectOpenSUSE},
+		{"NixOS", e.detectNixOS},
 	}
 
 	var errors []string
@@ -151,6 +152,7 @@ func detectDistroName(img *iso9660.Image, isoPath string) string {
 		"tails":    "tails",
 		"opensuse": "opensuse",
 		"freebsd":  "freebsd",
+		"nixos":    "nixos",
 		"endeavouros": "endeavouros",
 		"garuda":   "garuda",
 		"arco":     "arco",
@@ -462,6 +464,64 @@ func (e *Extractor) detectOpenSUSE(img *iso9660.Image) (*BootFiles, error) {
 	}
 
 	return nil, fmt.Errorf("not OpenSUSE")
+}
+
+// detectNixOS detects NixOS ISOs
+func (e *Extractor) detectNixOS(img *iso9660.Image) (*BootFiles, error) {
+	// NixOS stores kernel and initrd in /boot/nix/store/<hash>-linux-<version>/bzImage
+	// and /boot/nix/store/<hash>-initrd-linux-<version>/initrd
+	// We need to search for these files in the nix store subdirectories
+
+	storeDir, err := findFile(img, "/boot/nix/store")
+	if err != nil {
+		return nil, fmt.Errorf("not NixOS: /boot/nix/store not found")
+	}
+
+	children, err := storeDir.GetChildren()
+	if err != nil {
+		return nil, fmt.Errorf("not NixOS: failed to read /boot/nix/store")
+	}
+
+	var kernel, initrd string
+
+	// Search through store subdirectories for bzImage and initrd
+	for _, child := range children {
+		if !child.IsDir() {
+			continue
+		}
+
+		name := child.Name()
+		childPath := "/boot/nix/store/" + name
+
+		// Look for kernel (bzImage in linux-* directories)
+		if strings.Contains(strings.ToLower(name), "linux-") && kernel == "" {
+			bzImagePath := childPath + "/bzImage"
+			if fileExists(img, bzImagePath) {
+				kernel = bzImagePath
+				log.Printf("Found NixOS kernel: %s", kernel)
+			}
+		}
+
+		// Look for initrd (in initrd-linux-* directories)
+		if strings.Contains(strings.ToLower(name), "initrd-linux-") && initrd == "" {
+			initrdPath := childPath + "/initrd"
+			if fileExists(img, initrdPath) {
+				initrd = initrdPath
+				log.Printf("Found NixOS initrd: %s", initrd)
+			}
+		}
+
+		if kernel != "" && initrd != "" {
+			return &BootFiles{
+				Kernel:     kernel,
+				Initrd:     initrd,
+				Distro:     "nixos",
+				BootParams: "init=/nix/store/*/init ", // NixOS init path
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("not NixOS: kernel or initrd not found in /boot/nix/store")
 }
 
 // detectWindows detects Windows ISOs and extracts boot files for wimboot

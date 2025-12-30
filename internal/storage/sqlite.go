@@ -28,7 +28,7 @@ func NewSQLiteStore(dataDir string) (*SQLiteStore, error) {
 	}
 
 	// Run migrations
-	if err := db.AutoMigrate(&models.User{}, &models.Client{}, &models.Image{}, &models.BootLog{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Client{}, &models.Image{}, &models.BootLog{}, &models.CustomFile{}); err != nil {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
@@ -220,6 +220,58 @@ func (s *SQLiteStore) UpdateUser(username string, user *models.User) error {
 
 func (s *SQLiteStore) DeleteUser(username string) error {
 	return s.db.Where("username = ?", username).Delete(&models.User{}).Error
+}
+
+// CustomFile operations
+func (s *SQLiteStore) ListCustomFiles() ([]*models.CustomFile, error) {
+	var files []*models.CustomFile
+	if err := s.db.Preload("Image").Find(&files).Error; err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+func (s *SQLiteStore) GetCustomFileByFilename(filename string) (*models.CustomFile, error) {
+	var file models.CustomFile
+	if err := s.db.Preload("Image").Where("filename = ?", filename).First(&file).Error; err != nil {
+		return nil, err
+	}
+	return &file, nil
+}
+
+func (s *SQLiteStore) GetCustomFileByID(id uint) (*models.CustomFile, error) {
+	var file models.CustomFile
+	if err := s.db.Preload("Image").First(&file, id).Error; err != nil {
+		return nil, err
+	}
+	return &file, nil
+}
+
+func (s *SQLiteStore) CreateCustomFile(file *models.CustomFile) error {
+	return s.db.Create(file).Error
+}
+
+func (s *SQLiteStore) UpdateCustomFile(id uint, file *models.CustomFile) error {
+	return s.db.Model(&models.CustomFile{}).Where("id = ?", id).Save(file).Error
+}
+
+func (s *SQLiteStore) DeleteCustomFile(id uint) error {
+	return s.db.Delete(&models.CustomFile{}, id).Error
+}
+
+func (s *SQLiteStore) IncrementFileDownloadCount(id uint) error {
+	return s.db.Model(&models.CustomFile{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"download_count": gorm.Expr("download_count + 1"),
+		"last_download":  gorm.Expr("CURRENT_TIMESTAMP"),
+	}).Error
+}
+
+func (s *SQLiteStore) ListCustomFilesByImage(imageID uint) ([]*models.CustomFile, error) {
+	var files []*models.CustomFile
+	if err := s.db.Preload("Image").Where("image_id = ?", imageID).Find(&files).Error; err != nil {
+		return nil, err
+	}
+	return files, nil
 }
 
 // Close closes the database connection

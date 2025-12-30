@@ -941,6 +941,7 @@ func checkSanbootCompatibility(distro, filename string) (bool, string) {
 		"centos":   "CentOS requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
 		"arch":     "Arch Linux requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
 		"opensuse": "openSUSE requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
+		"nixos":    "NixOS requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
 		"mint":     "Linux Mint requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
 		"manjaro":  "Manjaro requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
 		"popos":    "Pop!_OS requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
@@ -2199,5 +2200,387 @@ func (h *Handler) UpdateAutoInstallScript(w http.ResponseWriter, r *http.Request
 		Message: "Auto-install script updated",
 		Data:    image,
 	})
+}
+
+// ============================================================================
+// Custom File Management
+// ============================================================================
+
+// ListCustomFiles lists all custom files
+func (h *Handler) ListCustomFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	var files []*models.CustomFile
+	var err error
+
+	if h.db == nil {
+		// SQLite mode
+		files, err = h.sqliteStore.ListCustomFiles()
+	} else {
+		// PostgreSQL mode
+		err = h.db.Preload("Image").Find(&files).Error
+	}
+
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: files})
+}
+
+// GetCustomFile gets a single custom file by ID
+func (h *Handler) GetCustomFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "File ID required"})
+		return
+	}
+
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid file ID"})
+		return
+	}
+
+	var file *models.CustomFile
+	if h.db == nil {
+		// SQLite mode
+		file, err = h.sqliteStore.GetCustomFileByID(uint(id))
+	} else {
+		// PostgreSQL mode
+		var dbFile models.CustomFile
+		err = h.db.Preload("Image").First(&dbFile, id).Error
+		if err == nil {
+			file = &dbFile
+		}
+	}
+
+	if err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "File not found"})
+		return
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: file})
+}
+
+// UploadCustomFile handles custom file uploads
+func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	// Parse multipart form (max 100MB for custom files)
+	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to parse form: %v", err),
+		})
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "No file provided",
+		})
+		return
+	}
+	defer file.Close()
+
+	// Get form parameters
+	description := r.FormValue("description")
+	destinationPath := r.FormValue("destinationPath")
+	autoInstallStr := r.FormValue("autoInstall")
+	publicStr := r.FormValue("public")
+	imageIDStr := r.FormValue("imageId")
+
+	isPublic := publicStr == "true"
+	autoInstall := autoInstallStr == "true"
+
+	var imageID *uint
+	if imageIDStr != "" && imageIDStr != "null" && imageIDStr != "0" {
+		id, err := strconv.ParseUint(imageIDStr, 10, 32)
+		if err == nil {
+			uid := uint(id)
+			imageID = &uid
+		}
+	}
+
+	// Validate filename
+	originalFilename := filepath.Base(header.Filename)
+	if originalFilename == "" || originalFilename == "." || originalFilename == ".." {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Invalid filename",
+		})
+		return
+	}
+
+	// Clean filename for storage (use original name as stored filename)
+	cleanFilename := filepath.Clean(originalFilename)
+
+	// Determine storage path based on public/image-specific
+	var destDir string
+	if isPublic {
+		// Public files go in /data/files/
+		destDir = filepath.Join(h.dataDir, "files")
+	} else if imageID != nil {
+		// Image-specific files go in /data/isos/{image-name}/files/
+		var imageName string
+		if h.db == nil {
+			// Get image by ID from SQLite
+			var images []*models.Image
+			images, _ = h.sqliteStore.ListImages()
+			for _, i := range images {
+				if i.ID == *imageID {
+					imageName = strings.TrimSuffix(i.Filename, filepath.Ext(i.Filename))
+					break
+				}
+			}
+		} else {
+			var img models.Image
+			if err := h.db.First(&img, imageID).Error; err == nil {
+				imageName = strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename))
+			}
+		}
+
+		if imageName == "" {
+			h.sendJSON(w, http.StatusBadRequest, Response{
+				Success: false,
+				Error:   "Image not found for image-specific file",
+			})
+			return
+		}
+
+		destDir = filepath.Join(h.isoDir, imageName, "files")
+	} else {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "File must be either public or assigned to an image",
+		})
+		return
+	}
+
+	// Create destination directory if it doesn't exist
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to create directory: %v", err),
+		})
+		return
+	}
+
+	// Create destination file
+	destPath := filepath.Join(destDir, cleanFilename)
+	dest, err := os.Create(destPath)
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to create file: %v", err),
+		})
+		return
+	}
+	defer dest.Close()
+
+	// Copy file
+	written, err := io.Copy(dest, file)
+	if err != nil {
+		os.Remove(destPath)
+		h.sendJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to write file: %v", err),
+		})
+		return
+	}
+
+	// Detect content type
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	// Create database record
+	customFile := &models.CustomFile{
+		Filename:        cleanFilename,
+		OriginalName:    originalFilename,
+		Description:     description,
+		Size:            written,
+		ContentType:     contentType,
+		Public:          isPublic,
+		ImageID:         imageID,
+		DestinationPath: destinationPath,
+		AutoInstall:     autoInstall,
+	}
+
+	if h.db == nil {
+		// SQLite mode
+		err = h.sqliteStore.CreateCustomFile(customFile)
+	} else {
+		// PostgreSQL mode
+		err = h.db.Create(customFile).Error
+	}
+
+	if err != nil {
+		// Clean up file if database insert fails
+		os.Remove(destPath)
+		h.sendJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to save file metadata: %v", err),
+		})
+		return
+	}
+
+	log.Printf("Uploaded custom file: %s (%d bytes, public=%v, imageID=%v)",
+		cleanFilename, written, isPublic, imageID)
+
+	h.sendJSON(w, http.StatusOK, Response{
+		Success: true,
+		Message: "File uploaded successfully",
+		Data:    customFile,
+	})
+}
+
+// UpdateCustomFile updates custom file metadata
+func (h *Handler) UpdateCustomFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "File ID required"})
+		return
+	}
+
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid file ID"})
+		return
+	}
+
+	var updates map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+
+	// Get existing file
+	var file *models.CustomFile
+	if h.db == nil {
+		file, err = h.sqliteStore.GetCustomFileByID(uint(id))
+	} else {
+		var dbFile models.CustomFile
+		err = h.db.Preload("Image").First(&dbFile, id).Error
+		if err == nil {
+			file = &dbFile
+		}
+	}
+
+	if err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "File not found"})
+		return
+	}
+
+	// Update allowed fields
+	if desc, ok := updates["description"].(string); ok {
+		file.Description = desc
+	}
+
+	// Note: Changing public/imageID requires moving the file, which we'll implement later
+	// For now, just update the description
+
+	if h.db == nil {
+		err = h.sqliteStore.UpdateCustomFile(uint(id), file)
+	} else {
+		err = h.db.Save(file).Error
+	}
+
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Updated custom file: %s (ID: %d)", file.Filename, file.ID)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "File updated", Data: file})
+}
+
+// DeleteCustomFile deletes a custom file
+func (h *Handler) DeleteCustomFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "File ID required"})
+		return
+	}
+
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid file ID"})
+		return
+	}
+
+	// Get file to determine path before deleting
+	var file *models.CustomFile
+	if h.db == nil {
+		file, err = h.sqliteStore.GetCustomFileByID(uint(id))
+	} else {
+		var dbFile models.CustomFile
+		err = h.db.Preload("Image").First(&dbFile, id).Error
+		if err == nil {
+			file = &dbFile
+		}
+	}
+
+	if err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "File not found"})
+		return
+	}
+
+	// Determine file path
+	var filePath string
+	if file.Public {
+		filePath = filepath.Join(h.dataDir, "files", file.Filename)
+	} else if file.ImageID != nil && file.Image != nil {
+		imageName := strings.TrimSuffix(file.Image.Filename, filepath.Ext(file.Image.Filename))
+		filePath = filepath.Join(h.isoDir, imageName, "files", file.Filename)
+	}
+
+	// Delete from database first
+	if h.db == nil {
+		err = h.sqliteStore.DeleteCustomFile(uint(id))
+	} else {
+		err = h.db.Delete(&models.CustomFile{}, id).Error
+	}
+
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	// Delete physical file
+	if filePath != "" {
+		if err := os.Remove(filePath); err != nil {
+			log.Printf("Warning: Failed to delete file %s: %v", filePath, err)
+		}
+	}
+
+	log.Printf("Deleted custom file: %s (ID: %d)", file.Filename, file.ID)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "File deleted"})
 }
 

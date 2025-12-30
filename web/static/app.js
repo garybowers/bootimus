@@ -99,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadServerInfo();
     loadClients();
     loadImages();
+    loadPublicFiles();
     loadLogs();
     loadUsers();
 
@@ -112,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const activeTab = document.querySelector('.tab.active').dataset.tab;
         if (activeTab === 'clients') loadClients();
         if (activeTab === 'images') loadImages();
+        if (activeTab === 'public-files') loadPublicFiles();
         if (activeTab === 'logs') loadLogs();
         if (activeTab === 'users') loadUsers();
     }, 30000);
@@ -507,11 +509,25 @@ async function deleteClient(mac) {
 // Images
 async function loadImages() {
     try {
-        const res = await fetch(`${API_BASE}/images`);
-        const data = await res.json();
+        const [imagesRes, filesRes] = await Promise.all([
+            fetch(`${API_BASE}/images`),
+            fetch(`${API_BASE}/files`)
+        ]);
 
-        if (data.success) {
-            images = data.data || [];
+        const imagesData = await imagesRes.json();
+        const filesData = await filesRes.json();
+
+        if (imagesData.success) {
+            images = imagesData.data || [];
+
+            // Associate files with images
+            if (filesData.success) {
+                const allFiles = filesData.data || [];
+                images.forEach(img => {
+                    img.files = allFiles.filter(f => !f.public && f.image_id === img.id);
+                });
+            }
+
             renderImagesTable();
         }
     } catch (err) {
@@ -681,6 +697,9 @@ function renderImagesTable() {
                             </button>
                             <button class="btn btn-info btn-sm" onclick="showAutoInstallModal('${img.filename}', '${img.name}')">
                                 ${img.auto_install_enabled ? '⚙️ Auto-Install' : 'Auto-Install'}
+                            </button>
+                            <button class="btn btn-primary btn-sm" onclick="showImageFilesModal(${img.id}, '${escapeHtml(img.name)}')">
+                                📁 Files (${(img.files || []).length})
                             </button>
                             <button class="btn btn-danger btn-sm" onclick="deleteImage('${img.filename}', '${img.name}')">Delete</button>
                         </td>
@@ -1584,4 +1603,365 @@ async function saveAutoInstallScript() {
         showNotification('Failed to save auto-install configuration', 'error');
         console.error(err);
     }
+}
+
+// ============================================================================
+// Custom File Management
+// ============================================================================
+
+let allFiles = [];
+let currentFileFilter = 'all';
+
+// ==================== PUBLIC FILES ====================
+
+async function loadPublicFiles() {
+    const container = document.getElementById('public-files-table');
+    container.innerHTML = '<div class="spinner"></div><p>Loading files...</p>';
+
+    try {
+        const res = await fetch('/api/files');
+        const data = await res.json();
+
+        if (data.success) {
+            const publicFiles = (data.data || []).filter(f => f.public);
+            renderPublicFilesTable(publicFiles);
+        } else {
+            container.innerHTML = `<p class="error">Failed to load files: ${data.error}</p>`;
+        }
+    } catch (err) {
+        container.innerHTML = '<p class="error">Failed to load files</p>';
+        console.error(err);
+    }
+}
+
+function renderPublicFilesTable(files) {
+    const container = document.getElementById('public-files-table');
+
+    if (files.length === 0) {
+        container.innerHTML = '<p style="color: #94a3b8; padding: 20px; text-align: center;">No public files found. Upload your first public file to get started.</p>';
+        return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'data-table';
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Filename</th>
+                <th>Description</th>
+                <th>Type</th>
+                <th>Size</th>
+                <th>Downloads</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${files.map(file => `
+                <tr>
+                    <td><code style="color: #38bdf8;">${escapeHtml(file.filename)}</code></td>
+                    <td>${escapeHtml(file.description || '-')}</td>
+                    <td><span class="badge">${escapeHtml(file.content_type || 'unknown')}</span></td>
+                    <td>${formatBytes(file.size)}</td>
+                    <td>${file.download_count || 0}</td>
+                    <td>
+                        <button class="btn btn-small" onclick="copyFileDownloadURL('${escapeHtml(file.filename)}')">📋 Copy URL</button>
+                        <button class="btn btn-small" onclick="showEditFileModal(${file.id})">Edit</button>
+                        <button class="btn btn-danger btn-small" onclick="deleteFile(${file.id}, '${escapeHtml(file.filename)}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('')}
+        </tbody>
+    `;
+
+    container.innerHTML = '';
+    container.appendChild(table);
+}
+
+function showUploadPublicFileModal() {
+    document.getElementById('upload-public-file-form').reset();
+    showModal('upload-public-file-modal');
+}
+
+async function uploadPublicFile(event) {
+    event.preventDefault();
+
+    const fileInput = document.getElementById('public-file-upload');
+    const description = document.getElementById('public-file-description').value;
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showNotification('Please select a file', 'error');
+        return;
+    }
+
+    const file = fileInput.files[0];
+
+    if (file.size > 100 * 1024 * 1024) {
+        showNotification('File size exceeds 100MB limit', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('description', description);
+    formData.append('public', 'true');
+
+    try {
+        const res = await fetch('/api/files/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showNotification('File uploaded successfully', 'success');
+            closeModal('upload-public-file-modal');
+            loadPublicFiles();
+        } else {
+            showNotification('Failed to upload file: ' + data.error, 'error');
+        }
+    } catch (err) {
+        showNotification('Failed to upload file', 'error');
+        console.error(err);
+    }
+}
+
+// ==================== IMAGE-SPECIFIC FILES ====================
+
+function showImageFilesModal(imageId, imageName) {
+    const image = images.find(img => img.id === imageId);
+    if (!image) return;
+
+    document.getElementById('image-files-image-name').textContent = imageName;
+    document.getElementById('image-files-image-id').value = imageId;
+
+    const imageFiles = image.files || [];
+    renderImageFilesTable(imageFiles, imageId, imageName);
+
+    showModal('image-files-modal');
+}
+
+function renderImageFilesTable(files, imageId, imageName) {
+    const container = document.getElementById('image-files-table');
+
+    if (files.length === 0) {
+        container.innerHTML = '<p style="color: #94a3b8; padding: 20px; text-align: center;">No files for this image yet.</p>';
+        return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'data-table';
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th>Filename</th>
+                <th>Description</th>
+                <th>Type</th>
+                <th>Size</th>
+                <th>Downloads</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${files.map(file => `
+                <tr>
+                    <td><code style="color: #38bdf8;">${escapeHtml(file.filename)}</code></td>
+                    <td>${escapeHtml(file.description || '-')}</td>
+                    <td><span class="badge">${escapeHtml(file.content_type || 'unknown')}</span></td>
+                    <td>${formatBytes(file.size)}</td>
+                    <td>${file.download_count || 0}</td>
+                    <td>
+                        <button class="btn btn-small" onclick="copyFileDownloadURL('${escapeHtml(file.filename)}')">📋 Copy URL</button>
+                        <button class="btn btn-small" onclick="showEditFileModal(${file.id})">Edit</button>
+                        <button class="btn btn-danger btn-small" onclick="deleteFile(${file.id}, '${escapeHtml(file.filename)}')">Delete</button>
+                    </td>
+                </tr>
+            `).join('')}
+        </tbody>
+    `;
+
+    container.innerHTML = '';
+    container.appendChild(table);
+}
+
+async function uploadImageFile(event) {
+    event.preventDefault();
+
+    const fileInput = document.getElementById('image-file-upload');
+    const description = document.getElementById('image-file-description').value;
+    const destinationPath = document.getElementById('image-file-destination').value;
+    const autoInstall = document.getElementById('image-file-autoinstall').checked;
+    const imageId = document.getElementById('image-files-image-id').value;
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showNotification('Please select a file', 'error');
+        return;
+    }
+
+    const file = fileInput.files[0];
+
+    if (file.size > 100 * 1024 * 1024) {
+        showNotification('File size exceeds 100MB limit', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('description', description);
+    formData.append('destinationPath', destinationPath);
+    formData.append('autoInstall', autoInstall);
+    formData.append('public', 'false');
+    formData.append('imageId', imageId);
+
+    try {
+        const res = await fetch('/api/files/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showNotification('File uploaded successfully', 'success');
+
+            // Reset form
+            document.getElementById('upload-image-file-form').reset();
+            // Re-check the autoinstall checkbox (reset unchecks it)
+            document.getElementById('image-file-autoinstall').checked = true;
+
+            // Reload images data and refresh the modal
+            await loadImages();
+
+            // Refresh the files table in the modal
+            const imageName = document.getElementById('image-files-image-name').textContent;
+            const image = images.find(img => img.id === parseInt(imageId));
+            if (image) {
+                renderImageFilesTable(image.files || [], imageId, imageName);
+            }
+        } else {
+            showNotification('Failed to upload file: ' + data.error, 'error');
+        }
+    } catch (err) {
+        showNotification('Failed to upload file', 'error');
+        console.error(err);
+    }
+}
+
+// ==================== COMMON FILE OPERATIONS ====================
+
+async function showEditFileModal(fileId) {
+    try {
+        const res = await fetch('/api/files');
+        const data = await res.json();
+
+        if (!data.success) {
+            showNotification('Failed to load file details', 'error');
+            return;
+        }
+
+        const file = (data.data || []).find(f => f.id === fileId);
+        if (!file) {
+            showNotification('File not found', 'error');
+            return;
+        }
+
+        document.getElementById('edit-file-id').value = file.id;
+        document.getElementById('edit-file-name').value = file.filename;
+        document.getElementById('edit-file-description').value = file.description || '';
+        document.getElementById('edit-file-type').value = file.public ? 'Public' : 'Image-Specific';
+        document.getElementById('edit-file-size').value = formatBytes(file.size);
+
+        const serverAddr = window.location.hostname;
+        const port = 8080;
+        const url = `http://${serverAddr}:${port}/files/${file.filename}`;
+        document.getElementById('edit-file-url').textContent = url;
+
+        showModal('edit-file-modal');
+    } catch (err) {
+        showNotification('Failed to load file details', 'error');
+        console.error(err);
+    }
+}
+
+async function updateFile(event) {
+    event.preventDefault();
+
+    const fileId = document.getElementById('edit-file-id').value;
+    const description = document.getElementById('edit-file-description').value;
+
+    try {
+        const res = await fetch(`/api/files/update?id=${fileId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ description })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showNotification('File updated successfully', 'success');
+            closeModal('edit-file-modal');
+            loadPublicFiles();
+            loadImages();
+        } else {
+            showNotification('Failed to update file: ' + data.error, 'error');
+        }
+    } catch (err) {
+        showNotification('Failed to update file', 'error');
+        console.error(err);
+    }
+}
+
+async function deleteFile(fileId, filename) {
+    if (!confirm(`Are you sure you want to delete "${filename}"?\n\nThis will permanently delete the file from the server.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/files/delete?id=${fileId}`, {
+            method: 'DELETE'
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showNotification('File deleted successfully', 'success');
+            loadPublicFiles();
+            loadImages();
+        } else {
+            showNotification('Failed to delete file: ' + data.error, 'error');
+        }
+    } catch (err) {
+        showNotification('Failed to delete file', 'error');
+        console.error(err);
+    }
+}
+
+function copyFileDownloadURL(filename) {
+    const serverAddr = window.location.hostname;
+    const port = 8080;
+    const url = `http://${serverAddr}:${port}/files/${filename}`;
+
+    navigator.clipboard.writeText(url).then(() => {
+        showNotification('Download URL copied to clipboard', 'success');
+    }).catch(() => {
+        showNotification('Failed to copy URL', 'error');
+    });
+}
+
+function copyFileURL() {
+    const url = document.getElementById('edit-file-url').textContent;
+    navigator.clipboard.writeText(url).then(() => {
+        showNotification('URL copied to clipboard', 'success');
+    }).catch(() => {
+        showNotification('Failed to copy URL', 'error');
+    });
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }

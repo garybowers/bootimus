@@ -773,6 +773,7 @@
             <button class="tab active" data-tab="server">Server Info</button>
             <button class="tab" data-tab="clients">Clients</button>
             <button class="tab" data-tab="images">Images</button>
+            <button class="tab" data-tab="public-files">Public Files</button>
             <button class="tab" data-tab="users">Users</button>
             <button class="tab" data-tab="logs">Boot Logs</button>
         </div>
@@ -810,6 +811,21 @@
                 <div id="images-table" class="loading">
                     <div class="spinner"></div>
                     Loading images...
+                </div>
+            </div>
+        </div>
+
+        <!-- Public Files Tab -->
+        <div id="public-files-tab" class="tab-content">
+            <div class="card">
+                <h2>Public Files</h2>
+                <p style="color: #94a3b8; margin-bottom: 20px;">Public files are available to all clients. For image-specific files, go to the Images tab and manage files for each image.</p>
+
+                <button class="btn btn-primary" onclick="showUploadPublicFileModal()">+ Upload Public File</button>
+
+                <div id="public-files-table" class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading files...</p>
                 </div>
             </div>
         </div>
@@ -1082,6 +1098,123 @@
                 </div>
                 <button type="submit" class="btn btn-primary">Save Configuration</button>
                 <button type="button" class="btn" onclick="closeModal('autoinstall-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Upload File Modal -->
+    <!-- Upload Public File Modal -->
+    <div id="upload-public-file-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Upload Public File</h2>
+            </div>
+            <form id="upload-public-file-form" onsubmit="uploadPublicFile(event)">
+                <div class="form-group">
+                    <label>File *</label>
+                    <input type="file" id="public-file-upload" class="form-control" required>
+                    <small style="color: #94a3b8;">Max file size: 100MB. This file will be available to all clients.</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <input type="text" id="public-file-description" class="form-control" placeholder="Brief description of this file">
+                </div>
+
+                <button type="submit" class="btn btn-primary">Upload File</button>
+                <button type="button" class="btn" onclick="closeModal('upload-public-file-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Image Files Modal -->
+    <div id="image-files-modal" class="modal">
+        <div class="modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>Files for <span id="image-files-image-name"></span></h2>
+            </div>
+            <input type="hidden" id="image-files-image-id">
+
+            <!-- Upload Form -->
+            <div style="background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">Upload New File</h3>
+                <form id="upload-image-file-form" onsubmit="uploadImageFile(event)">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-size: 14px;">File *</label>
+                            <input type="file" id="image-file-upload" class="form-control" required>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-size: 14px;">Destination Path</label>
+                            <input type="text" id="image-file-destination" class="form-control" placeholder="e.g., /root/setup.sh">
+                            <small style="color: #94a3b8; font-size: 11px;">Where to save on installed system</small>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-size: 14px;">Description</label>
+                            <input type="text" id="image-file-description" class="form-control" placeholder="Brief description">
+                        </div>
+                        <div style="display: flex; align-items: center; padding-top: 20px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="image-file-autoinstall" checked style="margin: 0; cursor: pointer;">
+                                <span>Include in autoinstall</span>
+                            </label>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+                <small style="color: #94a3b8; display: block; margin-top: 8px;">Max file size: 100MB. Files will be automatically downloaded during OS installation.</small>
+            </div>
+
+            <!-- Files Table -->
+            <div id="image-files-table"></div>
+
+            <div style="margin-top: 20px;">
+                <button type="button" class="btn" onclick="closeModal('image-files-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit File Modal -->
+    <div id="edit-file-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit File</h2>
+            </div>
+            <form id="edit-file-form" onsubmit="updateFile(event)">
+                <input type="hidden" id="edit-file-id">
+
+                <div class="form-group">
+                    <label>Filename</label>
+                    <input type="text" id="edit-file-name" class="form-control" readonly style="background: #0f172a;">
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <input type="text" id="edit-file-description" class="form-control" placeholder="Brief description of this file">
+                </div>
+
+                <div class="form-group">
+                    <label>Type</label>
+                    <input type="text" id="edit-file-type" class="form-control" readonly style="background: #0f172a;">
+                </div>
+
+                <div class="form-group">
+                    <label>Size</label>
+                    <input type="text" id="edit-file-size" class="form-control" readonly style="background: #0f172a;">
+                </div>
+
+                <div class="form-group">
+                    <label>Download URL</label>
+                    <div style="padding: 10px; background: #1e293b; border: 1px solid #334155; border-radius: 4px;">
+                        <code id="edit-file-url" style="color: #94a3b8; word-break: break-all;"></code>
+                        <button type="button" class="btn btn-small" onclick="copyFileURL()" style="margin-left: 10px;">Copy</button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn" onclick="closeModal('edit-file-modal')">Cancel</button>
             </form>
         </div>
     </div>

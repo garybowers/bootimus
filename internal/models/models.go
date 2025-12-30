@@ -128,3 +128,23 @@ type BootLog struct {
 	ErrorMsg   string     `json:"error_msg,omitempty"`
 	IPAddress  string     `json:"ip_address,omitempty"`
 }
+
+// CustomFile represents a custom file that can be served to clients
+type CustomFile struct {
+	ID              uint           `gorm:"primarykey" json:"id"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	Filename        string         `gorm:"uniqueIndex;not null" json:"filename"`     // Stored filename (unique)
+	OriginalName    string         `gorm:"not null" json:"original_name"`            // Original upload name
+	Description     string         `json:"description"`
+	Size            int64          `json:"size"`
+	ContentType     string         `json:"content_type"`
+	Public          bool           `gorm:"default:false" json:"public"`              // Public or image-specific
+	ImageID         *uint          `gorm:"index" json:"image_id,omitempty"`
+	Image           *Image         `gorm:"foreignKey:ImageID" json:"image,omitempty"`
+	DownloadCount   int            `gorm:"default:0" json:"download_count"`
+	LastDownload    *time.Time     `json:"last_download,omitempty"`
+	DestinationPath string         `json:"destination_path,omitempty"`               // Where to save on installed system (e.g., /root/setup.sh)
+	AutoInstall     bool           `gorm:"default:true" json:"auto_install"`         // Include in autoinstall script
+}
