@@ -13,12 +13,14 @@ import (
 
 // BootFiles represents extracted kernel and initrd
 type BootFiles struct {
-	Kernel         string
-	Initrd         string
-	BootParams     string
-	Distro         string
-	ExtractedDir   string // Directory containing full ISO extraction for HTTP boot
-	SquashfsPath   string // Path to filesystem.squashfs within the ISO (for Ubuntu/Debian)
+	Kernel          string
+	Initrd          string
+	BootParams      string
+	Distro          string
+	ExtractedDir    string // Directory containing full ISO extraction for HTTP boot
+	SquashfsPath    string // Path to filesystem.squashfs within the ISO (for Ubuntu/Debian)
+	NetbootRequired bool   // Whether netboot files are required instead of ISO extraction
+	NetbootURL      string // URL to download netboot tarball from
 }
 
 // Extractor handles ISO mounting and boot file extraction
@@ -204,6 +206,9 @@ func (e *Extractor) detectUbuntuDebian(img *iso9660.Image) (*BootFiles, error) {
 	if found := findInstallVariant(img); found != nil {
 		found.Distro = "debian"
 		found.BootParams = ""
+		// Debian netinst ISOs need proper netboot files for network installation
+		found.NetbootRequired = true
+		found.NetbootURL = "http://ftp.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/netboot.tar.gz"
 		return found, nil
 	}
 
@@ -215,13 +220,16 @@ func (e *Extractor) detectUbuntuDebian(img *iso9660.Image) (*BootFiles, error) {
 		bootParams string
 	}{
 		// Ubuntu live server (newer versions)
-		{"/casper/vmlinuz", "/casper/initrd", "ubuntu", "boot=casper fetch= "},
-		{"/casper/vmlinuz", "/casper/initrd.lz", "ubuntu", "boot=casper fetch= "},
-		{"/casper/vmlinuz", "/casper/initrd.gz", "ubuntu", "boot=casper fetch= "},
+		{"/casper/vmlinuz", "/casper/initrd", "ubuntu", "boot=casper root=/dev/ram0 ramdisk_size=1500000 cloud-init=disabled "},
+		{"/casper/vmlinuz", "/casper/initrd.lz", "ubuntu", "boot=casper root=/dev/ram0 ramdisk_size=1500000 cloud-init=disabled "},
+		{"/casper/vmlinuz", "/casper/initrd.gz", "ubuntu", "boot=casper root=/dev/ram0 ramdisk_size=1500000 cloud-init=disabled "},
 		// Ubuntu live (desktop)
-		{"/casper/vmlinuz.efi", "/casper/initrd.lz", "ubuntu", "boot=casper fetch= "},
-		{"/casper/vmlinuz.efi", "/casper/initrd", "ubuntu", "boot=casper fetch= "},
-		{"/casper/vmlinuz.efi", "/casper/initrd.gz", "ubuntu", "boot=casper fetch= "},
+		{"/casper/vmlinuz.efi", "/casper/initrd.lz", "ubuntu", "boot=casper root=/dev/ram0 ramdisk_size=1500000 cloud-init=disabled "},
+		{"/casper/vmlinuz.efi", "/casper/initrd", "ubuntu", "boot=casper root=/dev/ram0 ramdisk_size=1500000 cloud-init=disabled "},
+		{"/casper/vmlinuz.efi", "/casper/initrd.gz", "ubuntu", "boot=casper root=/dev/ram0 ramdisk_size=1500000 cloud-init=disabled "},
+		// Ubuntu Server installer (uses /install like Debian)
+		{"/install/vmlinuz", "/install/initrd.gz", "ubuntu-installer", ""},
+		{"/install.amd/vmlinuz", "/install.amd/initrd.gz", "ubuntu-installer", ""},
 		// Debian installer
 		{"/install/vmlinuz", "/install/initrd.gz", "debian", ""},
 		{"/install.amd/vmlinuz", "/install.amd/initrd.gz", "debian", ""},
@@ -241,12 +249,26 @@ func (e *Extractor) detectUbuntuDebian(img *iso9660.Image) (*BootFiles, error) {
 				return found, nil
 			}
 		} else if fileExists(img, p.kernel) && fileExists(img, p.initrd) {
-			return &BootFiles{
+			bootFiles := &BootFiles{
 				Kernel:     p.kernel,
 				Initrd:     p.initrd,
 				Distro:     p.distro,
 				BootParams: p.bootParams,
-			}, nil
+			}
+			// Mark Debian installer ISOs as requiring netboot
+			if p.distro == "debian" && (strings.Contains(p.kernel, "/install") || strings.Contains(p.kernel, "/install.amd")) {
+				bootFiles.NetbootRequired = true
+				bootFiles.NetbootURL = "http://ftp.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/netboot.tar.gz"
+			}
+			// Mark Ubuntu Server installer ISOs as requiring netboot
+			if p.distro == "ubuntu-installer" && (strings.Contains(p.kernel, "/install") || strings.Contains(p.kernel, "/install.amd")) {
+				bootFiles.Distro = "ubuntu" // Use "ubuntu" for boot configuration
+				bootFiles.NetbootRequired = true
+				// Ubuntu netboot URLs from archive.ubuntu.com
+				// For 24.04 LTS (Noble)
+				bootFiles.NetbootURL = "http://archive.ubuntu.com/ubuntu/dists/noble/main/installer-amd64/current/legacy-images/netboot/netboot.tar.gz"
+			}
+			return bootFiles, nil
 		}
 	}
 

@@ -24,13 +24,11 @@ import (
 	"bootimus/bootloaders"
 	"bootimus/internal/admin"
 	"bootimus/internal/auth"
-	"bootimus/internal/database"
 	"bootimus/internal/models"
 	"bootimus/internal/storage"
 	"bootimus/web"
 
 	"github.com/pin/tftp/v3"
-	"gorm.io/gorm"
 )
 
 var Version = "dev" // Overridden at build time
@@ -65,16 +63,15 @@ func panicRecoveryMiddleware(next http.Handler) http.Handler {
 }
 
 type Config struct {
-	TFTPPort    int
-	HTTPPort    int
-	AdminPort   int
-	BootDir     string               // Directory for custom bootloaders (/data/bootloaders)
-	DataDir     string               // Base data directory (/data)
-	ISODir      string               // ISO directory (/data/isos)
-	ServerAddr  string
-	DB          *database.DB         // PostgreSQL database (nil if using SQLite)
-	SQLiteStore *storage.SQLiteStore // SQLite store (nil if using PostgreSQL)
-	Auth        *auth.Manager
+	TFTPPort   int
+	HTTPPort   int
+	AdminPort  int
+	BootDir    string        // Directory for custom bootloaders (/data/bootloaders)
+	DataDir    string        // Base data directory (/data)
+	ISODir     string        // ISO directory (/data/isos)
+	ServerAddr string
+	Storage    storage.Storage // Unified storage interface (PostgreSQL or SQLite)
+	Auth       *auth.Manager
 }
 
 type Server struct {
@@ -114,6 +111,9 @@ var globalLogBuffer struct {
 	buffer []string
 }
 
+// Global log broadcaster reference for real-time log streaming
+var globalLogBroadcaster *LogBroadcaster
+
 // LogWriter is a custom writer that captures logs and writes to stdout
 type LogWriter struct{}
 
@@ -127,6 +127,11 @@ func (lw *LogWriter) Write(p []byte) (n int, err error) {
 		globalLogBuffer.buffer = globalLogBuffer.buffer[1:]
 	}
 	globalLogBuffer.mu.Unlock()
+
+	// Broadcast to live log viewers if broadcaster is initialized
+	if globalLogBroadcaster != nil {
+		globalLogBroadcaster.Broadcast(msg)
+	}
 
 	// Write to stdout
 	return os.Stdout.Write(p)
@@ -272,12 +277,17 @@ func (w *completionLogger) Write(b []byte) (int, error) {
 }
 
 func New(cfg *Config) *Server {
+	lb := NewLogBroadcaster()
+
+	// Set global broadcaster so LogWriter can broadcast all logs in real-time
+	globalLogBroadcaster = lb
+
 	return &Server{
 		config: cfg,
 		activeSessions: &ActiveSessions{
 			sessions: make(map[string]*ActiveSession),
 		},
-		logBroadcaster: NewLogBroadcaster(),
+		logBroadcaster: lb,
 	}
 }
 
@@ -339,7 +349,7 @@ func (s *Server) Start() error {
 		}
 
 		// Sync ISOs with database
-		if s.config.DB != nil {
+		if s.config.Storage != nil {
 			isoFiles := make([]struct{ Name, Filename string; Size int64 }, len(isos))
 			for i, iso := range isos {
 				isoFiles[i] = struct{ Name, Filename string; Size int64 }{
@@ -348,7 +358,8 @@ func (s *Server) Start() error {
 					Size:     iso.Size,
 				}
 			}
-			if err := s.config.DB.SyncImages(isoFiles); err != nil {
+
+			if err := s.config.Storage.SyncImages(isoFiles); err != nil {
 				log.Printf("Warning: Failed to sync images with database: %v", err)
 			}
 		}
@@ -418,8 +429,21 @@ func (s *Server) Shutdown() error {
 		log.Println("TFTP server will stop after current transfers complete")
 	}
 
-	s.wg.Wait()
-	log.Println("All servers stopped")
+	// Wait for goroutines with 10 second timeout
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Println("All servers stopped gracefully")
+	case <-time.After(10 * time.Second):
+		log.Println("Shutdown timeout reached (10s) - forcing shutdown")
+		log.Println("Some goroutines may not have completed cleanly")
+	}
+
 	return nil
 }
 
@@ -614,13 +638,21 @@ func (s *Server) startHTTPServer() error {
 			return
 		}
 
+		// Extract MAC address from query parameter if provided
+		macAddress := r.URL.Query().Get("mac")
+		if macAddress == "" {
+			macAddress = "unknown"
+		} else {
+			macAddress = strings.ToLower(strings.ReplaceAll(macAddress, "-", ":"))
+		}
+
 		// Build full path to ISO
 		fullPath := filepath.Join(s.config.ISODir, decodedFilename)
 
 		// Security check: ensure the path is within ISODir
 		cleanPath := filepath.Clean(fullPath)
 		if !strings.HasPrefix(cleanPath, filepath.Clean(s.config.ISODir)) {
-			log.Printf("ISO: Path traversal attempt: %s from %s", decodedFilename, r.RemoteAddr)
+			s.logAndBroadcast("ISO: Path traversal attempt from MAC %s (IP: %s): %s", macAddress, r.RemoteAddr, decodedFilename)
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -628,7 +660,7 @@ func (s *Server) startHTTPServer() error {
 		// Check if file exists
 		fileInfo, err := os.Stat(fullPath)
 		if err != nil {
-			log.Printf("ISO: File not found: %s", fullPath)
+			s.logAndBroadcast("ISO: File not found (MAC: %s, IP: %s): %s", macAddress, r.RemoteAddr, decodedFilename)
 			http.NotFound(w, r)
 			return
 		}
@@ -639,11 +671,15 @@ func (s *Server) startHTTPServer() error {
 			return
 		}
 
-		// Log start of download (first request without Range header)
-		if r.Header.Get("Range") == "" {
-			s.logAndBroadcast("ISO: Client %s started downloading %s (%d MB)", r.RemoteAddr, decodedFilename, fileInfo.Size()/1024/1024)
+		// Log download requests
+		rangeHeader := r.Header.Get("Range")
+		if rangeHeader == "" {
+			s.logAndBroadcast("ISO Download: Client MAC %s (IP: %s) started downloading %s (%d MB)", macAddress, r.RemoteAddr, decodedFilename, fileInfo.Size()/1024/1024)
 			// Add to active sessions
 			s.activeSessions.Add(r.RemoteAddr, decodedFilename, fileInfo.Size(), "downloading")
+		} else {
+			// Log range requests for debugging
+			log.Printf("ISO: Range request from MAC %s (IP: %s) for %s - Range: %s", macAddress, r.RemoteAddr, decodedFilename, rangeHeader)
 		}
 
 		// Wrap ResponseWriter to detect when transfer completes
@@ -671,13 +707,21 @@ func (s *Server) startHTTPServer() error {
 			return
 		}
 
+		// Extract MAC address from query parameter if provided
+		macAddress := r.URL.Query().Get("mac")
+		if macAddress == "" {
+			macAddress = "unknown"
+		} else {
+			macAddress = strings.ToLower(strings.ReplaceAll(macAddress, "-", ":"))
+		}
+
 		// Build full path to boot file (in isos directory subdirs)
 		fullPath := filepath.Join(s.config.ISODir, decodedPath)
 
 		// Security check: ensure the path is within ISO directory
 		cleanPath := filepath.Clean(fullPath)
 		if !strings.HasPrefix(cleanPath, filepath.Clean(s.config.ISODir)) {
-			log.Printf("Boot: Path traversal attempt: %s from %s", decodedPath, r.RemoteAddr)
+			s.logAndBroadcast("Boot: Path traversal attempt from MAC %s (IP: %s): %s", macAddress, r.RemoteAddr, decodedPath)
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -685,7 +729,7 @@ func (s *Server) startHTTPServer() error {
 		// Check if file exists
 		fileInfo, err := os.Stat(fullPath)
 		if err != nil {
-			log.Printf("Boot: File not found: %s", decodedPath)
+			s.logAndBroadcast("Boot: File not found (MAC: %s, IP: %s): %s", macAddress, r.RemoteAddr, decodedPath)
 			http.NotFound(w, r)
 			return
 		}
@@ -698,7 +742,7 @@ func (s *Server) startHTTPServer() error {
 
 		// Only log kernel/initrd fetches, not range requests
 		if r.Header.Get("Range") == "" {
-			s.logAndBroadcast("Boot: Serving %s (%d MB) to %s", decodedPath, fileInfo.Size()/1024/1024, r.RemoteAddr)
+			s.logAndBroadcast("Boot File: Serving %s (%d MB) to MAC %s (IP: %s)", decodedPath, fileInfo.Size()/1024/1024, macAddress, r.RemoteAddr)
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")
 		http.ServeFile(w, r, fullPath)
@@ -756,8 +800,8 @@ func (s *Server) startAdminServer() error {
 func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	log.Println("Setting up admin interface")
 
-	// Create admin handler (pass both DB and SQLiteStore, handler will use whichever is available)
-	adminHandler := admin.NewHandler(s.config.DB, s.config.SQLiteStore, s.config.DataDir, s.config.ISODir, s.config.BootDir, Version)
+	// Create admin handler with unified storage
+	adminHandler := admin.NewHandler(s.config.Storage, s.config.DataDir, s.config.ISODir, s.config.BootDir, Version)
 
 	// Serve embedded static files
 	staticFS, err := fs.Sub(web.Static, "static")
@@ -865,6 +909,9 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/images/download", authWrap(adminHandler.DownloadISO))
 	mux.HandleFunc("/api/downloads", authWrap(adminHandler.ListDownloads))
 	mux.HandleFunc("/api/downloads/progress", authWrap(adminHandler.GetDownloadProgress))
+
+	// Netboot download endpoints
+	mux.HandleFunc("/api/images/netboot/download", authWrap(adminHandler.DownloadNetboot))
 
 	// Auto-install script endpoints
 	mux.HandleFunc("/api/images/autoinstall", authWrap(func(w http.ResponseWriter, r *http.Request) {
@@ -989,14 +1036,14 @@ func (s *Server) handleIPXEMenu(w http.ResponseWriter, r *http.Request) {
 	// Normalise MAC address
 	macAddress = strings.ToLower(strings.ReplaceAll(macAddress, "-", ":"))
 
-	s.logAndBroadcast("Generating iPXE menu for MAC: %s", macAddress)
+	s.logAndBroadcast("Client Connected: MAC %s (IP: %s) requesting boot menu", macAddress, r.RemoteAddr)
 
 	var images []models.Image
 	var err error
 
 	// Get images based on MAC address permissions
-	if s.config.DB != nil {
-		images, err = s.config.DB.GetImagesForClient(macAddress)
+	if s.config.Storage != nil {
+		images, err = s.config.Storage.GetImagesForClient(macAddress)
 		if err != nil {
 			log.Printf("Failed to get images from database: %v", err)
 			// Fall back to scanning filesystem
@@ -1004,7 +1051,7 @@ func (s *Server) handleIPXEMenu(w http.ResponseWriter, r *http.Request) {
 			images = convertISOsToImages(isos)
 		}
 	} else {
-		// No database, use filesystem
+		// No database configured, use filesystem
 		isos, _ := s.scanISOs()
 		images = convertISOsToImages(isos)
 	}
@@ -1050,8 +1097,18 @@ kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}ip=dhcp
 {{else if or (eq $img.Distro "fedora") (eq $img.Distro "centos")}}
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}root=live:http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}} rd.live.image inst.repo=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ inst.stage2=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ rd.neednet=1 ip=dhcp
-{{else if or (eq $img.Distro "ubuntu") (eq $img.Distro "debian")}}
-kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso{{$img.SquashfsPath}} ip=dhcp
+{{else if eq $img.Distro "debian"}}
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}initrd=initrd ip=dhcp priority=critical
+{{else if eq $img.Distro "ubuntu"}}
+{{if $img.NetbootAvailable}}
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}initrd=initrd ip=dhcp
+{{else}}
+{{if $img.SquashfsPath}}
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}initrd=initrd ip=dhcp fetch=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/{{$img.SquashfsPath}}
+{{else}}
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}initrd=initrd ip=dhcp url=http://{{$.ServerAddr}}:{{$.HTTPPort}}/isos/{{$img.EncodedFilename}}
+{{end}}
+{{end}}
 {{else if eq $img.Distro "freebsd"}}
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz vfs.root.mountfrom=cd9660:/dev/md0 kernelname=/boot/kernel/kernel
 {{else}}
@@ -1097,6 +1154,7 @@ reboot
 		AutoInstallURL      string
 		AutoInstallParam    string
 		SquashfsPath        string
+		NetbootAvailable    bool
 	}
 
 	imageData := make([]ImageData, len(images))
@@ -1142,6 +1200,7 @@ reboot
 			AutoInstallURL:     autoInstallURL,
 			AutoInstallParam:   autoInstallParam,
 			SquashfsPath:       img.SquashfsPath,
+			NetbootAvailable:   img.NetbootAvailable,
 		}
 	}
 
@@ -1171,13 +1230,14 @@ func (s *Server) handleListISOs(w http.ResponseWriter, r *http.Request) {
 	var images []models.Image
 	var err error
 
-	if s.config.DB != nil {
-		images, err = s.config.DB.GetImagesForClient(macAddress)
+	if s.config.Storage != nil {
+		images, err = s.config.Storage.GetImagesForClient(macAddress)
 		if err != nil {
 			http.Error(w, "Failed to fetch images", http.StatusInternalServerError)
 			return
 		}
 	} else {
+		// No database, use filesystem
 		isos, _ := s.scanISOs()
 		images = convertISOsToImages(isos)
 	}
@@ -1219,19 +1279,16 @@ func (s *Server) handleCustomFile(w http.ResponseWriter, r *http.Request) {
 
 	// Get file metadata from database
 	var file *models.CustomFile
-	if s.config.SQLiteStore != nil {
-		file, err = s.config.SQLiteStore.GetCustomFileByFilename(cleanFilename)
-	} else if s.config.DB != nil {
-		var dbFile models.CustomFile
-		err = s.config.DB.Preload("Image").Where("filename = ?", cleanFilename).First(&dbFile).Error
-		if err == nil {
-			file = &dbFile
+	if s.config.Storage != nil {
+		file, err = s.config.Storage.GetCustomFileByFilename(cleanFilename)
+		if err != nil || file == nil {
+			log.Printf("CustomFile: File not found in database: %s", cleanFilename)
+			http.NotFound(w, r)
+			return
 		}
-	}
-
-	if err != nil || file == nil {
-		log.Printf("CustomFile: File not found in database: %s", cleanFilename)
-		http.NotFound(w, r)
+	} else {
+		log.Printf("CustomFile: No database configured")
+		http.Error(w, "Custom files require database", http.StatusInternalServerError)
 		return
 	}
 
@@ -1275,13 +1332,8 @@ func (s *Server) handleCustomFile(w http.ResponseWriter, r *http.Request) {
 
 	// Increment download count in background
 	go func() {
-		if s.config.SQLiteStore != nil {
-			s.config.SQLiteStore.IncrementFileDownloadCount(file.ID)
-		} else if s.config.DB != nil {
-			s.config.DB.Model(&models.CustomFile{}).Where("id = ?", file.ID).Updates(map[string]interface{}{
-				"download_count": gorm.Expr("download_count + 1"),
-				"last_download":  gorm.Expr("CURRENT_TIMESTAMP"),
-			})
+		if s.config.Storage != nil {
+			s.config.Storage.IncrementFileDownloadCount(file.ID)
 		}
 	}()
 
@@ -1320,18 +1372,14 @@ func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request)
 	var image *models.Image
 	var err error
 
-	if s.config.SQLiteStore != nil {
-		image, err = s.config.SQLiteStore.GetImage(path)
-	} else if s.config.DB != nil {
-		var dbImage models.Image
-		err = s.config.DB.Where("filename = ?", path).First(&dbImage).Error
-		if err == nil {
-			image = &dbImage
+	if s.config.Storage != nil {
+		image, err = s.config.Storage.GetImage(path)
+		if err != nil || image == nil {
+			http.Error(w, "Image not found", http.StatusNotFound)
+			return
 		}
-	}
-
-	if err != nil || image == nil {
-		http.Error(w, "Image not found", http.StatusNotFound)
+	} else {
+		http.Error(w, "Auto-install requires database", http.StatusInternalServerError)
 		return
 	}
 
@@ -1343,10 +1391,8 @@ func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request)
 
 	// Get custom files for this image
 	var customFiles []*models.CustomFile
-	if s.config.SQLiteStore != nil {
-		customFiles, _ = s.config.SQLiteStore.ListCustomFilesByImage(image.ID)
-	} else if s.config.DB != nil {
-		s.config.DB.Where("image_id = ? AND auto_install = ?", image.ID, true).Find(&customFiles)
+	if s.config.Storage != nil {
+		customFiles, _ = s.config.Storage.ListCustomFilesByImage(image.ID)
 	}
 
 	// Inject file download commands into the script

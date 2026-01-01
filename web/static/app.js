@@ -684,11 +684,20 @@ function renderImagesTable() {
                                     </div>
                                     <div class="progress-text">${extractionProgress[img.filename].status}</div>
                                 </div>
-                            ` : (img.extracted ? '<span style="color: #4caf50;">✓ Ready</span>' : '<span style="color: #999;">Not extracted</span>')}
+                            ` : (img.netboot_required ?
+                                (img.netboot_available ?
+                                    '<span style="color: #4caf50;">✓ Netboot Ready</span>' :
+                                    '<span style="color: #ff9800;">⚠ Netboot Required</span>') :
+                                (img.extracted ? '<span style="color: #4caf50;">✓ Ready</span>' : '<span style="color: #999;">Not extracted</span>')
+                            )}
                         </td>
                         <td>
-                            ${!img.extracted && !extractionProgress[img.filename] ?
+                            ${!img.extracted && !extractionProgress[img.filename] && !img.netboot_required ?
                                 '<button class="btn btn-success btn-sm" onclick="extractImage(\''+img.filename+'\', \''+img.name+'\')">Extract Kernel</button>' :
+                                ''
+                            }
+                            ${img.netboot_required && !img.netboot_available ?
+                                '<button class="btn btn-warning btn-sm" onclick="downloadNetboot(\''+img.filename+'\', \''+img.name+'\')">⬇ Download Netboot</button>' :
                                 ''
                             }
                             ${extractionProgress[img.filename] ?
@@ -834,6 +843,54 @@ async function extractImage(filename, name) {
         delete extractionProgress[filename];
         renderImagesTable();
         showAlert('Failed to extract image', 'error');
+    }
+}
+
+async function downloadNetboot(filename, name) {
+    if (!confirm(`Download netboot files for ${name}?\n\nThis will download and extract the proper network boot files required for Debian/Ubuntu network installation.`)) return;
+
+    try {
+        // Set initial progress
+        extractionProgress[filename] = { progress: 0, status: 'Downloading netboot...' };
+        renderImagesTable();
+
+        // Simulate progress updates
+        const progressInterval = setInterval(() => {
+            if (extractionProgress[filename] && extractionProgress[filename].progress < 90) {
+                extractionProgress[filename].progress += 10;
+                if (extractionProgress[filename].progress < 30) {
+                    extractionProgress[filename].status = 'Downloading tarball...';
+                } else if (extractionProgress[filename].progress < 60) {
+                    extractionProgress[filename].status = 'Extracting files...';
+                } else {
+                    extractionProgress[filename].status = 'Installing netboot files...';
+                }
+                renderImagesTable();
+            }
+        }, 500);
+
+        const res = await fetch(`${API_BASE}/images/netboot/download?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
+        const data = await res.json();
+
+        clearInterval(progressInterval);
+
+        if (data.success) {
+            extractionProgress[filename] = { progress: 100, status: 'Complete!' };
+            renderImagesTable();
+            setTimeout(() => {
+                delete extractionProgress[filename];
+                loadImages();
+                showAlert(data.message || 'Netboot files downloaded successfully', 'success');
+            }, 1000);
+        } else {
+            delete extractionProgress[filename];
+            renderImagesTable();
+            showAlert(data.error || 'Netboot download failed', 'error');
+        }
+    } catch (err) {
+        delete extractionProgress[filename];
+        renderImagesTable();
+        showAlert('Failed to download netboot files', 'error');
     }
 }
 

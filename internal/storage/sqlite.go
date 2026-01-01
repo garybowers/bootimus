@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"crypto/rand"
 	"fmt"
 	"path/filepath"
 
@@ -27,12 +26,16 @@ func NewSQLiteStore(dataDir string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to open SQLite database: %w", err)
 	}
 
-	// Run migrations
-	if err := db.AutoMigrate(&models.User{}, &models.Client{}, &models.Image{}, &models.BootLog{}, &models.CustomFile{}); err != nil {
-		return nil, fmt.Errorf("failed to run migrations: %w", err)
-	}
-
 	return &SQLiteStore{db: db}, nil
+}
+
+// AutoMigrate runs database migrations for SQLite
+func (s *SQLiteStore) AutoMigrate() error {
+	// Run migrations
+	if err := s.db.AutoMigrate(&models.User{}, &models.Client{}, &models.Image{}, &models.BootLog{}, &models.CustomFile{}); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+	return nil
 }
 
 // Client operations
@@ -274,6 +277,105 @@ func (s *SQLiteStore) ListCustomFilesByImage(imageID uint) ([]*models.CustomFile
 	return files, nil
 }
 
+// GetImagesForClient returns images accessible to a specific MAC address
+func (s *SQLiteStore) GetImagesForClient(macAddress string) ([]models.Image, error) {
+	var images []models.Image
+
+	// First, get public images
+	if err := s.db.Where("enabled = ? AND public = ?", true, true).Find(&images).Error; err != nil {
+		return nil, err
+	}
+
+	// Then, get client-specific images
+	var client models.Client
+	if err := s.db.Where("mac_address = ? AND enabled = ?", macAddress, true).First(&client).Error; err == nil {
+		// Client found, get their specific images from AllowedImages
+		if len(client.AllowedImages) > 0 {
+			var clientImages []models.Image
+			if err := s.db.Where("filename IN ? AND enabled = ?", client.AllowedImages, true).Find(&clientImages).Error; err == nil {
+				images = append(images, clientImages...)
+			}
+		}
+	}
+
+	return images, nil
+}
+
+// LogBootAttempt logs a boot attempt
+func (s *SQLiteStore) LogBootAttempt(macAddress, imageName, ipAddress string, success bool, errorMsg string) error {
+	bootLog := models.BootLog{
+		MACAddress: macAddress,
+		ImageName:  imageName,
+		IPAddress:  ipAddress,
+		Success:    success,
+		ErrorMsg:   errorMsg,
+	}
+
+	// Try to link to existing client and image
+	var client models.Client
+	if err := s.db.Where("mac_address = ?", macAddress).First(&client).Error; err == nil {
+		bootLog.ClientID = &client.ID
+	}
+
+	var image models.Image
+	if err := s.db.Where("name = ?", imageName).First(&image).Error; err == nil {
+		bootLog.ImageID = &image.ID
+	}
+
+	return s.db.Create(&bootLog).Error
+}
+
+// UpdateClientBootStats updates client boot statistics
+func (s *SQLiteStore) UpdateClientBootStats(macAddress string) error {
+	return s.db.Model(&models.Client{}).
+		Where("mac_address = ?", macAddress).
+		Updates(map[string]interface{}{
+			"last_boot":  gorm.Expr("CURRENT_TIMESTAMP"),
+			"boot_count": gorm.Expr("boot_count + 1"),
+		}).Error
+}
+
+// UpdateImageBootStats updates image boot statistics
+func (s *SQLiteStore) UpdateImageBootStats(imageName string) error {
+	return s.db.Model(&models.Image{}).
+		Where("name = ?", imageName).
+		Updates(map[string]interface{}{
+			"last_booted": gorm.Expr("CURRENT_TIMESTAMP"),
+			"boot_count":  gorm.Expr("boot_count + 1"),
+		}).Error
+}
+
+// SyncImages syncs filesystem ISOs with database
+func (s *SQLiteStore) SyncImages(isoFiles []struct{ Name, Filename string; Size int64 }) error {
+	for _, iso := range isoFiles {
+		var image models.Image
+		err := s.db.Where("filename = ?", iso.Filename).First(&image).Error
+
+		if err == gorm.ErrRecordNotFound {
+			// Create new image
+			image = models.Image{
+				Name:     iso.Name,
+				Filename: iso.Filename,
+				Size:     iso.Size,
+				Enabled:  true,
+				Public:   true, // Default to public
+			}
+			if err := s.db.Create(&image).Error; err != nil {
+				return fmt.Errorf("failed to create image %s: %w", iso.Name, err)
+			}
+		} else if err == nil {
+			// Update existing image size if changed
+			if image.Size != iso.Size {
+				s.db.Model(&image).Update("size", iso.Size)
+			}
+		} else {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // Close closes the database connection
 func (s *SQLiteStore) Close() error {
 	db, err := s.db.DB()
@@ -281,22 +383,4 @@ func (s *SQLiteStore) Close() error {
 		return err
 	}
 	return db.Close()
-}
-
-// Helper functions for password generation
-func generateRandomPassword(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-	b := make([]byte, length)
-	for i := range b {
-		b[i] = charset[randInt(len(charset))]
-	}
-	return string(b)
-}
-
-func randInt(max int) int {
-	var b [1]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return 0
-	}
-	return int(b[0]) % max
 }

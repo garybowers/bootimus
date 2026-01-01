@@ -108,6 +108,10 @@ type Image struct {
 	ExtractedAt       *time.Time `json:"extracted_at,omitempty"`
 	SanbootCompatible bool       `gorm:"default:true" json:"sanboot_compatible"` // Whether ISO supports sanboot
 	SanbootHint       string     `json:"sanboot_hint,omitempty"`                 // Hint message if sanboot incompatible
+	// Netboot fields (for Debian/Ubuntu proper netboot images)
+	NetbootRequired   bool       `gorm:"default:false" json:"netboot_required"`  // Whether proper netboot images are required
+	NetbootAvailable  bool       `gorm:"default:false" json:"netboot_available"` // Whether netboot files have been downloaded
+	NetbootURL        string     `json:"netboot_url,omitempty"`                  // URL to download netboot tarball from
 	// Unattended installation fields
 	AutoInstallScript     string `gorm:"type:text" json:"auto_install_script,omitempty"`      // Script content (preseed, kickstart, autounattend.xml)
 	AutoInstallEnabled    bool   `gorm:"default:false" json:"auto_install_enabled"`           // Enable auto-install script injection

@@ -3,7 +3,7 @@ package cmd
 import (
 	"log"
 
-	"bootimus/internal/database"
+	"bootimus/internal/storage"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -21,7 +21,7 @@ func init() {
 }
 
 func runMigrate(cmd *cobra.Command, args []string) {
-	dbCfg := &database.Config{
+	dbCfg := &storage.Config{
 		Host:     viper.GetString("db.host"),
 		Port:     viper.GetInt("db.port"),
 		User:     viper.GetString("db.user"),
@@ -30,13 +30,14 @@ func runMigrate(cmd *cobra.Command, args []string) {
 		SSLMode:  viper.GetString("db.sslmode"),
 	}
 
-	db, err := database.New(dbCfg)
+	store, err := storage.NewPostgresStore(dbCfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
+	defer store.Close()
 
 	log.Println("Running database migrations...")
-	if err := db.AutoMigrate(); err != nil {
+	if err := store.AutoMigrate(); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 

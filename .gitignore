@@ -1,5 +1,8 @@
 # Binaries
 bootimus
+bootimus-*-linux
+bootimus-*-darwin
+bootimus-*-windows.exe
 *.exe
 *.dll
 *.so

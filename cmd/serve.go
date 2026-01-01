@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"bootimus/internal/auth"
-	"bootimus/internal/database"
 	"bootimus/internal/server"
 	"bootimus/internal/storage"
 
@@ -22,8 +21,6 @@ const (
 	colorLightGreen = "\033[92m"
 	colorYellow     = "\033[33m"
 )
-
-var version = "dev" // Overridden at build time
 
 var resetAdminPassword bool
 
@@ -48,7 +45,7 @@ func printBanner() {
 \____/\____/\____/\__/_/_/ /_/ /_/\__,_/____/
 `
 	fmt.Printf("%s%s%s", colorLightGreen, banner, colorReset)
-	fmt.Printf("%sVersion: %s%s\n", colorYellow, version, colorReset)
+	fmt.Printf("%sVersion: %s%s\n", colorYellow, server.Version, colorReset)
 	fmt.Printf("%sPXE/HTTP Boot Server%s\n\n", colorLightGreen, colorReset)
 }
 
@@ -83,17 +80,15 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Printf("Auto-detected server IP: %s", serverAddr)
 	}
 
-	// Setup database - either PostgreSQL or SQLite
-	var db *database.DB
-	var sqliteStore *storage.SQLiteStore
-	var userStore database.UserStore
+	// Setup database - either PostgreSQL or SQLite (unified Storage interface)
+	var store storage.Storage
 	var err error
 
 	// Check if PostgreSQL configuration is provided
 	pgHost := viper.GetString("db.host")
 	if pgHost != "" {
 		// Use PostgreSQL if host is configured
-		dbCfg := &database.Config{
+		dbCfg := &storage.Config{
 			Host:     pgHost,
 			Port:     viper.GetInt("db.port"),
 			User:     viper.GetString("db.user"),
@@ -107,7 +102,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		// Retry database connection with exponential backoff
 		maxRetries := 10
 		for i := 0; i < maxRetries; i++ {
-			db, err = database.New(dbCfg)
+			store, err = storage.NewPostgresStore(dbCfg)
 			if err == nil {
 				break
 			}
@@ -124,26 +119,29 @@ func runServe(cmd *cobra.Command, args []string) {
 			log.Fatalf("Failed to connect to database after %d attempts: %v", maxRetries, err)
 		}
 
-		if err := db.AutoMigrate(); err != nil {
+		if err := store.AutoMigrate(); err != nil {
 			log.Fatalf("Failed to run database migrations: %v", err)
 		}
 
 		log.Println("Database connected and migrations completed (PostgreSQL)")
-		userStore = db
 	} else {
 		// Use SQLite if no PostgreSQL host configured
 		log.Printf("No PostgreSQL configuration found, using local SQLite database")
-		sqliteStore, err = storage.NewSQLiteStore(dataDir)
+		store, err = storage.NewSQLiteStore(dataDir)
 		if err != nil {
 			log.Fatalf("Failed to initialize SQLite store: %v", err)
 		}
+
+		if err := store.AutoMigrate(); err != nil {
+			log.Fatalf("Failed to run database migrations: %v", err)
+		}
+
 		log.Printf("Local database initialized at %s/bootimus.db (SQLite)", dataDir)
-		userStore = sqliteStore
 	}
 
 	// Handle admin password reset if requested
 	if resetAdminPassword {
-		password, err := userStore.ResetAdminPassword()
+		password, err := store.ResetAdminPassword()
 		if err != nil {
 			log.Fatalf("Failed to reset admin password: %v", err)
 		}
@@ -160,27 +158,23 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Println("\nContinuing to start server...")
 	}
 
-	// Initialise authentication manager
-	authMgr, err := auth.NewManager(userStore)
+	// Initialise authentication manager (store implements UserStore interface)
+	authMgr, err := auth.NewManager(store)
 	if err != nil {
 		log.Fatalf("Failed to initialise authentication: %v", err)
 	}
 
-	// Set version in server package
-	server.Version = version
-
 	// Create server config
 	cfg := &server.Config{
-		TFTPPort:    viper.GetInt("tftp_port"),
-		HTTPPort:    viper.GetInt("http_port"),
-		AdminPort:   viper.GetInt("admin_port"),
-		BootDir:     bootloadersDir,
-		DataDir:     dataDir, // Base data directory (/data)
-		ISODir:      isoDir,  // ISO subdirectory (/data/isos)
-		ServerAddr:  serverAddr,
-		DB:          db,
-		SQLiteStore: sqliteStore,
-		Auth:        authMgr,
+		TFTPPort:   viper.GetInt("tftp_port"),
+		HTTPPort:   viper.GetInt("http_port"),
+		AdminPort:  viper.GetInt("admin_port"),
+		BootDir:    bootloadersDir,
+		DataDir:    dataDir, // Base data directory (/data)
+		ISODir:     isoDir,  // ISO subdirectory (/data/isos)
+		ServerAddr: serverAddr,
+		Storage:    store, // Unified storage interface
+		Auth:       authMgr,
 	}
 
 	// Create and start server
