@@ -163,6 +163,108 @@ docker-compose up -d
 docker-compose logs -f bootimus
 ```
 
+### Docker Networking Configuration
+
+The default Docker Compose configuration uses an internal bridge network. For PXE boot servers, you may need the container to be directly accessible on your LAN with a static IP.
+
+#### Default Internal Bridge Network
+
+By default, containers use an internal bridge network with port forwarding:
+
+```yaml
+networks:
+  bootimus_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+```
+
+- **Bootimus server**: `172.20.0.3`
+- **PostgreSQL**: `172.20.0.2`
+- **Access from host**: Via port forwarding (e.g., `localhost:8081`)
+
+#### Bridged Network with Static IP on LAN
+
+For production PXE environments, you may want the container directly on your LAN with a static IP. Edit `docker-compose.yml`:
+
+1. **Find your network interface**:
+   ```bash
+   ip addr show  # Linux
+   # Look for your primary interface (e.g., eth0, ens33, enp0s3)
+   ```
+
+2. **Edit docker-compose.yml** and uncomment the `host_bridge` network sections:
+   ```yaml
+   services:
+     bootimus:
+       networks:
+         # Comment out internal bridge
+         # bootimus_net:
+         #   ipv4_address: 172.20.0.3
+         # Enable host bridge
+         host_bridge:
+           ipv4_address: 192.168.1.100  # Your desired static IP
+       environment:
+         BOOTIMUS_SERVER_ADDR: 192.168.1.100  # Set static server address
+
+   networks:
+     # Uncomment and configure for your LAN
+     host_bridge:
+       driver: macvlan
+       driver_opts:
+         parent: eth0  # Your network interface
+       ipam:
+         config:
+           - subnet: 192.168.1.0/24      # Your LAN subnet
+             gateway: 192.168.1.1         # Your LAN gateway
+             ip_range: 192.168.1.100/32   # Container static IP
+   ```
+
+3. **Configure your network details**:
+   - `parent`: Your host's network interface (e.g., `eth0`, `ens33`)
+   - `subnet`: Your LAN subnet (e.g., `192.168.1.0/24`)
+   - `gateway`: Your router's IP (e.g., `192.168.1.1`)
+   - `ip_range`: The static IP for Bootimus (e.g., `192.168.1.100/32`)
+   - `BOOTIMUS_SERVER_ADDR`: Same as the static IP
+
+4. **Start the container**:
+   ```bash
+   docker-compose down
+   docker-compose up -d
+   ```
+
+5. **Verify connectivity**:
+   ```bash
+   # From another machine on the LAN
+   curl http://192.168.1.100:8081
+
+   # Ping the container
+   ping 192.168.1.100
+   ```
+
+**Important Notes**:
+- **macvlan networking**: Container appears as a separate device on your LAN
+- **Host cannot reach container**: The host machine cannot directly communicate with macvlan containers. Use a separate VM/container for admin access, or create a macvlan interface on the host.
+- **DHCP conflicts**: Ensure the static IP is outside your DHCP range or reserved in your DHCP server
+- **Firewall rules**: Container bypasses host firewall - configure container firewall separately if needed
+
+#### Accessing Macvlan Containers from Host
+
+If you need to access the macvlan container from the host machine:
+
+```bash
+# Create a macvlan interface on the host
+sudo ip link add macvlan0 link eth0 type macvlan mode bridge
+sudo ip addr add 192.168.1.101/32 dev macvlan0
+sudo ip link set macvlan0 up
+sudo ip route add 192.168.1.100/32 dev macvlan0
+
+# Now you can access the container from the host
+curl http://192.168.1.100:8081
+```
+
 ## Configuration
 
 Bootimus uses sensible defaults and requires minimal configuration.

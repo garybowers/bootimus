@@ -8,8 +8,9 @@ services:
       POSTGRES_DB: bootimus
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    networks:
+      bootimus_net:
+        ipv4_address: 172.20.0.2
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bootimus"]
       interval: 10s
@@ -35,6 +36,14 @@ services:
       BOOTIMUS_TFTP_PORT: 69
       BOOTIMUS_HTTP_PORT: 8080
       BOOTIMUS_ADMIN_PORT: 8081
+      # Uncomment to set a static server address
+      # BOOTIMUS_SERVER_ADDR: 192.168.1.100
+    networks:
+      bootimus_net:
+        ipv4_address: 172.20.0.3
+      # Uncomment for bridge networking on host network
+      # host_bridge:
+      #   ipv4_address: 192.168.1.100
     ports:
       - "69:69/udp"
       - "8080:8080/tcp"
@@ -46,6 +55,24 @@ services:
     restart: unless-stopped
     # Uncomment to disable database mode
     # command: ["serve", "--db-disable"]
+
+networks:
+  bootimus_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+  # Uncomment to use bridged networking with static IP on your LAN
+  # host_bridge:
+  #   driver: macvlan
+  #   driver_opts:
+  #     parent: eth0  # Change to your host network interface (e.g., eth0, ens33, enp0s3)
+  #   ipam:
+  #     config:
+  #       - subnet: 192.168.1.0/24      # Change to your LAN subnet
+  #         gateway: 192.168.1.1         # Change to your LAN gateway
+  #         ip_range: 192.168.1.100/32   # Static IP for bootimus container
 
 volumes:
   postgres_data:
