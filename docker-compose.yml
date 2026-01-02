@@ -36,7 +36,7 @@ services:
       BOOTIMUS_TFTP_PORT: 69
       BOOTIMUS_HTTP_PORT: 8080
       BOOTIMUS_ADMIN_PORT: 8081
-      # Uncomment to set a static server address
+      # Uncomment to set a static server address (Recommended)
       # BOOTIMUS_SERVER_ADDR: 192.168.1.100
     networks:
       bootimus_net:
