@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -37,6 +38,25 @@ func New(dataDir string) (*Extractor, error) {
 
 // Extract extracts kernel and initrd from an ISO
 func (e *Extractor) Extract(isoPath string) (*BootFiles, error) {
+	// Try ISO9660 first (most common and fastest)
+	bootFiles, err := e.extractViaISO9660(isoPath)
+	if err == nil {
+		return bootFiles, nil
+	}
+
+	log.Printf("ISO9660 extraction failed (%v), trying UDF/mount method", err)
+
+	// Fallback to mount-based extraction (supports UDF, hybrid ISOs)
+	bootFiles, err = e.extractViaMount(isoPath)
+	if err != nil {
+		return nil, fmt.Errorf("both ISO9660 and mount extraction failed: %w", err)
+	}
+
+	return bootFiles, nil
+}
+
+// extractViaISO9660 extracts using pure Go ISO9660 library
+func (e *Extractor) extractViaISO9660(isoPath string) (*BootFiles, error) {
 	// Open ISO file
 	f, err := os.Open(isoPath)
 	if err != nil {
@@ -927,5 +947,272 @@ func extractFile(img *iso9660.Image, isoPath, destPath string) error {
 	defer dest.Close()
 
 	_, err = io.Copy(dest, reader)
+	return err
+}
+
+// extractViaMount uses system mount to read UDF/hybrid ISOs
+func (e *Extractor) extractViaMount(isoPath string) (*BootFiles, error) {
+	// This method requires root privileges or appropriate permissions
+	// Create temporary mount point
+	mountPoint, err := os.MkdirTemp("", "bootimus-iso-mount-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create mount point: %w", err)
+	}
+	defer os.RemoveAll(mountPoint)
+
+	// Mount the ISO
+	log.Printf("Mounting ISO %s at %s (UDF/hybrid mode)", isoPath, mountPoint)
+	if err := e.mountISO(isoPath, mountPoint); err != nil {
+		return nil, fmt.Errorf("failed to mount ISO: %w", err)
+	}
+	defer e.unmountISO(mountPoint)
+
+	// Detect distribution from mounted filesystem
+	bootFiles, err := e.detectFromMountedFS(mountPoint, isoPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to detect distribution from mounted ISO: %w", err)
+	}
+
+	// Extract files from mounted filesystem
+	if err := e.cacheBootFilesFromMount(bootFiles, mountPoint, isoPath); err != nil {
+		return nil, fmt.Errorf("failed to cache boot files: %w", err)
+	}
+
+	return bootFiles, nil
+}
+
+// mountISO mounts an ISO file at the specified mount point
+func (e *Extractor) mountISO(isoPath, mountPoint string) error {
+	// Try mount with UDF first, then fall back to iso9660
+	cmd := fmt.Sprintf("mount -o loop,ro -t udf,iso9660 %s %s", isoPath, mountPoint)
+
+	// Execute mount command
+	// Note: This requires appropriate permissions (CAP_SYS_ADMIN or root)
+	_, err := e.executeCommand("sh", "-c", cmd)
+	return err
+}
+
+// unmountISO unmounts the ISO
+func (e *Extractor) unmountISO(mountPoint string) error {
+	cmd := fmt.Sprintf("umount %s", mountPoint)
+	_, err := e.executeCommand("sh", "-c", cmd)
+	if err != nil {
+		log.Printf("Warning: Failed to unmount %s: %v", mountPoint, err)
+	}
+	return err
+}
+
+// executeCommand executes a shell command
+func (e *Extractor) executeCommand(name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("command failed: %w (output: %s)", err, string(output))
+	}
+	return string(output), nil
+}
+
+// detectFromMountedFS detects distribution from mounted filesystem
+func (e *Extractor) detectFromMountedFS(mountPoint, isoPath string) (*BootFiles, error) {
+	// Use same detection logic but with filesystem paths
+	// Try each distribution pattern
+	patterns := []struct {
+		name string
+		detector func(string) (*BootFiles, error)
+	}{
+		{"Ubuntu/Debian", e.detectUbuntuDebianFS},
+		{"Arch Linux", e.detectArchFS},
+		{"Fedora/RHEL", e.detectFedoraRHELFS},
+		{"Windows", e.detectWindowsFS},
+	}
+
+	for _, p := range patterns {
+		if files, err := p.detector(mountPoint); err == nil && files != nil {
+			return files, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unsupported distribution or unable to find boot files")
+}
+
+// detectUbuntuDebianFS detects Ubuntu/Debian from mounted filesystem
+func (e *Extractor) detectUbuntuDebianFS(mountPoint string) (*BootFiles, error) {
+	// Check for casper (Ubuntu Desktop/Live)
+	casperPaths := [][]string{
+		{"/casper/vmlinuz", "/casper/initrd"},
+		{"/casper/vmlinuz", "/casper/initrd.lz"},
+		{"/casper/vmlinuz.efi", "/casper/initrd.lz"},
+	}
+
+	for _, paths := range casperPaths {
+		kernel := filepath.Join(mountPoint, paths[0])
+		initrd := filepath.Join(mountPoint, paths[1])
+		if fileExistsFS(kernel) && fileExistsFS(initrd) {
+			// Look for squashfs
+			squashfs := filepath.Join(mountPoint, "/casper/filesystem.squashfs")
+			squashfsPath := ""
+			if fileExistsFS(squashfs) {
+				squashfsPath = "casper/filesystem.squashfs"
+			}
+
+			return &BootFiles{
+				Kernel:       paths[0],
+				Initrd:       paths[1],
+				Distro:       "ubuntu",
+				BootParams:   "boot=casper root=/dev/ram0 ramdisk_size=1500000 cloud-init=disabled ",
+				SquashfsPath: squashfsPath,
+			}, nil
+		}
+	}
+
+	// Check for installer (Ubuntu Server/Debian)
+	installPaths := [][]string{
+		{"/install/vmlinuz", "/install/initrd.gz"},
+		{"/install.amd/vmlinuz", "/install.amd/initrd.gz"},
+	}
+
+	for _, paths := range installPaths {
+		kernel := filepath.Join(mountPoint, paths[0])
+		initrd := filepath.Join(mountPoint, paths[1])
+		if fileExistsFS(kernel) && fileExistsFS(initrd) {
+			// Determine if Ubuntu or Debian
+			distro := "debian"
+			netbootURL := "http://ftp.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/netboot.tar.gz"
+
+			// Check for .disk/info to identify Ubuntu
+			if fileExistsFS(filepath.Join(mountPoint, "/.disk/info")) {
+				distro = "ubuntu"
+				netbootURL = "http://archive.ubuntu.com/ubuntu/dists/noble/main/installer-amd64/current/legacy-images/netboot/netboot.tar.gz"
+			}
+
+			return &BootFiles{
+				Kernel:          paths[0],
+				Initrd:          paths[1],
+				Distro:          distro,
+				BootParams:      "",
+				NetbootRequired: true,
+				NetbootURL:      netbootURL,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("not Ubuntu/Debian")
+}
+
+// detectArchFS detects Arch Linux from mounted filesystem
+func (e *Extractor) detectArchFS(mountPoint string) (*BootFiles, error) {
+	kernel := filepath.Join(mountPoint, "/arch/boot/x86_64/vmlinuz-linux")
+	initrd := filepath.Join(mountPoint, "/arch/boot/x86_64/initramfs-linux.img")
+
+	if fileExistsFS(kernel) && fileExistsFS(initrd) {
+		return &BootFiles{
+			Kernel:     "/arch/boot/x86_64/vmlinuz-linux",
+			Initrd:     "/arch/boot/x86_64/initramfs-linux.img",
+			Distro:     "arch",
+			BootParams: "",
+		}, nil
+	}
+
+	return nil, fmt.Errorf("not Arch Linux")
+}
+
+// detectFedoraRHELFS detects Fedora/RHEL from mounted filesystem
+func (e *Extractor) detectFedoraRHELFS(mountPoint string) (*BootFiles, error) {
+	kernel := filepath.Join(mountPoint, "/images/pxeboot/vmlinuz")
+	initrd := filepath.Join(mountPoint, "/images/pxeboot/initrd.img")
+
+	if fileExistsFS(kernel) && fileExistsFS(initrd) {
+		return &BootFiles{
+			Kernel:     "/images/pxeboot/vmlinuz",
+			Initrd:     "/images/pxeboot/initrd.img",
+			Distro:     "fedora",
+			BootParams: "",
+		}, nil
+	}
+
+	return nil, fmt.Errorf("not Fedora/RHEL")
+}
+
+// detectWindowsFS detects Windows from mounted filesystem
+func (e *Extractor) detectWindowsFS(mountPoint string) (*BootFiles, error) {
+	// Windows detection logic
+	bootWim := filepath.Join(mountPoint, "/sources/boot.wim")
+	if fileExistsFS(bootWim) {
+		return &BootFiles{
+			Distro: "windows",
+		}, nil
+	}
+
+	return nil, fmt.Errorf("not Windows")
+}
+
+// fileExistsFS checks if a file exists on the filesystem
+func fileExistsFS(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// cacheBootFilesFromMount caches boot files from mounted filesystem
+func (e *Extractor) cacheBootFilesFromMount(files *BootFiles, mountPoint, isoPath string) error {
+	baseName := filepath.Base(isoPath)
+	cacheDir := filepath.Join(e.dataDir, "isos", strings.TrimSuffix(baseName, filepath.Ext(baseName)))
+
+	// Create cache directory
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	// Copy kernel
+	if files.Kernel != "" {
+		srcKernel := filepath.Join(mountPoint, files.Kernel)
+		destKernel := filepath.Join(cacheDir, "vmlinuz")
+		if err := copyFileFS(srcKernel, destKernel); err != nil {
+			return fmt.Errorf("failed to copy kernel: %w", err)
+		}
+	}
+
+	// Copy initrd
+	if files.Initrd != "" {
+		srcInitrd := filepath.Join(mountPoint, files.Initrd)
+		destInitrd := filepath.Join(cacheDir, "initrd")
+		if err := copyFileFS(srcInitrd, destInitrd); err != nil {
+			return fmt.Errorf("failed to copy initrd: %w", err)
+		}
+	}
+
+	// Copy squashfs if present
+	if files.SquashfsPath != "" {
+		srcSquashfs := filepath.Join(mountPoint, files.SquashfsPath)
+		destSquashfs := filepath.Join(cacheDir, files.SquashfsPath)
+
+		// Create subdirectory if needed
+		if err := os.MkdirAll(filepath.Dir(destSquashfs), 0755); err != nil {
+			return fmt.Errorf("failed to create squashfs directory: %w", err)
+		}
+
+		if err := copyFileFS(srcSquashfs, destSquashfs); err != nil {
+			log.Printf("Warning: Failed to copy squashfs: %v", err)
+		}
+	}
+
+	files.ExtractedDir = cacheDir
+	return nil
+}
+
+// copyFileFS copies a file from src to dest
+func copyFileFS(src, dest string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	destFile, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, srcFile)
 	return err
 }

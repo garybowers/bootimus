@@ -4,11 +4,9 @@ FROM golang:1.25 AS builder
 
 WORKDIR /build
 
-# Copy go mod files
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code (exclude large files)
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY web/ ./web/
@@ -26,14 +24,12 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
 # Stage 2: Runtime
 FROM gcr.io/distroless/base-debian13
 
-WORKDIR /app
-
-# Copy binary from builder
-COPY --from=builder /build/bootimus /app/bootimus
+COPY --from=builder /build/bootimus /bootimus
 
 EXPOSE 69/udp 8080/tcp 8081/tcp
 
 USER root
 
-ENTRYPOINT ["/app/bootimus"]
+VOLUME [ "/data" ]
+ENTRYPOINT ["bootimus"]
 CMD ["serve"]

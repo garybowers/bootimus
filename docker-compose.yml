@@ -55,6 +55,8 @@ services:
     restart: unless-stopped
     # Uncomment to disable database mode
     # command: ["serve", "--db-disable"]
+    # Uncomment to reset the admin password, remember to comment out afterwards
+    # command: ["serve", "--reset-admin-password"]
 
 networks:
   bootimus_net:
