@@ -33,14 +33,12 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./bootimus.yaml)")
 
-	// Server flags
 	rootCmd.PersistentFlags().Int("tftp-port", 69, "TFTP server port")
 	rootCmd.PersistentFlags().Int("http-port", 8080, "HTTP server port")
 	rootCmd.PersistentFlags().Int("admin-port", 8081, "Admin interface port")
 	rootCmd.PersistentFlags().String("data-dir", "./data", "Base data directory (subdirs: isos/, bootloaders/)")
 	rootCmd.PersistentFlags().String("server-addr", "", "Server IP address (auto-detected if not specified)")
 
-	// Database flags (PostgreSQL - if not set, SQLite is used)
 	rootCmd.PersistentFlags().String("db-host", "", "PostgreSQL host (if empty, uses SQLite)")
 	rootCmd.PersistentFlags().Int("db-port", 5432, "PostgreSQL port")
 	rootCmd.PersistentFlags().String("db-user", "bootimus", "PostgreSQL user")
@@ -48,7 +46,6 @@ func init() {
 	rootCmd.PersistentFlags().String("db-name", "bootimus", "PostgreSQL database name")
 	rootCmd.PersistentFlags().String("db-sslmode", "disable", "PostgreSQL SSL mode")
 
-	// Bind flags to viper
 	viper.BindPFlag("tftp_port", rootCmd.PersistentFlags().Lookup("tftp-port"))
 	viper.BindPFlag("http_port", rootCmd.PersistentFlags().Lookup("http-port"))
 	viper.BindPFlag("admin_port", rootCmd.PersistentFlags().Lookup("admin-port"))

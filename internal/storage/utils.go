@@ -2,7 +2,6 @@ package storage
 
 import "crypto/rand"
 
-// generateRandomPassword generates a random password of specified length
 func generateRandomPassword(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
 	b := make([]byte, length)

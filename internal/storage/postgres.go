@@ -12,7 +12,6 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// Config holds PostgreSQL connection configuration
 type Config struct {
 	Host     string
 	Port     int
@@ -22,12 +21,10 @@ type Config struct {
 	SSLMode  string
 }
 
-// PostgresStore implements Storage interface for PostgreSQL
 type PostgresStore struct {
 	db *gorm.DB
 }
 
-// NewPostgresStore creates a new PostgreSQL storage backend
 func NewPostgresStore(cfg *Config) (*PostgresStore, error) {
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
@@ -44,11 +41,9 @@ func NewPostgresStore(cfg *Config) (*PostgresStore, error) {
 	return &PostgresStore{db: db}, nil
 }
 
-// AutoMigrate runs database migrations
 func (s *PostgresStore) AutoMigrate() error {
 	log.Println("Running PostgreSQL database migrations...")
 
-	// Run auto-migrate first
 	if err := s.db.AutoMigrate(
 		&models.User{},
 		&models.Client{},
@@ -59,18 +54,14 @@ func (s *PostgresStore) AutoMigrate() error {
 		return err
 	}
 
-	// Custom migration: Update CustomFile unique constraint
 	if err := s.migrateCustomFileUniqueIndex(); err != nil {
 		log.Printf("Warning: CustomFile index migration failed (may already be migrated): %v", err)
-		// Don't fail if this migration errors - it might already be applied
 	}
 
 	return nil
 }
 
-// migrateCustomFileUniqueIndex migrates the custom_files unique index from single column to composite
 func (s *PostgresStore) migrateCustomFileUniqueIndex() error {
-	// Check if old index exists
 	var indexExists bool
 	err := s.db.Raw(`
 		SELECT EXISTS (
@@ -90,12 +81,10 @@ func (s *PostgresStore) migrateCustomFileUniqueIndex() error {
 
 	log.Println("Migrating CustomFile unique index...")
 
-	// Drop the old single-column unique index
 	if err := s.db.Exec("DROP INDEX IF EXISTS idx_custom_files_filename").Error; err != nil {
 		return fmt.Errorf("failed to drop old index: %w", err)
 	}
 
-	// Create new composite unique index
 	if err := s.db.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS idx_filename_image
 		ON custom_files (filename, public, image_id)
@@ -107,14 +96,10 @@ func (s *PostgresStore) migrateCustomFileUniqueIndex() error {
 	return nil
 }
 
-// Close closes the database connection (no-op for PostgreSQL)
 func (s *PostgresStore) Close() error {
-	// PostgreSQL connections are managed by GORM connection pool
-	// No explicit close needed
 	return nil
 }
 
-// Client operations
 
 func (s *PostgresStore) ListClients() ([]*models.Client, error) {
 	var clients []*models.Client
@@ -144,7 +129,6 @@ func (s *PostgresStore) DeleteClient(mac string) error {
 	return s.db.Where("mac_address = ?", mac).Delete(&models.Client{}).Error
 }
 
-// Image operations
 
 func (s *PostgresStore) ListImages() ([]*models.Image, error) {
 	var images []*models.Image
@@ -171,7 +155,6 @@ func (s *PostgresStore) UpdateImage(filename string, image *models.Image) error 
 }
 
 func (s *PostgresStore) DeleteImage(filename string) error {
-	// Use Unscoped to perform hard delete (avoid unique constraint issues on re-upload)
 	return s.db.Unscoped().Where("filename = ?", filename).Delete(&models.Image{}).Error
 }
 
@@ -181,19 +164,17 @@ func (s *PostgresStore) SyncImages(isoFiles []struct{ Name, Filename string; Siz
 		err := s.db.Where("filename = ?", iso.Filename).First(&image).Error
 
 		if err == gorm.ErrRecordNotFound {
-			// Create new image
 			image = models.Image{
 				Name:     iso.Name,
 				Filename: iso.Filename,
 				Size:     iso.Size,
 				Enabled:  true,
-				Public:   true, // Default to public
+				Public:   true,
 			}
 			if err := s.db.Create(&image).Error; err != nil {
 				return fmt.Errorf("failed to create image %s: %w", iso.Name, err)
 			}
 		} else if err == nil {
-			// Update existing image size if changed
 			if image.Size != iso.Size {
 				s.db.Model(&image).Update("size", iso.Size)
 			}
@@ -205,7 +186,6 @@ func (s *PostgresStore) SyncImages(isoFiles []struct{ Name, Filename string; Siz
 	return nil
 }
 
-// Client-Image relationships (using PostgreSQL many2many)
 
 func (s *PostgresStore) AssignImagesToClient(mac string, imageFilenames []string) error {
 	var client models.Client
@@ -213,13 +193,11 @@ func (s *PostgresStore) AssignImagesToClient(mac string, imageFilenames []string
 		return err
 	}
 
-	// Get images by filename
 	var images []models.Image
 	if err := s.db.Where("filename IN ?", imageFilenames).Find(&images).Error; err != nil {
 		return err
 	}
 
-	// Replace associations (GORM handles client_images junction table)
 	return s.db.Model(&client).Association("Images").Replace(images)
 }
 
@@ -239,31 +217,26 @@ func (s *PostgresStore) GetClientImages(mac string) ([]string, error) {
 func (s *PostgresStore) GetImagesForClient(macAddress string) ([]models.Image, error) {
 	var images []models.Image
 
-	// First, get public images
 	if err := s.db.Where("enabled = ? AND public = ?", true, true).Find(&images).Error; err != nil {
 		return nil, err
 	}
 
-	// Then, get client-specific images via many2many relationship
 	var client models.Client
 	if err := s.db.Where("mac_address = ? AND enabled = ?", macAddress, true).
 		Preload("Images", "enabled = ?", true).
 		First(&client).Error; err == nil {
-		// Client found, append their specific images
 		images = append(images, client.Images...)
 	}
 
 	return images, nil
 }
 
-// User operations
 
 func (s *PostgresStore) EnsureAdminUser() (username, password string, created bool, err error) {
 	var admin models.User
 	err = s.db.Where("username = ?", "admin").First(&admin).Error
 
 	if err == gorm.ErrRecordNotFound {
-		// Create admin user with random password
 		password = generateRandomPassword(16)
 		admin = models.User{
 			Username: "admin",
@@ -333,7 +306,6 @@ func (s *PostgresStore) DeleteUser(username string) error {
 	return s.db.Where("username = ?", username).Delete(&models.User{}).Error
 }
 
-// CustomFile operations
 
 func (s *PostgresStore) ListCustomFiles() ([]*models.CustomFile, error) {
 	var files []*models.CustomFile
@@ -387,7 +359,6 @@ func (s *PostgresStore) ListCustomFilesByImage(imageID uint) ([]*models.CustomFi
 	return files, nil
 }
 
-// Boot operations
 
 func (s *PostgresStore) LogBootAttempt(macAddress, imageName, ipAddress string, success bool, errorMsg string) error {
 	bootLog := models.BootLog{
@@ -398,7 +369,6 @@ func (s *PostgresStore) LogBootAttempt(macAddress, imageName, ipAddress string, 
 		ErrorMsg:   errorMsg,
 	}
 
-	// Try to link to existing client and image
 	var client models.Client
 	if err := s.db.Where("mac_address = ?", macAddress).First(&client).Error; err == nil {
 		bootLog.ClientID = &client.ID
@@ -443,7 +413,6 @@ func (s *PostgresStore) GetBootLogs(limit int) ([]models.BootLog, error) {
 	return logs, nil
 }
 
-// Statistics
 
 func (s *PostgresStore) GetStats() (map[string]int64, error) {
 	stats := make(map[string]int64)

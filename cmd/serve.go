@@ -50,16 +50,12 @@ func printBanner() {
 }
 
 func runServe(cmd *cobra.Command, args []string) {
-	// Initialize global logger to capture all logs
 	server.InitGlobalLogger()
 
-	// Print banner
 	printBanner()
 
-	// Get base data directory
 	dataDir := viper.GetString("data_dir")
 
-	// Create directory structure if it doesn't exist
 	isoDir := dataDir + "/isos"
 	bootloadersDir := dataDir + "/bootloaders"
 
@@ -73,21 +69,17 @@ func runServe(cmd *cobra.Command, args []string) {
 	log.Printf("  - ISOs: %s", isoDir)
 	log.Printf("  - Bootloaders: %s", bootloadersDir)
 
-	// Auto-detect server address if not specified
 	serverAddr := viper.GetString("server_addr")
 	if serverAddr == "" {
 		serverAddr = server.GetOutboundIP()
 		log.Printf("Auto-detected server IP: %s", serverAddr)
 	}
 
-	// Setup database - either PostgreSQL or SQLite (unified Storage interface)
 	var store storage.Storage
 	var err error
 
-	// Check if PostgreSQL configuration is provided
 	pgHost := viper.GetString("db.host")
 	if pgHost != "" {
-		// Use PostgreSQL if host is configured
 		dbCfg := &storage.Config{
 			Host:     pgHost,
 			Port:     viper.GetInt("db.port"),
@@ -99,7 +91,6 @@ func runServe(cmd *cobra.Command, args []string) {
 
 		log.Printf("Connecting to PostgreSQL database at %s:%d...", pgHost, viper.GetInt("db.port"))
 
-		// Retry database connection with exponential backoff
 		maxRetries := 10
 		for i := 0; i < maxRetries; i++ {
 			store, err = storage.NewPostgresStore(dbCfg)
@@ -108,7 +99,7 @@ func runServe(cmd *cobra.Command, args []string) {
 			}
 
 			if i < maxRetries-1 {
-				waitTime := (1 << uint(i)) // Exponential: 1s, 2s, 4s, 8s...
+				waitTime := (1 << uint(i))
 				log.Printf("Database connection failed (attempt %d/%d): %v", i+1, maxRetries, err)
 				log.Printf("Retrying in %d seconds...", waitTime)
 				time.Sleep(time.Duration(waitTime) * time.Second)
@@ -125,7 +116,6 @@ func runServe(cmd *cobra.Command, args []string) {
 
 		log.Println("Database connected and migrations completed (PostgreSQL)")
 	} else {
-		// Use SQLite if no PostgreSQL host configured
 		log.Printf("No PostgreSQL configuration found, using local SQLite database")
 		store, err = storage.NewSQLiteStore(dataDir)
 		if err != nil {
@@ -139,7 +129,6 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Printf("Local database initialized at %s/bootimus.db (SQLite)", dataDir)
 	}
 
-	// Handle admin password reset if requested
 	if resetAdminPassword {
 		password, err := store.ResetAdminPassword()
 		if err != nil {
@@ -158,32 +147,28 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Println("\nContinuing to start server...")
 	}
 
-	// Initialise authentication manager (store implements UserStore interface)
 	authMgr, err := auth.NewManager(store)
 	if err != nil {
 		log.Fatalf("Failed to initialise authentication: %v", err)
 	}
 
-	// Create server config
 	cfg := &server.Config{
 		TFTPPort:   viper.GetInt("tftp_port"),
 		HTTPPort:   viper.GetInt("http_port"),
 		AdminPort:  viper.GetInt("admin_port"),
 		BootDir:    bootloadersDir,
-		DataDir:    dataDir, // Base data directory (/data)
-		ISODir:     isoDir,  // ISO subdirectory (/data/isos)
+		DataDir:    dataDir,
+		ISODir:     isoDir,
 		ServerAddr: serverAddr,
-		Storage:    store, // Unified storage interface
+		Storage:    store,
 		Auth:       authMgr,
 	}
 
-	// Create and start server
 	srv := server.New(cfg)
 	if err := srv.Start(); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 
-	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan

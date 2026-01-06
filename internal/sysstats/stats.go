@@ -13,7 +13,6 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-// Stats represents system statistics
 type Stats struct {
 	CPU       CPUStats       `json:"cpu"`
 	Memory    MemoryStats    `json:"memory"`
@@ -23,13 +22,11 @@ type Stats struct {
 	Uptime    string         `json:"uptime"`
 }
 
-// CPUStats represents CPU statistics
 type CPUStats struct {
 	UsagePercent float64 `json:"usage_percent"`
 	Cores        int     `json:"cores"`
 }
 
-// MemoryStats represents memory statistics
 type MemoryStats struct {
 	Total       uint64  `json:"total"`
 	Used        uint64  `json:"used"`
@@ -37,7 +34,6 @@ type MemoryStats struct {
 	UsedPercent float64 `json:"used_percent"`
 }
 
-// DiskStats represents disk statistics
 type DiskStats struct {
 	Path        string  `json:"path"`
 	Total       uint64  `json:"total"`
@@ -46,7 +42,6 @@ type DiskStats struct {
 	UsedPercent float64 `json:"used_percent"`
 }
 
-// HostInfo represents host system information
 type HostInfo struct {
 	OS              string `json:"os"`
 	Platform        string `json:"platform"`
@@ -56,14 +51,12 @@ type HostInfo struct {
 
 var startTime = time.Now()
 
-// GetStats retrieves current system statistics
 func GetStats(paths []string) (*Stats, error) {
 	stats := &Stats{
 		Timestamp: time.Now(),
 		Uptime:    formatUptime(time.Since(startTime)),
 	}
 
-	// Get host information
 	hostInfo, err := host.Info()
 	if err == nil {
 		stats.Host = HostInfo{
@@ -73,21 +66,18 @@ func GetStats(paths []string) (*Stats, error) {
 			Architecture:    hostInfo.KernelArch,
 		}
 	} else {
-		// Fallback to runtime info if host.Info fails
 		stats.Host = HostInfo{
 			OS:           runtime.GOOS,
 			Architecture: runtime.GOARCH,
 		}
 	}
 
-	// Get CPU stats
 	cpuPercent, err := cpu.Percent(time.Second, false)
 	if err == nil && len(cpuPercent) > 0 {
 		stats.CPU.UsagePercent = cpuPercent[0]
 	}
 	stats.CPU.Cores = runtime.NumCPU()
 
-	// Get memory stats
 	vmStat, err := mem.VirtualMemory()
 	if err == nil {
 		stats.Memory.Total = vmStat.Total
@@ -96,7 +86,6 @@ func GetStats(paths []string) (*Stats, error) {
 		stats.Memory.UsedPercent = vmStat.UsedPercent
 	}
 
-	// Get disk stats for specified paths
 	for _, path := range paths {
 		diskStat, err := getDiskStats(path)
 		if err == nil {
@@ -107,7 +96,6 @@ func GetStats(paths []string) (*Stats, error) {
 	return stats, nil
 }
 
-// getDiskStats gets disk usage for a specific path
 func getDiskStats(path string) (DiskStats, error) {
 	usage, err := disk.Usage(path)
 	if err != nil {
@@ -123,7 +111,6 @@ func getDiskStats(path string) (DiskStats, error) {
 	}, nil
 }
 
-// getDiskStatsManual is a fallback method using syscall
 func getDiskStatsManual(path string) (DiskStats, error) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)
@@ -148,7 +135,6 @@ func getDiskStatsManual(path string) (DiskStats, error) {
 	}, nil
 }
 
-// formatUptime formats duration into human-readable uptime
 func formatUptime(d time.Duration) string {
 	days := int(d.Hours() / 24)
 	hours := int(d.Hours()) % 24
@@ -165,7 +151,6 @@ func formatUptime(d time.Duration) string {
 	return fmt.Sprintf("%ds", seconds)
 }
 
-// FormatBytes formats bytes into human-readable format
 func FormatBytes(bytes uint64) string {
 	const unit = 1024
 	if bytes < unit {
@@ -179,11 +164,9 @@ func FormatBytes(bytes uint64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// GetMonitoredPaths returns paths to monitor based on configuration
 func GetMonitoredPaths(dataDir string) []string {
 	paths := []string{"/"}
 
-	// Add data directory if it's on a different mount
 	if dataDir != "" {
 		if _, err := os.Stat(dataDir); err == nil {
 			paths = append(paths, dataDir)

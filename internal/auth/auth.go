@@ -17,12 +17,10 @@ func NewManager(userStore database.UserStore) (*Manager, error) {
 		userStore: userStore,
 	}
 
-	// UserStore should always be provided (either PostgreSQL or SQLite)
 	if userStore == nil {
 		return nil, fmt.Errorf("userStore is required for authentication")
 	}
 
-	// Ensure admin user exists
 	username, password, created, err := userStore.EnsureAdminUser()
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure admin user: %w", err)
@@ -45,7 +43,6 @@ func NewManager(userStore database.UserStore) (*Manager, error) {
 	return m, nil
 }
 
-// ValidateCredentials validates username and password against the database
 func (m *Manager) ValidateCredentials(username, password string) bool {
 	user, err := m.userStore.GetUser(username)
 	if err != nil {
@@ -60,13 +57,11 @@ func (m *Manager) ValidateCredentials(username, password string) bool {
 		return false
 	}
 
-	// Update last login
 	_ = m.userStore.UpdateUserLastLogin(username)
 
 	return true
 }
 
-// BasicAuthMiddleware provides HTTP basic authentication
 func (m *Manager) BasicAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		username, password, ok := r.BasicAuth()

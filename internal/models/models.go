@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// StringSlice is a custom type for storing string slices in SQLite
 type StringSlice []string
 
 func (s StringSlice) Value() (driver.Value, error) {
@@ -37,19 +36,17 @@ func (s *StringSlice) Scan(value interface{}) error {
 	return json.Unmarshal(bytes, s)
 }
 
-// User represents an admin user
 type User struct {
 	ID        uint      `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Username  string    `gorm:"uniqueIndex;not null" json:"username"`
-	Password  string    `gorm:"not null" json:"-"` // Never send password in JSON
+	Password  string    `gorm:"not null" json:"-"`
 	Enabled   bool      `gorm:"default:true" json:"enabled"`
 	IsAdmin   bool      `gorm:"default:false" json:"is_admin"`
 	LastLogin *time.Time `json:"last_login,omitempty"`
 }
 
-// SetPassword hashes and sets the user's password
 func (u *User) SetPassword(password string) error {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -59,13 +56,11 @@ func (u *User) SetPassword(password string) error {
 	return nil
 }
 
-// CheckPassword verifies the password
 func (u *User) CheckPassword(password string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password))
 	return err == nil
 }
 
-// Client represents a network boot client identified by MAC address
 type Client struct {
 	ID            uint           `gorm:"primarykey" json:"id"`
 	CreatedAt     time.Time      `json:"created_at"`
@@ -78,10 +73,9 @@ type Client struct {
 	LastBoot      *time.Time     `json:"last_boot,omitempty"`
 	BootCount     int            `gorm:"default:0" json:"boot_count"`
 	Images        []Image        `gorm:"many2many:client_images;" json:"images,omitempty"`
-	AllowedImages StringSlice    `gorm:"type:text" json:"allowed_images,omitempty"` // For SQLite storage
+	AllowedImages StringSlice    `gorm:"type:text" json:"allowed_images,omitempty"`
 }
 
-// Image represents an ISO image available for network booting
 type Image struct {
 	ID          uint           `gorm:"primarykey" json:"id"`
 	CreatedAt   time.Time      `json:"created_at"`
@@ -92,33 +86,29 @@ type Image struct {
 	Description string         `json:"description"`
 	Size        int64          `json:"size"`
 	Enabled     bool           `gorm:"default:true" json:"enabled"`
-	Public      bool           `gorm:"default:false" json:"public"` // If true, available to all clients
+	Public      bool           `gorm:"default:false" json:"public"`
 	BootCount   int            `gorm:"default:0" json:"boot_count"`
 	LastBooted  *time.Time     `json:"last_booted,omitempty"`
 	Clients     []Client       `gorm:"many2many:client_images;" json:"clients,omitempty"`
-	// Kernel/Initrd extraction fields
 	Extracted         bool       `gorm:"default:false" json:"extracted"`
 	Distro            string     `json:"distro,omitempty"`
-	BootMethod        string     `gorm:"default:sanboot" json:"boot_method"` // "sanboot" or "kernel"
+	BootMethod        string     `gorm:"default:sanboot" json:"boot_method"`
 	KernelPath        string     `json:"kernel_path,omitempty"`
 	InitrdPath        string     `json:"initrd_path,omitempty"`
 	BootParams        string     `json:"boot_params,omitempty"`
-	SquashfsPath      string     `json:"squashfs_path,omitempty"` // Path to filesystem.squashfs within ISO
+	SquashfsPath      string     `json:"squashfs_path,omitempty"`
 	ExtractionError   string     `json:"extraction_error,omitempty"`
 	ExtractedAt       *time.Time `json:"extracted_at,omitempty"`
-	SanbootCompatible bool       `gorm:"default:true" json:"sanboot_compatible"` // Whether ISO supports sanboot
-	SanbootHint       string     `json:"sanboot_hint,omitempty"`                 // Hint message if sanboot incompatible
-	// Netboot fields (for Debian/Ubuntu proper netboot images)
-	NetbootRequired   bool       `gorm:"default:false" json:"netboot_required"`  // Whether proper netboot images are required
-	NetbootAvailable  bool       `gorm:"default:false" json:"netboot_available"` // Whether netboot files have been downloaded
-	NetbootURL        string     `json:"netboot_url,omitempty"`                  // URL to download netboot tarball from
-	// Unattended installation fields
-	AutoInstallScript     string `gorm:"type:text" json:"auto_install_script,omitempty"`      // Script content (preseed, kickstart, autounattend.xml)
-	AutoInstallEnabled    bool   `gorm:"default:false" json:"auto_install_enabled"`           // Enable auto-install script injection
-	AutoInstallScriptType string `json:"auto_install_script_type,omitempty"`                  // "preseed", "kickstart", "autounattend"
+	SanbootCompatible bool       `gorm:"default:true" json:"sanboot_compatible"`
+	SanbootHint       string     `json:"sanboot_hint,omitempty"`
+	NetbootRequired   bool       `gorm:"default:false" json:"netboot_required"`
+	NetbootAvailable  bool       `gorm:"default:false" json:"netboot_available"`
+	NetbootURL        string     `json:"netboot_url,omitempty"`
+	AutoInstallScript     string `gorm:"type:text" json:"auto_install_script,omitempty"`
+	AutoInstallEnabled    bool   `gorm:"default:false" json:"auto_install_enabled"`
+	AutoInstallScriptType string `json:"auto_install_script_type,omitempty"`
 }
 
-// BootLog represents a log entry for boot attempts
 type BootLog struct {
 	ID         uint       `gorm:"primarykey" json:"id"`
 	CreatedAt  time.Time  `json:"created_at"`
@@ -133,22 +123,21 @@ type BootLog struct {
 	IPAddress  string     `json:"ip_address,omitempty"`
 }
 
-// CustomFile represents a custom file that can be served to clients
 type CustomFile struct {
 	ID              uint           `gorm:"primarykey" json:"id"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
-	Filename        string         `gorm:"uniqueIndex:idx_filename_image;not null" json:"filename"` // Filename unique per image/public
-	OriginalName    string         `gorm:"not null" json:"original_name"`                           // Original upload name
+	Filename        string         `gorm:"uniqueIndex:idx_filename_image;not null" json:"filename"`
+	OriginalName    string         `gorm:"not null" json:"original_name"`
 	Description     string         `json:"description"`
 	Size            int64          `json:"size"`
 	ContentType     string         `json:"content_type"`
-	Public          bool           `gorm:"uniqueIndex:idx_filename_image;default:false" json:"public"` // Public or image-specific
+	Public          bool           `gorm:"uniqueIndex:idx_filename_image;default:false" json:"public"`
 	ImageID         *uint          `gorm:"uniqueIndex:idx_filename_image;index" json:"image_id,omitempty"`
 	Image           *Image         `gorm:"foreignKey:ImageID" json:"image,omitempty"`
 	DownloadCount   int            `gorm:"default:0" json:"download_count"`
 	LastDownload    *time.Time     `json:"last_download,omitempty"`
-	DestinationPath string         `json:"destination_path,omitempty"`         // Where to save on installed system (e.g., /root/setup.sh)
-	AutoInstall     bool           `gorm:"default:true" json:"auto_install"`   // Include in autoinstall script
+	DestinationPath string         `json:"destination_path,omitempty"`
+	AutoInstall     bool           `gorm:"default:true" json:"auto_install"`
 }

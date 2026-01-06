@@ -21,9 +21,9 @@ import (
 )
 
 type Handler struct {
-	storage storage.Storage // Unified storage interface (PostgreSQL or SQLite)
-	dataDir string          // Base data directory (/data) - for SQLite database
-	isoDir  string          // ISO directory (/data/isos) - for ISO files
+	storage storage.Storage
+	dataDir string
+	isoDir  string
 	bootDir string
 	version string
 }
@@ -38,14 +38,11 @@ func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir st
 	}
 }
 
-// isRunningInDocker detects if the application is running inside a Docker container
 func isRunningInDocker() bool {
-	// Check for /.dockerenv file (most reliable)
 	if _, err := os.Stat("/.dockerenv"); err == nil {
 		return true
 	}
 
-	// Check /proc/1/cgroup for docker or containerd
 	data, err := os.ReadFile("/proc/1/cgroup")
 	if err == nil {
 		content := string(data)
@@ -54,9 +51,7 @@ func isRunningInDocker() bool {
 		}
 	}
 
-	// Check if running as PID 1 with limited process count (common in containers)
 	if os.Getpid() == 1 {
-		// Additional check: containers typically have very few processes
 		entries, err := os.ReadDir("/proc")
 		if err == nil && len(entries) < 50 {
 			return true
@@ -66,7 +61,6 @@ func isRunningInDocker() bool {
 	return false
 }
 
-// Response helpers
 type Response struct {
 	Success bool        `json:"success"`
 	Message string      `json:"message,omitempty"`
@@ -81,15 +75,11 @@ func (h *Handler) sendJSON(w http.ResponseWriter, status int, resp Response) {
 		log.Printf("Failed to encode JSON response: %v", err)
 	}
 
-	// Log request result
 	if !resp.Success {
 		log.Printf("Admin API error (status %d): %s", status, resp.Error)
 	}
 }
 
-// ============================================================================
-// Client Management
-// ============================================================================
 
 func (h *Handler) ListClients(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -139,10 +129,8 @@ func (h *Handler) CreateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalise MAC address
 	client.MACAddress = strings.ToLower(strings.ReplaceAll(client.MACAddress, "-", ":"))
 
-	// Set default enabled state
 	client.Enabled = true
 
 	if err := h.storage.CreateClient(&client); err != nil {
@@ -178,7 +166,6 @@ func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update fields
 	if updates.Name != "" {
 		client.Name = updates.Name
 	}
@@ -217,11 +204,7 @@ func (h *Handler) DeleteClient(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Client deleted"})
 }
 
-// ============================================================================
-// Image Management
-// ============================================================================
 
-// syncFilesystemToDatabase ensures all ISO files on disk are represented in the database
 func (h *Handler) syncFilesystemToDatabase() {
 	entries, err := os.ReadDir(h.isoDir)
 	if err != nil {
@@ -234,7 +217,6 @@ func (h *Handler) syncFilesystemToDatabase() {
 			continue
 		}
 
-		// Only process .iso files
 		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".iso") {
 			continue
 		}
@@ -245,11 +227,9 @@ func (h *Handler) syncFilesystemToDatabase() {
 			continue
 		}
 
-		// Check if image exists in database
 		_, err = h.storage.GetImage(entry.Name())
 		exists := (err == nil)
 
-		// If not in database, add it
 		if !exists {
 			displayName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
 			image := &models.Image{
@@ -275,7 +255,6 @@ func (h *Handler) ListImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sync filesystem to database before listing
 	h.syncFilesystemToDatabase()
 
 	images, err := h.storage.ListImages()
@@ -324,7 +303,6 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decode into a map to detect which fields are actually present
 	var updates map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
@@ -337,7 +315,6 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update only the fields that are present in the request
 	if name, ok := updates["name"].(string); ok && name != "" {
 		image.Name = name
 	}
@@ -374,7 +351,6 @@ func (h *Handler) DeleteImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete from filesystem if requested
 	if deleteFile {
 		filePath := filepath.Join(h.isoDir, filename)
 		if err := os.Remove(filePath); err != nil {
@@ -383,7 +359,6 @@ func (h *Handler) DeleteImage(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Deleted ISO file: %s", filename)
 		}
 
-		// Also clean up extracted kernel directory if it exists
 		isoBase := strings.TrimSuffix(filename, filepath.Ext(filename))
 		extractedDir := filepath.Join(h.isoDir, isoBase)
 		if _, err := os.Stat(extractedDir); err == nil {
@@ -395,7 +370,6 @@ func (h *Handler) DeleteImage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Delete from database
 	if err := h.storage.DeleteImage(filename); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
@@ -411,8 +385,6 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use streaming multipart reader - don't load entire file into memory
-	// Only allocate 32MB for form fields, files are streamed directly
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		log.Printf("Failed to parse upload form: %v", err)
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Failed to parse form"})
@@ -427,20 +399,17 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Validate file extension
 	if !strings.HasSuffix(strings.ToLower(header.Filename), ".iso") {
 		log.Printf("Upload rejected: invalid file type: %s", header.Filename)
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Only .iso files are allowed"})
 		return
 	}
 
-	// Log initial memory state
 	var startMem runtime.MemStats
 	runtime.ReadMemStats(&startMem)
 	log.Printf("Starting ISO upload: %s (size: %d bytes) - Memory: %d MB allocated",
 		header.Filename, header.Size, startMem.Alloc/1024/1024)
 
-	// Check if file already exists on filesystem (filesystem is source of truth)
 	filePath := filepath.Join(h.isoDir, header.Filename)
 	if _, err := os.Stat(filePath); err == nil {
 		log.Printf("Upload rejected: file already exists on filesystem: %s", header.Filename)
@@ -448,7 +417,6 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save file
 	dst, err := os.Create(filePath)
 	if err != nil {
 		log.Printf("Failed to create file %s: %v", filePath, err)
@@ -457,11 +425,10 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	// Copy file with progress logging
-	buf := make([]byte, 32*1024*1024) // 32MB buffer for faster copying
+	buf := make([]byte, 32*1024*1024)
 	var written int64
 	lastLog := int64(0)
-	logInterval := int64(100 * 1024 * 1024) // Log every 100MB
+	logInterval := int64(100 * 1024 * 1024)
 
 	for {
 		nr, er := file.Read(buf)
@@ -479,7 +446,6 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 
-			// Log progress every 100MB
 			if written-lastLog >= logInterval {
 				log.Printf("Upload progress: %s - %d MB written", header.Filename, written/(1024*1024))
 				lastLog = written
@@ -502,10 +468,9 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 
 	size := written
 
-	// Log final memory state
 	var endMem runtime.MemStats
 	runtime.ReadMemStats(&endMem)
-	runtime.GC() // Force garbage collection to free upload buffers
+	runtime.GC()
 	var afterGC runtime.MemStats
 	runtime.ReadMemStats(&afterGC)
 
@@ -513,13 +478,10 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Memory usage - Start: %d MB, End: %d MB, After GC: %d MB",
 		startMem.Alloc/1024/1024, endMem.Alloc/1024/1024, afterGC.Alloc/1024/1024)
 
-	// Check if database record already exists (file may have been deleted but DB record remains)
 	existingImage, err := h.storage.GetImage(header.Filename)
 	if err == nil && existingImage != nil {
-		// Update existing record
 		existingImage.Size = size
 		existingImage.Enabled = true
-		// Preserve existing settings unless explicitly overridden
 		publicValue := r.FormValue("public")
 		if publicValue == "on" || publicValue == "true" || publicValue == "false" {
 			existingImage.Public = publicValue == "on" || publicValue == "true"
@@ -540,7 +502,6 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create new entry
 	displayName := strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
 	publicValue := r.FormValue("public")
 	isPublic := publicValue == "on" || publicValue == "true"
@@ -558,7 +519,6 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.storage.CreateImage(&image); err != nil {
-		// Clean up uploaded file on database error
 		os.Remove(filePath)
 		log.Printf("Failed to create image record, file removed: %s - %v", header.Filename, err)
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Failed to create image record"})
@@ -569,9 +529,6 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusCreated, Response{Success: true, Message: "Image uploaded", Data: image})
 }
 
-// ============================================================================
-// Client-Image Association
-// ============================================================================
 
 func (h *Handler) AssignImages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -582,8 +539,8 @@ func (h *Handler) AssignImages(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		MACAddress      string   `json:"mac_address"`
 		ImageFilenames  []string `json:"image_filenames"`
-		ClientID        uint     `json:"client_id"` // For DB mode
-		ImageIDs        []uint   `json:"image_ids"` // For DB mode
+		ClientID        uint     `json:"client_id"`
+		ImageIDs        []uint   `json:"image_ids"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -605,9 +562,6 @@ func (h *Handler) AssignImages(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Images assigned to client"})
 }
 
-// ============================================================================
-// ISO Kernel/Initrd Extraction
-// ============================================================================
 
 func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -621,34 +575,28 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the image from database
 	image, err := h.storage.GetImage(filename)
 	if err != nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
 		return
 	}
 
-	// Check if already extracted
 	if image.Extracted && image.BootMethod == "kernel" {
 		h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Image already extracted", Data: image})
 		return
 	}
 
-	// Import extractor package
 	log.Printf("Admin: Starting kernel/initrd extraction - %s", filename)
 
-	// Create extractor
 	ext, err := extractor.New(h.isoDir)
 	if err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: fmt.Sprintf("Failed to create extractor: %v", err)})
 		return
 	}
 
-	// Extract boot files
 	isoPath := filepath.Join(h.isoDir, filename)
 	bootFiles, err := ext.Extract(isoPath)
 	if err != nil {
-		// Save error to database
 		image.ExtractionError = err.Error()
 		h.storage.UpdateImage(filename, image)
 
@@ -659,15 +607,12 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save metadata
 	if err := ext.SaveMetadata(filename, bootFiles); err != nil {
 		log.Printf("Failed to save extraction metadata: %v", err)
 	}
 
-	// Check sanboot compatibility and generate hints
 	sanbootCompatible, sanbootHint := checkSanbootCompatibility(bootFiles.Distro, image.Filename)
 
-	// Update database with extraction info
 	now := time.Now()
 	image.Extracted = true
 	image.Distro = bootFiles.Distro
@@ -682,7 +627,7 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	image.SanbootHint = sanbootHint
 	image.NetbootRequired = bootFiles.NetbootRequired
 	image.NetbootURL = bootFiles.NetbootURL
-	image.NetbootAvailable = false // Not yet downloaded
+	image.NetbootAvailable = false
 
 	log.Printf("Setting boot_method to 'kernel' for image ID=%d, filename=%s", image.ID, image.Filename)
 
@@ -701,11 +646,9 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// checkSanbootCompatibility determines if an ISO is compatible with sanboot and provides hints
 func checkSanbootCompatibility(distro, filename string) (bool, string) {
 	filenameLower := strings.ToLower(filename)
 
-	// Windows PE and diagnostic ISOs are sanboot compatible
 	if strings.Contains(filenameLower, "winpe") ||
 	   strings.Contains(filenameLower, "windows pe") ||
 	   strings.Contains(filenameLower, "memtest") ||
@@ -713,7 +656,6 @@ func checkSanbootCompatibility(distro, filename string) (bool, string) {
 		return true, ""
 	}
 
-	// Most Linux distributions and Windows are NOT sanboot compatible
 	incompatibleDistros := map[string]string{
 		"windows":  "Windows requires boot file extraction. Use 'Extract Kernel/Initrd' to extract boot files for wimboot support.",
 		"ubuntu":   "Ubuntu requires kernel extraction. Use 'Extract Kernel/Initrd' for network boot support.",
@@ -735,12 +677,10 @@ func checkSanbootCompatibility(distro, filename string) (bool, string) {
 		return false, hint
 	}
 
-	// If distro detected but not in our list, assume incompatible for safety
 	if distro != "" {
 		return false, "This Linux distribution likely requires kernel extraction. Use 'Extract Kernel/Initrd' for reliable network boot support."
 	}
 
-	// Unknown ISO type - allow sanboot but warn
 	return true, ""
 }
 
@@ -752,7 +692,7 @@ func (h *Handler) SetBootMethod(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Filename   string `json:"filename"`
-		BootMethod string `json:"boot_method"` // "sanboot" or "kernel"
+		BootMethod string `json:"boot_method"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -770,14 +710,12 @@ func (h *Handler) SetBootMethod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the image
 	image, err := h.storage.GetImage(req.Filename)
 	if err != nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
 		return
 	}
 
-	// If switching to kernel method, ensure extraction has been done
 	if req.BootMethod == "kernel" && !image.Extracted {
 		h.sendJSON(w, http.StatusBadRequest, Response{
 			Success: false,
@@ -786,7 +724,6 @@ func (h *Handler) SetBootMethod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If switching to sanboot, check compatibility and warn user
 	if req.BootMethod == "sanboot" && !image.SanbootCompatible {
 		h.sendJSON(w, http.StatusBadRequest, Response{
 			Success: false,
@@ -795,7 +732,6 @@ func (h *Handler) SetBootMethod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update boot method
 	image.BootMethod = req.BootMethod
 
 	if err := h.storage.UpdateImage(req.Filename, image); err != nil {
@@ -811,9 +747,6 @@ func (h *Handler) SetBootMethod(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ============================================================================
-// Statistics and Logs
-// ============================================================================
 
 func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -868,9 +801,6 @@ func (h *Handler) GetBootLogs(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: logs})
 }
 
-// ============================================================================
-// System Operations
-// ============================================================================
 
 func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -884,7 +814,6 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build map of existing ISO files
 	existingFiles := make(map[string]bool)
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".iso") {
@@ -895,7 +824,6 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 	var newImages []string
 	var deletedImages []string
 
-	// Add new images and update existing ones
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".iso") {
 			continue
@@ -906,9 +834,8 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Check if already exists
 		existing, err := h.storage.GetImage(entry.Name())
-		if err != nil { // Not found, create new
+		if err != nil {
 			displayName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
 			image := &models.Image{
 				Name:     displayName,
@@ -925,7 +852,6 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Failed to add image to database: %s - %v", entry.Name(), err)
 			}
 		} else {
-			// Image exists, update size if changed
 			if existing.Size != info.Size() {
 				oldSize := existing.Size
 				existing.Size = info.Size()
@@ -936,19 +862,16 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Remove images that no longer exist on disk
 	allImages, err := h.storage.ListImages()
 	if err == nil {
 		log.Printf("Checking %d database images against %d filesystem ISOs", len(allImages), len(existingFiles))
 		for _, image := range allImages {
 			if !existingFiles[image.Filename] {
-				// ISO file no longer exists, delete from database
 				log.Printf("Deleting missing image from database: %s (ID: %d)", image.Filename, image.ID)
 				if err := h.storage.DeleteImage(image.Filename); err == nil {
 					deletedImages = append(deletedImages, image.Filename)
 					log.Printf("Successfully removed missing image from database: %s", image.Filename)
 
-					// Also clean up extracted boot files directory if it exists
 					isoBase := strings.TrimSuffix(image.Filename, filepath.Ext(image.Filename))
 					bootFilesDir := filepath.Join(h.isoDir, isoBase)
 					if _, err := os.Stat(bootFilesDir); err == nil {
@@ -975,9 +898,6 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ============================================================================
-// Bootloader Management
-// ============================================================================
 
 type Bootloader struct {
 	Name string `json:"name"`
@@ -992,7 +912,6 @@ func (h *Handler) ListBootloaders(w http.ResponseWriter, r *http.Request) {
 
 	var bootloaders []Bootloader
 
-	// Check if boot directory exists
 	if h.bootDir == "" {
 		h.sendJSON(w, http.StatusOK, Response{
 			Success: true,
@@ -1002,7 +921,6 @@ func (h *Handler) ListBootloaders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create boot directory if it doesn't exist
 	if err := os.MkdirAll(h.bootDir, 0755); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{
 			Success: false,
@@ -1048,7 +966,6 @@ func (h *Handler) UploadBootloader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if boot directory is configured
 	if h.bootDir == "" {
 		h.sendJSON(w, http.StatusBadRequest, Response{
 			Success: false,
@@ -1057,7 +974,6 @@ func (h *Handler) UploadBootloader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create boot directory if it doesn't exist
 	if err := os.MkdirAll(h.bootDir, 0755); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{
 			Success: false,
@@ -1066,7 +982,6 @@ func (h *Handler) UploadBootloader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form (max 10MB for bootloaders)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{
 			Success: false,
@@ -1085,7 +1000,6 @@ func (h *Handler) UploadBootloader(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Validate file name
 	filename := filepath.Base(header.Filename)
 	if filename == "" || filename == "." || filename == ".." {
 		h.sendJSON(w, http.StatusBadRequest, Response{
@@ -1095,7 +1009,6 @@ func (h *Handler) UploadBootloader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create destination file
 	destPath := filepath.Join(h.bootDir, filename)
 	dest, err := os.Create(destPath)
 	if err != nil {
@@ -1107,7 +1020,6 @@ func (h *Handler) UploadBootloader(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dest.Close()
 
-	// Copy file
 	written, err := io.Copy(dest, file)
 	if err != nil {
 		os.Remove(destPath)
@@ -1153,7 +1065,6 @@ func (h *Handler) DeleteBootloader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate filename
 	filename = filepath.Base(filename)
 	if filename == "" || filename == "." || filename == ".." {
 		h.sendJSON(w, http.StatusBadRequest, Response{
@@ -1180,9 +1091,6 @@ func (h *Handler) DeleteBootloader(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ============================================================================
-// Server Information
-// ============================================================================
 
 func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -1190,7 +1098,6 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get system statistics
 	monitoredPaths := sysstats.GetMonitoredPaths(h.dataDir)
 	sysStats, err := sysstats.GetStats(monitoredPaths)
 	if err != nil {
@@ -1235,9 +1142,7 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: info})
 }
 
-// User Management Endpoints
 
-// ListUsers returns all users
 func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := h.storage.ListUsers()
 	if err != nil {
@@ -1247,7 +1152,6 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: users})
 }
 
-// CreateUser creates a new user
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
@@ -1277,7 +1181,6 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user exists
 	if _, err := h.storage.GetUser(req.Username); err == nil {
 		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "User already exists"})
 		return
@@ -1292,7 +1195,6 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusCreated, Response{Success: true, Message: "User created", Data: user})
 }
 
-// UpdateUser updates an existing user
 func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	username := r.URL.Query().Get("username")
 	if username == "" {
@@ -1300,7 +1202,6 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decode into a map to detect which fields are actually present
 	var updates map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
@@ -1313,7 +1214,6 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update only the fields that are present
 	if enabled, ok := updates["enabled"].(bool); ok {
 		user.Enabled = enabled
 	}
@@ -1330,7 +1230,6 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "User updated", Data: user})
 }
 
-// DeleteUser deletes a user
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	username := r.URL.Query().Get("username")
 	if username == "" {
@@ -1338,7 +1237,6 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prevent deleting the admin user
 	if username == "admin" {
 		h.sendJSON(w, http.StatusForbidden, Response{Success: false, Error: "Cannot delete admin user"})
 		return
@@ -1353,7 +1251,6 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "User deleted"})
 }
 
-// ResetUserPassword resets a user's password
 func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username    string `json:"username"`
@@ -1390,7 +1287,6 @@ func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Password reset successfully"})
 }
 
-// ISO Download Management
 
 type DownloadProgress struct {
 	URL          string  `json:"url"`
@@ -1399,7 +1295,7 @@ type DownloadProgress struct {
 	DownloadedBytes int64   `json:"downloaded_bytes"`
 	Percentage   float64 `json:"percentage"`
 	Speed        string  `json:"speed"`
-	Status       string  `json:"status"` // "downloading", "completed", "error"
+	Status       string  `json:"status"`
 	Error        string  `json:"error,omitempty"`
 	StartTime    time.Time `json:"start_time"`
 }
@@ -1489,7 +1385,6 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// DownloadISO downloads an ISO from a URL
 func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		URL         string `json:"url"`
@@ -1506,21 +1401,18 @@ func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract filename from URL
 	filename := filepath.Base(req.URL)
 	if !strings.HasSuffix(strings.ToLower(filename), ".iso") {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "URL must point to an .iso file"})
 		return
 	}
 
-	// Check if file already exists
 	destPath := filepath.Join(h.isoDir, filename)
 	if _, err := os.Stat(destPath); err == nil {
 		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "File already exists"})
 		return
 	}
 
-	// Start download in background
 	go h.downloadISO(req.URL, filename, destPath, req.Description)
 
 	h.sendJSON(w, http.StatusAccepted, Response{
@@ -1536,9 +1428,8 @@ func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) downloadISO(url, filename, destPath, description string) {
 	log.Printf("Starting ISO download: %s from %s", filename, url)
 
-	// Create HTTP client with timeout
 	client := &http.Client{
-		Timeout: 0, // No timeout for large downloads
+		Timeout: 0,
 	}
 
 	resp, err := client.Get(url)
@@ -1556,11 +1447,9 @@ func (h *Handler) downloadISO(url, filename, destPath, description string) {
 		return
 	}
 
-	// Add to download manager
 	totalBytes := resp.ContentLength
 	downloadMgr.Add(url, filename, totalBytes)
 
-	// Create destination file
 	out, err := os.Create(destPath)
 	if err != nil {
 		log.Printf("Failed to create file %s: %v", destPath, err)
@@ -1569,8 +1458,7 @@ func (h *Handler) downloadISO(url, filename, destPath, description string) {
 	}
 	defer out.Close()
 
-	// Download with progress tracking
-	buffer := make([]byte, 32*1024) // 32KB buffer
+	buffer := make([]byte, 32*1024)
 	var downloaded int64
 
 	for {
@@ -1601,7 +1489,6 @@ func (h *Handler) downloadISO(url, filename, destPath, description string) {
 	downloadMgr.Complete(filename)
 	log.Printf("Completed ISO download: %s (%d bytes)", filename, downloaded)
 
-	// Sync to database if available
 	if h.storage != nil {
 		isoFiles := []struct{ Name, Filename string; Size int64 }{
 			{Name: strings.TrimSuffix(filename, filepath.Ext(filename)), Filename: filename, Size: downloaded},
@@ -1613,7 +1500,6 @@ func (h *Handler) downloadISO(url, filename, destPath, description string) {
 	}
 }
 
-// GetDownloadProgress returns the progress of a specific download
 func (h *Handler) GetDownloadProgress(w http.ResponseWriter, r *http.Request) {
 	filename := r.URL.Query().Get("filename")
 	if filename == "" {
@@ -1630,17 +1516,12 @@ func (h *Handler) GetDownloadProgress(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: progress})
 }
 
-// ListDownloads returns all active/recent downloads
 func (h *Handler) ListDownloads(w http.ResponseWriter, r *http.Request) {
 	downloads := downloadMgr.GetAll()
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: downloads})
 }
 
-// ============================================================================
-// Auto-Install Script Management
-// ============================================================================
 
-// GetAutoInstallScript returns the auto-install script for an image
 func (h *Handler) GetAutoInstallScript(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -1672,7 +1553,6 @@ func (h *Handler) GetAutoInstallScript(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// UpdateAutoInstallScript updates the auto-install script for an image
 func (h *Handler) UpdateAutoInstallScript(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -1688,7 +1568,7 @@ func (h *Handler) UpdateAutoInstallScript(w http.ResponseWriter, r *http.Request
 	var req struct {
 		Script     string `json:"script"`
 		Enabled    bool   `json:"enabled"`
-		ScriptType string `json:"script_type"` // "preseed", "kickstart", "autounattend"
+		ScriptType string `json:"script_type"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1696,12 +1576,11 @@ func (h *Handler) UpdateAutoInstallScript(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Validate script type
 	validTypes := map[string]bool{
 		"preseed":      true,
 		"kickstart":    true,
 		"autounattend": true,
-		"autoinstall":  true, // Ubuntu autoinstall (cloud-init)
+		"autoinstall":  true,
 	}
 
 	if req.ScriptType != "" && !validTypes[req.ScriptType] {
@@ -1737,11 +1616,7 @@ func (h *Handler) UpdateAutoInstallScript(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// ============================================================================
-// Custom File Management
-// ============================================================================
 
-// ListCustomFiles lists all custom files
 func (h *Handler) ListCustomFiles(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -1761,7 +1636,6 @@ func (h *Handler) ListCustomFiles(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: files})
 }
 
-// GetCustomFile gets a single custom file by ID
 func (h *Handler) GetCustomFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -1789,14 +1663,12 @@ func (h *Handler) GetCustomFile(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: file})
 }
 
-// UploadCustomFile handles custom file uploads
 func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
 		return
 	}
 
-	// Parse multipart form (max 100MB for custom files)
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{
 			Success: false,
@@ -1815,7 +1687,6 @@ func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Get form parameters
 	description := r.FormValue("description")
 	destinationPath := r.FormValue("destinationPath")
 	autoInstallStr := r.FormValue("autoInstall")
@@ -1834,7 +1705,6 @@ func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Validate filename
 	originalFilename := filepath.Base(header.Filename)
 	if originalFilename == "" || originalFilename == "." || originalFilename == ".." {
 		h.sendJSON(w, http.StatusBadRequest, Response{
@@ -1844,16 +1714,12 @@ func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clean filename for storage (use original name as stored filename)
 	cleanFilename := filepath.Clean(originalFilename)
 
-	// Determine storage path based on public/image-specific
 	var destDir string
 	if isPublic {
-		// Public files go in /data/files/
 		destDir = filepath.Join(h.dataDir, "files")
 	} else if imageID != nil {
-		// Image-specific files go in /data/isos/{image-name}/files/
 		var imageName string
 		var images []*models.Image
 		images, _ = h.storage.ListImages()
@@ -1881,7 +1747,6 @@ func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create destination directory if it doesn't exist
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{
 			Success: false,
@@ -1890,7 +1755,6 @@ func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create destination file
 	destPath := filepath.Join(destDir, cleanFilename)
 	dest, err := os.Create(destPath)
 	if err != nil {
@@ -1902,7 +1766,6 @@ func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dest.Close()
 
-	// Copy file
 	written, err := io.Copy(dest, file)
 	if err != nil {
 		os.Remove(destPath)
@@ -1913,13 +1776,11 @@ func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Detect content type
 	contentType := header.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 
-	// Create database record
 	customFile := &models.CustomFile{
 		Filename:        cleanFilename,
 		OriginalName:    originalFilename,
@@ -1933,7 +1794,6 @@ func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = h.storage.CreateCustomFile(customFile); err != nil {
-		// Clean up file if database insert fails
 		os.Remove(destPath)
 		h.sendJSON(w, http.StatusInternalServerError, Response{
 			Success: false,
@@ -1952,7 +1812,6 @@ func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// UpdateCustomFile updates custom file metadata
 func (h *Handler) UpdateCustomFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -1977,20 +1836,16 @@ func (h *Handler) UpdateCustomFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get existing file
 	file, err := h.storage.GetCustomFileByID(uint(id))
 	if err != nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "File not found"})
 		return
 	}
 
-	// Update allowed fields
 	if desc, ok := updates["description"].(string); ok {
 		file.Description = desc
 	}
 
-	// Note: Changing public/imageID requires moving the file, which we'll implement later
-	// For now, just update the description
 
 	if err = h.storage.UpdateCustomFile(uint(id), file); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
@@ -2001,7 +1856,6 @@ func (h *Handler) UpdateCustomFile(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "File updated", Data: file})
 }
 
-// DeleteCustomFile deletes a custom file
 func (h *Handler) DeleteCustomFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -2020,14 +1874,12 @@ func (h *Handler) DeleteCustomFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get file to determine path before deleting
 	file, err := h.storage.GetCustomFileByID(uint(id))
 	if err != nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "File not found"})
 		return
 	}
 
-	// Determine file path
 	var filePath string
 	if file.Public {
 		filePath = filepath.Join(h.dataDir, "files", file.Filename)
@@ -2036,13 +1888,11 @@ func (h *Handler) DeleteCustomFile(w http.ResponseWriter, r *http.Request) {
 		filePath = filepath.Join(h.isoDir, imageName, "files", file.Filename)
 	}
 
-	// Delete from database first
 	if err = h.storage.DeleteCustomFile(uint(id)); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
 	}
 
-	// Delete physical file
 	if filePath != "" {
 		if err := os.Remove(filePath); err != nil {
 			log.Printf("Warning: Failed to delete file %s: %v", filePath, err)

@@ -12,7 +12,6 @@ import (
 	"strings"
 )
 
-// DownloadNetboot downloads and extracts Debian/Ubuntu netboot files for an image
 func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -25,14 +24,12 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the image
 	image, err := h.storage.GetImage(filename)
 	if err != nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
 		return
 	}
 
-	// Check if netboot is required for this image
 	if !image.NetbootRequired {
 		h.sendJSON(w, http.StatusBadRequest, Response{
 			Success: false,
@@ -41,7 +38,6 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if netboot URL is set
 	if image.NetbootURL == "" {
 		h.sendJSON(w, http.StatusBadRequest, Response{
 			Success: false,
@@ -50,7 +46,6 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create netboot directory for this image
 	imageDir := filepath.Join(h.isoDir, strings.TrimSuffix(filename, filepath.Ext(filename))+"-netboot")
 	if err := os.MkdirAll(imageDir, 0755); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{
@@ -62,7 +57,6 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Downloading netboot tarball from: %s", image.NetbootURL)
 
-	// Download the netboot tarball
 	resp, err := http.Get(image.NetbootURL)
 	if err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{
@@ -81,7 +75,6 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract the tarball directly
 	gzReader, err := gzip.NewReader(resp.Body)
 	if err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{
@@ -108,10 +101,8 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Build target path
 		targetPath := filepath.Join(imageDir, header.Name)
 
-		// Prevent directory traversal
 		if !strings.HasPrefix(targetPath, filepath.Clean(imageDir)+string(os.PathSeparator)) {
 			log.Printf("Warning: Skipping file outside target directory: %s", header.Name)
 			continue
@@ -123,13 +114,11 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Warning: Failed to create directory %s: %v", targetPath, err)
 			}
 		case tar.TypeReg:
-			// Create parent directory if needed
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 				log.Printf("Warning: Failed to create parent directory for %s: %v", targetPath, err)
 				continue
 			}
 
-			// Create and write file
 			outFile, err := os.Create(targetPath)
 			if err != nil {
 				log.Printf("Warning: Failed to create file %s: %v", targetPath, err)
@@ -143,7 +132,6 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 			}
 			outFile.Close()
 
-			// Set file permissions
 			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil {
 				log.Printf("Warning: Failed to set permissions on %s: %v", targetPath, err)
 			}
@@ -154,7 +142,6 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Extracted %d files from netboot tarball to %s", filesExtracted, imageDir)
 
-	// Look for vmlinuz and initrd in the extracted files
 	var vmlinuzPath, initrdPath string
 	filepath.Walk(imageDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -181,7 +168,6 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Copy vmlinuz and initrd to the image's root directory
 	imageRootDir := filepath.Join(h.isoDir, strings.TrimSuffix(filename, filepath.Ext(filename)))
 	if err := copyFile(vmlinuzPath, filepath.Join(imageRootDir, "vmlinuz")); err != nil {
 		log.Printf("Warning: Failed to copy vmlinuz: %v", err)
@@ -190,7 +176,6 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Warning: Failed to copy initrd: %v", err)
 	}
 
-	// Update image to mark netboot as available
 	image.NetbootAvailable = true
 	if err := h.storage.UpdateImage(filename, image); err != nil {
 		log.Printf("Warning: Failed to update image netboot status: %v", err)
@@ -206,7 +191,6 @@ func (h *Handler) DownloadNetboot(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// copyFile copies a file from src to dst
 func copyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {
