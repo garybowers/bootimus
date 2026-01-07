@@ -24,6 +24,67 @@ function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
 }
 
+function toggleUserProfile() {
+    const dropdown = document.getElementById('user-profile-dropdown');
+    dropdown.classList.toggle('show');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('user-profile-dropdown');
+    const button = document.querySelector('.user-profile-button');
+
+    if (dropdown && button && !dropdown.contains(e.target) && !button.contains(e.target)) {
+        dropdown.classList.remove('show');
+    }
+});
+
+async function loadCurrentUser() {
+    try {
+        // We'll need to get the current user info from the auth context
+        // For now, we can extract it from Basic Auth header or create an endpoint
+        const username = getCurrentUsername();
+        document.getElementById('current-username').textContent = username;
+
+        // Check if user is admin by trying to access admin-only endpoint
+        try {
+            const res = await fetch(`${API_BASE}/users`);
+            if (res.ok) {
+                document.getElementById('current-user-role').textContent = 'Administrator';
+            } else {
+                document.getElementById('current-user-role').textContent = 'User';
+            }
+        } catch (err) {
+            document.getElementById('current-user-role').textContent = 'User';
+        }
+    } catch (err) {
+        console.error('Failed to load user info:', err);
+    }
+}
+
+function getCurrentUsername() {
+    // Try to get username from localStorage if we stored it during login
+    const stored = localStorage.getItem('bootimus_username');
+    if (stored) return stored;
+
+    // Otherwise return a default
+    return 'admin';
+}
+
+function logout() {
+    // Clear any stored credentials
+    localStorage.removeItem('bootimus_username');
+
+    // Show notification
+    showNotification('Logging out...', 'info');
+
+    // Redirect to logout endpoint which will clear Basic Auth
+    // Since we use Basic Auth, we need to send invalid credentials to force re-auth
+    setTimeout(() => {
+        window.location.href = '/logout';
+    }, 500);
+}
+
 function showNotification(message, type = 'info') {
     // Create notification element
     const notification = document.createElement('div');
@@ -95,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupTabs();
     setupForms();
     setupUpload();
+    loadCurrentUser();
     loadStats();
     loadServerInfo();
     loadClients();
@@ -137,6 +199,10 @@ function setupTabs() {
 
             tab.classList.add('active');
             document.getElementById(`${tab.dataset.tab}-tab`).classList.add('active');
+
+            if (tab.dataset.tab === 'groups') {
+                loadGroups();
+            }
         });
     });
 }
@@ -650,6 +716,8 @@ function renderImagesTable() {
                         <td>
                             ${img.boot_method === 'kernel' ?
                                 '<span class="badge badge-success">Kernel/Initrd</span>' :
+                                img.boot_method === 'memdisk' ?
+                                '<span class="badge badge-warning">Memdisk (ThinOS)</span>' :
                                 '<span class="badge badge-info">SAN Boot</span>'
                             }
                             ${!img.sanboot_compatible && img.sanboot_hint && img.boot_method === 'sanboot' && !img.extracted ?
@@ -693,29 +761,20 @@ function renderImagesTable() {
                         </td>
                         <td>
                             ${!img.extracted && !extractionProgress[img.filename] && !img.netboot_required ?
-                                '<button class="btn btn-success btn-sm" onclick="extractImage(\''+img.filename+'\', \''+img.name+'\')">Extract Kernel</button>' :
+                                '<button class="btn btn-success btn-sm" onclick="extractImage(\''+img.filename+'\', \''+img.name+'\')">Extract</button>' :
                                 ''
                             }
                             ${img.netboot_required && !img.netboot_available ?
-                                '<button class="btn btn-warning btn-sm" onclick="downloadNetboot(\''+img.filename+'\', \''+img.name+'\')">⬇ Download Netboot</button>' :
+                                '<button class="btn btn-warning btn-sm" onclick="downloadNetboot(\''+img.filename+'\', \''+img.name+'\')">⬇ Netboot</button>' :
                                 ''
                             }
                             ${extractionProgress[img.filename] ?
                                 '<button class="btn btn-sm" disabled style="opacity: 0.5;">Extracting...</button>' :
                                 ''
                             }
-                            <button class="btn btn-primary btn-sm" onclick="toggleImage('${img.filename}', ${img.enabled})">
-                                ${img.enabled ? 'Disable' : 'Enable'}
-                            </button>
-                            <button class="btn btn-primary btn-sm" onclick="togglePublic('${img.filename}', ${img.public})">
-                                ${img.public ? 'Make Private' : 'Make Public'}
-                            </button>
-                            <button class="btn btn-info btn-sm" onclick="showAutoInstallModal('${img.filename}', '${img.name}')">
-                                ${img.auto_install_enabled ? '⚙️ Auto-Install' : 'Auto-Install'}
-                            </button>
-                            <button class="btn btn-primary btn-sm" onclick="showImageFilesModal(${img.id}, '${escapeHtml(img.name)}')">
-                                📁 Files (${(img.files || []).length})
-                            </button>
+                            <button class="btn btn-info btn-sm" onclick="showImagePropertiesModal('${img.filename}')">⚙️ Properties</button>
+                            <button class="btn btn-sm" onclick="showAutoInstallModal('${img.filename}', '${img.name}')">Auto-Install</button>
+                            <button class="btn btn-sm" onclick="showImageFilesModal(${img.id}, '${escapeHtml(img.name)}')">📁 Files</button>
                             <button class="btn btn-danger btn-sm" onclick="deleteImage('${img.filename}', '${img.name}')">Delete</button>
                         </td>
                     </tr>
@@ -916,6 +975,16 @@ async function setBootMethod(filename, method) {
     } catch (err) {
         showAlert('Failed to set boot method', 'error');
     }
+}
+
+async function cycleBootMethod(filename, currentMethod) {
+    const cycle = {
+        'sanboot': 'kernel',
+        'kernel': 'memdisk',
+        'memdisk': 'sanboot'
+    };
+    const nextMethod = cycle[currentMethod] || 'sanboot';
+    await setBootMethod(filename, nextMethod);
 }
 
 // Boot Logs
@@ -1520,6 +1589,74 @@ document.getElementById('reset-password-form').addEventListener('submit', functi
     });
 });
 
+document.getElementById('add-group-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+
+    const groupData = {
+        name: formData.get('name'),
+        description: formData.get('description'),
+        parent_id: formData.get('parent_id') ? parseInt(formData.get('parent_id')) : null,
+        order: parseInt(formData.get('order')) || 0,
+        enabled: formData.get('enabled') === 'on'
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/groups`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(groupData)
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showNotification('Group created successfully', 'success');
+            closeModal('add-group-modal');
+            loadGroups();
+        } else {
+            showNotification(data.error || 'Failed to create group', 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error.message, 'error');
+    }
+});
+
+document.getElementById('edit-group-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+
+    const groupData = {
+        id: parseInt(formData.get('id')),
+        name: formData.get('name'),
+        description: formData.get('description'),
+        parent_id: formData.get('parent_id') ? parseInt(formData.get('parent_id')) : null,
+        order: parseInt(formData.get('order')) || 0,
+        enabled: formData.get('enabled') === 'on'
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/groups/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(groupData)
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showNotification('Group updated successfully', 'success');
+            closeModal('edit-group-modal');
+            loadGroups();
+            loadImages();
+        } else {
+            showNotification(data.error || 'Failed to update group', 'error');
+        }
+    } catch (error) {
+        showNotification('Error: ' + error.message, 'error');
+    }
+});
+
 // ==================== ISO Download Management ====================
 
 let downloadProgressInterval = null;
@@ -2027,4 +2164,405 @@ function formatBytes(bytes) {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+let groups = [];
+
+async function loadGroups() {
+    try {
+        const res = await fetch(`${API_BASE}/groups`);
+        const data = await res.json();
+
+        if (data.success && data.data) {
+            groups = data.data;
+            renderGroupsTable();
+        } else {
+            document.getElementById('groups-table').innerHTML = '<p style="color: #94a3b8; padding: 20px;">No groups found.</p>';
+        }
+    } catch (err) {
+        document.getElementById('groups-table').innerHTML = '<p style="color: #ef4444; padding: 20px;">Failed to load groups</p>';
+        console.error(err);
+    }
+}
+
+function renderGroupsTable() {
+    const container = document.getElementById('groups-table');
+
+    if (!groups || groups.length === 0) {
+        container.innerHTML = '<p style="color: #94a3b8; padding: 20px;">No groups found. Click "+ Add Group" to create one.</p>';
+        return;
+    }
+
+    const sortedGroups = [...groups].sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order;
+        return a.name.localeCompare(b.name);
+    });
+
+    let html = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th>Parent</th>
+                    <th>Order</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    for (const group of sortedGroups) {
+        const parentName = group.parent_id ? (groups.find(g => g.id === group.parent_id)?.name || 'Unknown') : '-';
+        const status = group.enabled ? '<span class="badge badge-success">Enabled</span>' : '<span class="badge badge-danger">Disabled</span>';
+
+        html += `
+            <tr>
+                <td><strong>${escapeHtml(group.name)}</strong></td>
+                <td>${escapeHtml(group.description || '-')}</td>
+                <td>${escapeHtml(parentName)}</td>
+                <td>${group.order}</td>
+                <td>${status}</td>
+                <td>
+                    <button class="btn btn-sm btn-info" onclick="showEditGroupModal(${group.id})">Edit</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteGroup(${group.id}, '${escapeHtml(group.name).replace(/'/g, "\\'")}')">Delete</button>
+                </td>
+            </tr>
+        `;
+    }
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+function showAddGroupModal() {
+    const form = document.getElementById('add-group-form');
+    form.reset();
+
+    const parentSelect = document.getElementById('add-group-parent-select');
+    parentSelect.innerHTML = '<option value="">None (Root Level)</option>';
+
+    for (const group of groups) {
+        parentSelect.innerHTML += `<option value="${group.id}">${escapeHtml(group.name)}</option>`;
+    }
+
+    openModal('add-group-modal');
+}
+
+function showEditGroupModal(groupId) {
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+
+    const form = document.getElementById('edit-group-form');
+    form.elements.id.value = group.id;
+    form.elements.name.value = group.name;
+    form.elements.description.value = group.description || '';
+    form.elements.order.value = group.order;
+    form.elements.enabled.checked = group.enabled;
+
+    const parentSelect = document.getElementById('edit-group-parent-select');
+    parentSelect.innerHTML = '<option value="">None (Root Level)</option>';
+
+    for (const g of groups) {
+        if (g.id !== groupId) {
+            const selected = group.parent_id === g.id ? 'selected' : '';
+            parentSelect.innerHTML += `<option value="${g.id}" ${selected}>${escapeHtml(g.name)}</option>`;
+        }
+    }
+
+    openModal('edit-group-modal');
+}
+
+async function deleteGroup(groupId, groupName) {
+    if (!confirm(`Delete group "${groupName}"? This will unassign all images from this group.`)) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/groups/delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: groupId })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showNotification('Group deleted successfully', 'success');
+            loadGroups();
+            loadImages();
+        } else {
+            showNotification('Failed to delete group: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (err) {
+        showNotification('Failed to delete group', 'error');
+        console.error(err);
+    }
+}
+
+function switchPropsTab(tabName) {
+    document.querySelectorAll('#image-properties-modal .tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.props-tab-content').forEach(c => c.style.display = 'none');
+
+    const clickedTab = document.querySelector(`#image-properties-modal .tab[data-tab="${tabName}"]`);
+    if (clickedTab) clickedTab.classList.add('active');
+
+    if (tabName === 'props-general') {
+        document.getElementById('props-general-content').style.display = 'block';
+    } else if (tabName === 'props-files') {
+        document.getElementById('props-files-content').style.display = 'block';
+        const filename = document.getElementById('image-props-filename').value;
+        if (filename) {
+            loadImageFileBrowser(filename);
+        }
+    }
+}
+
+async function showImagePropertiesModal(filename) {
+    const img = images.find(i => i.filename === filename);
+    if (!img) return;
+
+    if (!groups || groups.length === 0) {
+        await loadGroups();
+    }
+
+    document.getElementById('image-props-name').textContent = img.name;
+    document.getElementById('image-props-filename').value = img.filename;
+    document.getElementById('image-props-display-name').value = img.name || '';
+    document.getElementById('image-props-description').value = img.description || '';
+    document.getElementById('image-props-order').value = img.order || 0;
+    document.getElementById('image-props-boot-method').value = img.boot_method || 'sanboot';
+    document.getElementById('image-props-boot-params').value = img.boot_params || '';
+    document.getElementById('image-props-enabled').checked = img.enabled;
+    document.getElementById('image-props-public').checked = img.public;
+
+    const groupSelect = document.getElementById('image-props-group');
+    groupSelect.innerHTML = '<option value="">Unassigned</option>';
+    for (const group of groups) {
+        const selected = img.group_id === group.id ? 'selected' : '';
+        groupSelect.innerHTML += `<option value="${group.id}" ${selected}>${escapeHtml(group.name)}</option>`;
+    }
+
+    switchPropsTab('props-general');
+    openModal('image-properties-modal');
+}
+
+async function loadImageFileBrowser(filename) {
+    const container = document.getElementById('image-file-browser');
+    container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading files...</div>';
+
+    try {
+        const res = await fetch(`${API_BASE}/images/files?filename=${encodeURIComponent(filename)}`);
+        const data = await res.json();
+
+        if (data.success && data.data && data.data.files) {
+            renderFileBrowser(data.data.files, filename);
+        } else {
+            container.innerHTML = '<p style="color: #94a3b8; padding: 20px;">No files found for this image.</p>';
+        }
+    } catch (err) {
+        container.innerHTML = '<p style="color: #ef4444; padding: 20px;">Failed to load file browser</p>';
+        console.error(err);
+    }
+}
+
+function renderFileBrowser(files, filename) {
+    const container = document.getElementById('image-file-browser');
+
+    const baseDir = filename.replace('.iso', '');
+    const hasFiles = files && files.length > 0;
+
+    let html = `
+        <div style="background: #0f172a; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <div style="font-family: monospace; color: #38bdf8;">📁 /isos/${escapeHtml(filename)}</div>
+                <button class="btn btn-danger btn-sm" onclick="deleteImageFile('${escapeHtml(filename)}', '${escapeHtml(baseDir)}', '${escapeHtml(filename)}', false, true)" style="padding: 4px 10px; font-size: 12px;">Delete ISO</button>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="font-family: monospace; color: ${hasFiles ? '#38bdf8' : '#64748b'};">📁 /boot/${escapeHtml(baseDir)}/ ${hasFiles ? '' : '<span style="color: #94a3b8; font-size: 11px;">(not extracted)</span>'}</div>
+                ${hasFiles ? '<button class="btn btn-danger btn-sm" onclick="deleteImageFile(\'' + escapeHtml(filename) + '\', \'' + escapeHtml(baseDir) + '\', \'\', true, false)" style="padding: 4px 10px; font-size: 12px;">Delete Boot Folder</button>' : ''}
+            </div>
+        </div>
+    `;
+
+    if (hasFiles) {
+        const tree = buildFileTree(files);
+        html += `
+            <div style="max-height: 500px; overflow-y: auto; background: #0f172a; border-radius: 6px; padding: 10px;">
+                ${renderFileTreeNode(tree, filename, baseDir, '')}
+            </div>
+        `;
+    } else {
+        html += `
+            <div style="background: #0f172a; padding: 20px; border-radius: 6px; text-align: center; color: #94a3b8;">
+                No extracted files found. Extract the kernel first to browse files.
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+function buildFileTree(files) {
+    const root = { name: '', children: {}, files: [] };
+
+    for (const file of files) {
+        const parts = file.path.split('/');
+        let current = root;
+
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            const isLast = i === parts.length - 1;
+
+            if (isLast && !file.is_dir) {
+                current.files.push({ name: part, size: file.size, path: file.path });
+            } else {
+                if (!current.children[part]) {
+                    current.children[part] = { name: part, children: {}, files: [], path: parts.slice(0, i + 1).join('/') };
+                }
+                current = current.children[part];
+            }
+        }
+    }
+
+    return root;
+}
+
+function renderFileTreeNode(node, filename, baseDir, indent) {
+    let html = '';
+
+    const dirs = Object.keys(node.children).sort();
+    for (const dirName of dirs) {
+        const child = node.children[dirName];
+        const id = 'tree-' + Math.random().toString(36).substr(2, 9);
+
+        html += `
+            <div style="margin-left: ${indent};">
+                <div style="padding: 6px; cursor: pointer; font-family: monospace; font-size: 13px; color: #e2e8f0; border-bottom: 1px solid #1e293b;" onclick="toggleTreeNode('${id}')">
+                    <span id="${id}-icon">▶</span> 📁 ${escapeHtml(dirName)}
+                </div>
+                <div id="${id}" style="display: none;">
+                    ${renderFileTreeNode(child, filename, baseDir, '20px')}
+                </div>
+            </div>
+        `;
+    }
+
+    const sortedFiles = node.files.sort((a, b) => a.name.localeCompare(b.name));
+    for (const file of sortedFiles) {
+        html += `
+            <div style="margin-left: ${indent}; padding: 6px; border-bottom: 1px solid #1e293b; font-family: monospace; font-size: 13px; color: #e2e8f0;">
+                📄 ${escapeHtml(file.name)} <span style="color: #94a3b8; font-size: 11px;">(${formatBytes(file.size)})</span>
+            </div>
+        `;
+    }
+
+    return html;
+}
+
+function toggleTreeNode(id) {
+    const node = document.getElementById(id);
+    const icon = document.getElementById(id + '-icon');
+
+    if (node.style.display === 'none') {
+        node.style.display = 'block';
+        icon.textContent = '▼';
+    } else {
+        node.style.display = 'none';
+        icon.textContent = '▶';
+    }
+}
+
+async function deleteImageFile(filename, baseDir, path, isDir, isIso) {
+    let confirmMsg = '';
+    let deleteType = '';
+
+    if (isIso) {
+        confirmMsg = `Delete ISO file "${filename}"? This will remove the ISO file but keep the extracted boot folder.`;
+        deleteType = 'ISO file';
+    } else {
+        confirmMsg = `Delete boot folder "${baseDir}"? This will remove all extracted files but keep the ISO.`;
+        deleteType = 'boot folder';
+    }
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/images/files/delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                filename: filename,
+                base_dir: baseDir,
+                path: path,
+                is_dir: isDir,
+                is_iso: isIso
+            })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showNotification(`${deleteType} deleted successfully`, 'success');
+            loadImageFileBrowser(filename);
+
+            // Reload images list to reflect changes in boot method
+            if (!isIso) {
+                loadImages();
+            }
+        } else {
+            showNotification(`Failed to delete ${deleteType}: ` + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (err) {
+        showNotification(`Failed to delete ${deleteType}`, 'error');
+        console.error(err);
+    }
+}
+
+async function saveImageProperties() {
+    const filename = document.getElementById('image-props-filename').value;
+    const displayName = document.getElementById('image-props-display-name').value;
+    const description = document.getElementById('image-props-description').value;
+    const groupId = document.getElementById('image-props-group').value;
+    const order = parseInt(document.getElementById('image-props-order').value) || 0;
+    const bootMethod = document.getElementById('image-props-boot-method').value;
+    const bootParams = document.getElementById('image-props-boot-params').value;
+    const enabled = document.getElementById('image-props-enabled').checked;
+    const isPublic = document.getElementById('image-props-public').checked;
+
+    const updates = {
+        name: displayName,
+        description: description,
+        group_id: groupId ? parseInt(groupId) : null,
+        order: order,
+        boot_method: bootMethod,
+        boot_params: bootParams,
+        enabled: enabled,
+        public: isPublic
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/images?filename=${encodeURIComponent(filename)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showNotification('Image properties updated successfully', 'success');
+            closeModal('image-properties-modal');
+            loadImages();
+            loadStats();
+        } else {
+            showNotification('Failed to update image: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (err) {
+        showNotification('Failed to update image properties', 'error');
+        console.error(err);
+    }
 }

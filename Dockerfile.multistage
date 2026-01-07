@@ -21,10 +21,22 @@ RUN CGO_ENABLED=1 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -a -ldflags="-w -s -X bootimus/cmd.version=${VERSION}" \
     -o bootimus .
 
-# Stage 2: Runtime
+# Stage 2: Install wimlib-tools
+FROM debian:13-slim AS wimlib-installer
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wimtools \
+    && rm -rf /var/lib/apt/lists/*
+
+# Stage 3: Runtime
 FROM gcr.io/distroless/base-debian13
 
 COPY --from=builder /build/bootimus /bootimus
+COPY --from=wimlib-installer /usr/bin/wim* /usr/bin/
+COPY --from=wimlib-installer /usr/lib/*/libwim.so* /usr/lib/
+COPY --from=wimlib-installer /usr/lib/*/libxml2.so* /usr/lib/
+COPY --from=wimlib-installer /usr/lib/*/libicuuc.so* /usr/lib/
+COPY --from=wimlib-installer /usr/lib/*/libicudata.so* /usr/lib/
 
 EXPOSE 69/udp 8080/tcp 8081/tcp
 

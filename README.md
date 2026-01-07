@@ -20,6 +20,7 @@ I've used Claude CLI to help with some parts of this project - mostly making the
 - **Docker ready**: Multi-arch images (amd64/arm64)
 - **Kernel extraction**: Faster boots with reduced bandwidth
 - **Netboot support**: Debian/Ubuntu network installer optimisation
+- **Thin OS memdisk**: Universal ISO boot via minimal Linux environment
 - **Boot logging**: Real-time tracking with live streaming
 - **HTTP Basic Auth**: Auto-generated password on first run
 
@@ -81,6 +82,7 @@ docker-compose up -d
 
 - **[Deployment Guide](docs/deployment.md)** - Docker, binary, networking, and storage
 - **[Image Management](docs/images.md)** - Upload ISOs, extract kernels, netboot support
+- **[Thin OS Boot Method](docs/thinos.md)** - Universal ISO boot via memdisk
 - **[Admin Console](docs/admin.md)** - Web UI and REST API reference
 - **[DHCP Configuration](docs/dhcp.md)** - Configure your DHCP server
 - **[Client Management](docs/clients.md)** - MAC-based access control

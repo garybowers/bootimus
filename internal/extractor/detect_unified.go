@@ -219,7 +219,14 @@ func (e *Extractor) detectWindowsUnified(reader FileSystemReader) (*BootFiles, e
 		"/SOURCES/BOOT.WIM",
 	}
 
-	var bcdPath, bootSdiPath, bootWimPath string
+	installWimPaths := []string{
+		"/sources/install.wim",
+		"/SOURCES/INSTALL.WIM",
+		"/sources/install.esd",
+		"/SOURCES/INSTALL.ESD",
+	}
+
+	var bcdPath, bootSdiPath, bootWimPath, installWimPath string
 
 	for _, path := range bcdPaths {
 		if reader.FileExists(path) {
@@ -242,12 +249,20 @@ func (e *Extractor) detectWindowsUnified(reader FileSystemReader) (*BootFiles, e
 		}
 	}
 
+	for _, path := range installWimPaths {
+		if reader.FileExists(path) {
+			installWimPath = path
+			break
+		}
+	}
+
 	if bcdPath != "" && bootSdiPath != "" && bootWimPath != "" {
 		return &BootFiles{
 			Kernel:     bcdPath,
 			Initrd:     bootSdiPath,
 			Distro:     "windows",
 			BootParams: bootWimPath,
+			InstallWim: installWimPath,
 		}, nil
 	}
 
@@ -280,6 +295,18 @@ func (e *Extractor) cacheBootFilesUnified(files *BootFiles, reader FileSystemRea
 			return fmt.Errorf("failed to extract boot.wim: %w", err)
 		}
 		files.BootParams = bootWimDest
+
+		if files.InstallWim != "" {
+			ext := filepath.Ext(files.InstallWim)
+			installDest := filepath.Join(bootFilesDir, "install"+ext)
+			log.Printf("Extracting Windows install image: %s", files.InstallWim)
+			if err := reader.ExtractFile(files.InstallWim, installDest); err != nil {
+				log.Printf("Warning: Failed to extract install image: %v", err)
+			} else {
+				files.InstallWim = installDest
+				log.Printf("Successfully extracted install image to: %s", installDest)
+			}
+		}
 
 		return nil
 	}

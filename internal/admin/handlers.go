@@ -628,6 +628,7 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	image.NetbootRequired = bootFiles.NetbootRequired
 	image.NetbootURL = bootFiles.NetbootURL
 	image.NetbootAvailable = false
+	image.InstallWimPath = bootFiles.InstallWim
 
 	log.Printf("Setting boot_method to 'kernel' for image ID=%d, filename=%s", image.ID, image.Filename)
 
@@ -705,8 +706,8 @@ func (h *Handler) SetBootMethod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.BootMethod != "sanboot" && req.BootMethod != "kernel" {
-		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid boot method (must be 'sanboot' or 'kernel')"})
+	if req.BootMethod != "sanboot" && req.BootMethod != "kernel" && req.BootMethod != "memdisk" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid boot method (must be 'sanboot', 'kernel', or 'memdisk')"})
 		return
 	}
 
@@ -1903,3 +1904,502 @@ func (h *Handler) DeleteCustomFile(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "File deleted"})
 }
 
+// Driver Pack Handlers
+
+func (h *Handler) ListDriverPacks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	imageIDStr := r.URL.Query().Get("imageId")
+	var packs []*models.DriverPack
+	var err error
+
+	if imageIDStr != "" {
+		imageID, parseErr := strconv.ParseUint(imageIDStr, 10, 32)
+		if parseErr != nil {
+			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid image ID"})
+			return
+		}
+		packs, err = h.storage.ListDriverPacksByImage(uint(imageID))
+	} else {
+		packs, err = h.storage.ListDriverPacks()
+	}
+
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: packs})
+}
+
+func (h *Handler) UploadDriverPack(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	if err := r.ParseMultipartForm(500 << 20); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to parse form: %v", err),
+		})
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "No file provided",
+		})
+		return
+	}
+	defer file.Close()
+
+	description := r.FormValue("description")
+	imageIDStr := r.FormValue("imageId")
+
+	if imageIDStr == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Image ID is required",
+		})
+		return
+	}
+
+	imageID, err := strconv.ParseUint(imageIDStr, 10, 32)
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Invalid image ID",
+		})
+		return
+	}
+
+	// Verify image exists
+	var images []*models.Image
+	images, _ = h.storage.ListImages()
+	var imageName string
+	for _, img := range images {
+		if img.ID == uint(imageID) {
+			imageName = strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename))
+			break
+		}
+	}
+
+	if imageName == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Image not found",
+		})
+		return
+	}
+
+	originalFilename := filepath.Base(header.Filename)
+	if originalFilename == "" || originalFilename == "." || originalFilename == ".." {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Invalid filename",
+		})
+		return
+	}
+
+	// Validate ZIP file
+	if !strings.HasSuffix(strings.ToLower(originalFilename), ".zip") {
+		h.sendJSON(w, http.StatusBadRequest, Response{
+			Success: false,
+			Error:   "Only ZIP files are allowed",
+		})
+		return
+	}
+
+	cleanFilename := filepath.Clean(originalFilename)
+	destDir := filepath.Join(h.isoDir, imageName, "drivers")
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to create directory: %v", err),
+		})
+		return
+	}
+
+	destPath := filepath.Join(destDir, cleanFilename)
+	dest, err := os.Create(destPath)
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to create file: %v", err),
+		})
+		return
+	}
+	defer dest.Close()
+
+	written, err := io.Copy(dest, file)
+	if err != nil {
+		os.Remove(destPath)
+		h.sendJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to write file: %v", err),
+		})
+		return
+	}
+
+	driverPack := &models.DriverPack{
+		Filename:     cleanFilename,
+		OriginalName: originalFilename,
+		Description:  description,
+		Size:         written,
+		ImageID:      uint(imageID),
+		Enabled:      true,
+	}
+
+	if err = h.storage.CreateDriverPack(driverPack); err != nil {
+		os.Remove(destPath)
+		h.sendJSON(w, http.StatusInternalServerError, Response{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to save driver pack metadata: %v", err),
+		})
+		return
+	}
+
+	log.Printf("Uploaded driver pack: %s (%d bytes) for image %s", cleanFilename, written, imageName)
+
+	h.sendJSON(w, http.StatusOK, Response{
+		Success: true,
+		Message: "Driver pack uploaded successfully",
+		Data:    driverPack,
+	})
+}
+
+func (h *Handler) DeleteDriverPack(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "ID required"})
+		return
+	}
+
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid ID"})
+		return
+	}
+
+	pack, err := h.storage.GetDriverPack(uint(id))
+	if err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Driver pack not found"})
+		return
+	}
+
+	// Get image name for file path
+	var images []*models.Image
+	images, _ = h.storage.ListImages()
+	var imageName string
+	for _, img := range images {
+		if img.ID == pack.ImageID {
+			imageName = strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename))
+			break
+		}
+	}
+
+	if err = h.storage.DeleteDriverPack(uint(id)); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	if imageName != "" {
+		filePath := filepath.Join(h.isoDir, imageName, "drivers", pack.Filename)
+		if err := os.Remove(filePath); err != nil {
+			log.Printf("Warning: Failed to delete driver pack file %s: %v", filePath, err)
+		}
+	}
+
+	log.Printf("Deleted driver pack: %s (ID: %d)", pack.Filename, pack.ID)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Driver pack deleted"})
+}
+
+func (h *Handler) RebuildImageBootWim(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	imageIDStr := r.URL.Query().Get("imageId")
+	if imageIDStr == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Image ID required"})
+		return
+	}
+
+	imageID, err := strconv.ParseUint(imageIDStr, 10, 32)
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid image ID"})
+		return
+	}
+
+	log.Printf("Rebuilding boot.wim for image ID %d...", imageID)
+
+	go func() {
+		if err := h.RebuildBootWim(uint(imageID)); err != nil {
+			log.Printf("ERROR: Failed to rebuild boot.wim for image %d: %v", imageID, err)
+		} else {
+			log.Printf("Successfully rebuilt boot.wim for image %d", imageID)
+		}
+	}()
+
+	h.sendJSON(w, http.StatusOK, Response{
+		Success: true,
+		Message: "Boot.wim rebuild started in background. Check logs for progress.",
+	})
+}
+
+func (h *Handler) ListImageGroups(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	groups, err := h.storage.ListImageGroups()
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: groups})
+}
+
+func (h *Handler) CreateImageGroup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	var group models.ImageGroup
+	if err := json.NewDecoder(r.Body).Decode(&group); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+
+	if group.Name == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Group name is required"})
+		return
+	}
+
+	if err := h.storage.CreateImageGroup(&group); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Created image group: %s (ID: %d)", group.Name, group.ID)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Group created", Data: group})
+}
+
+func (h *Handler) UpdateImageGroup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Group ID required"})
+		return
+	}
+
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid group ID"})
+		return
+	}
+
+	var group models.ImageGroup
+	if err := json.NewDecoder(r.Body).Decode(&group); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+
+	group.ID = uint(id)
+
+	if err := h.storage.UpdateImageGroup(uint(id), &group); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Updated image group: %s (ID: %d)", group.Name, group.ID)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Group updated", Data: group})
+}
+
+func (h *Handler) DeleteImageGroup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Group ID required"})
+		return
+	}
+
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid group ID"})
+		return
+	}
+
+	group, err := h.storage.GetImageGroup(uint(id))
+	if err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Group not found"})
+		return
+	}
+
+	if err := h.storage.DeleteImageGroup(uint(id)); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Deleted image group: %s (ID: %d)", group.Name, group.ID)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Group deleted"})
+}
+
+func (h *Handler) ListImageFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "filename parameter required"})
+		return
+	}
+
+	baseDir := strings.TrimSuffix(filename, filepath.Ext(filename))
+	bootDir := filepath.Join(h.isoDir, baseDir)
+
+	type FileInfo struct {
+		Path  string `json:"path"`
+		IsDir bool   `json:"is_dir"`
+		Size  int64  `json:"size"`
+	}
+
+	var files []FileInfo
+
+	if _, err := os.Stat(bootDir); err == nil {
+		err := filepath.Walk(bootDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+
+			relPath, err := filepath.Rel(bootDir, path)
+			if err != nil {
+				return nil
+			}
+
+			if relPath == "." {
+				return nil
+			}
+
+			files = append(files, FileInfo{
+				Path:  relPath,
+				IsDir: info.IsDir(),
+				Size:  info.Size(),
+			})
+
+			return nil
+		})
+
+		if err != nil {
+			log.Printf("Error walking directory %s: %v", bootDir, err)
+		}
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{"files": files}})
+}
+
+func (h *Handler) DeleteImageFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	var req struct {
+		Filename string `json:"filename"`
+		BaseDir  string `json:"base_dir"`
+		Path     string `json:"path"`
+		IsDir    bool   `json:"is_dir"`
+		IsIso    bool   `json:"is_iso"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+
+	if req.Filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "filename is required"})
+		return
+	}
+
+	if req.IsIso {
+		isoPath := filepath.Join(h.isoDir, req.Filename)
+		if _, err := os.Stat(isoPath); err != nil {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "ISO file not found"})
+			return
+		}
+
+		if err := os.Remove(isoPath); err != nil {
+			log.Printf("Error deleting ISO file %s: %v", isoPath, err)
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Failed to delete ISO file"})
+			return
+		}
+
+		log.Printf("Deleted ISO file: %s", isoPath)
+		h.sendJSON(w, http.StatusOK, Response{Success: true})
+		return
+	}
+
+	bootDir := filepath.Join(h.isoDir, req.BaseDir)
+	if _, err := os.Stat(bootDir); err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Boot directory not found"})
+		return
+	}
+
+	if err := os.RemoveAll(bootDir); err != nil {
+		log.Printf("Error deleting boot directory %s: %v", bootDir, err)
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Failed to delete boot directory"})
+		return
+	}
+
+	log.Printf("Deleted boot directory: %s", bootDir)
+
+	// Reset the image to sanboot mode and clear extracted flag
+	image, err := h.storage.GetImage(req.Filename)
+	if err == nil && image != nil {
+		image.Extracted = false
+		image.BootMethod = "sanboot"
+		image.KernelPath = ""
+		image.InitrdPath = ""
+		image.SquashfsPath = ""
+		image.Distro = ""
+		image.NetbootAvailable = false
+		image.NetbootRequired = false
+		image.ExtractedAt = nil
+		image.ExtractionError = ""
+
+		if err := h.storage.UpdateImage(req.Filename, image); err != nil {
+			log.Printf("Warning: Failed to reset image metadata after deleting boot folder: %v", err)
+		} else {
+			log.Printf("Reset image %s to sanboot mode after deleting boot folder", req.Filename)
+		}
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{Success: true})
+}

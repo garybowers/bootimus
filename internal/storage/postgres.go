@@ -47,9 +47,11 @@ func (s *PostgresStore) AutoMigrate() error {
 	if err := s.db.AutoMigrate(
 		&models.User{},
 		&models.Client{},
+		&models.ImageGroup{},
 		&models.Image{},
 		&models.BootLog{},
 		&models.CustomFile{},
+		&models.DriverPack{},
 	); err != nil {
 		return err
 	}
@@ -357,6 +359,86 @@ func (s *PostgresStore) ListCustomFilesByImage(imageID uint) ([]*models.CustomFi
 		return nil, err
 	}
 	return files, nil
+}
+
+func (s *PostgresStore) ListDriverPacks() ([]*models.DriverPack, error) {
+	var packs []*models.DriverPack
+	if err := s.db.Preload("Image").Find(&packs).Error; err != nil {
+		return nil, err
+	}
+	return packs, nil
+}
+
+func (s *PostgresStore) GetDriverPack(id uint) (*models.DriverPack, error) {
+	var pack models.DriverPack
+	if err := s.db.Preload("Image").First(&pack, id).Error; err != nil {
+		return nil, err
+	}
+	return &pack, nil
+}
+
+func (s *PostgresStore) CreateDriverPack(pack *models.DriverPack) error {
+	return s.db.Create(pack).Error
+}
+
+func (s *PostgresStore) UpdateDriverPack(id uint, pack *models.DriverPack) error {
+	return s.db.Model(&models.DriverPack{}).Where("id = ?", id).Save(pack).Error
+}
+
+func (s *PostgresStore) DeleteDriverPack(id uint) error {
+	return s.db.Delete(&models.DriverPack{}, id).Error
+}
+
+func (s *PostgresStore) ListDriverPacksByImage(imageID uint) ([]*models.DriverPack, error) {
+	var packs []*models.DriverPack
+	if err := s.db.Preload("Image").Where("image_id = ? AND enabled = ?", imageID, true).Find(&packs).Error; err != nil {
+		return nil, err
+	}
+	return packs, nil
+}
+
+func (s *PostgresStore) ListImageGroups() ([]*models.ImageGroup, error) {
+	var groups []*models.ImageGroup
+	if err := s.db.Preload("Parent").Order("\"order\" ASC, name ASC").Find(&groups).Error; err != nil {
+		return nil, err
+	}
+	return groups, nil
+}
+
+func (s *PostgresStore) GetImageGroup(id uint) (*models.ImageGroup, error) {
+	var group models.ImageGroup
+	if err := s.db.Preload("Parent").First(&group, id).Error; err != nil {
+		return nil, err
+	}
+	return &group, nil
+}
+
+func (s *PostgresStore) GetImageGroupByName(name string) (*models.ImageGroup, error) {
+	var group models.ImageGroup
+	if err := s.db.Preload("Parent").Where("name = ?", name).First(&group).Error; err != nil {
+		return nil, err
+	}
+	return &group, nil
+}
+
+func (s *PostgresStore) CreateImageGroup(group *models.ImageGroup) error {
+	return s.db.Create(group).Error
+}
+
+func (s *PostgresStore) UpdateImageGroup(id uint, group *models.ImageGroup) error {
+	return s.db.Model(&models.ImageGroup{}).Where("id = ?", id).Save(group).Error
+}
+
+func (s *PostgresStore) DeleteImageGroup(id uint) error {
+	return s.db.Delete(&models.ImageGroup{}, id).Error
+}
+
+func (s *PostgresStore) ListImagesByGroup(groupID uint) ([]*models.Image, error) {
+	var images []*models.Image
+	if err := s.db.Preload("Group").Where("group_id = ? AND enabled = ?", groupID, true).Order("\"order\" ASC, name ASC").Find(&images).Error; err != nil {
+		return nil, err
+	}
+	return images, nil
 }
 
 

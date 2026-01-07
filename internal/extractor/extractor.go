@@ -22,6 +22,7 @@ type BootFiles struct {
 	SquashfsPath    string
 	NetbootRequired bool
 	NetbootURL      string
+	InstallWim      string
 }
 
 type Extractor struct {

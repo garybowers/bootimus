@@ -41,6 +41,21 @@ type Storage interface {
 	IncrementFileDownloadCount(id uint) error
 	ListCustomFilesByImage(imageID uint) ([]*models.CustomFile, error)
 
+	ListDriverPacks() ([]*models.DriverPack, error)
+	GetDriverPack(id uint) (*models.DriverPack, error)
+	CreateDriverPack(pack *models.DriverPack) error
+	UpdateDriverPack(id uint, pack *models.DriverPack) error
+	DeleteDriverPack(id uint) error
+	ListDriverPacksByImage(imageID uint) ([]*models.DriverPack, error)
+
+	ListImageGroups() ([]*models.ImageGroup, error)
+	GetImageGroup(id uint) (*models.ImageGroup, error)
+	GetImageGroupByName(name string) (*models.ImageGroup, error)
+	CreateImageGroup(group *models.ImageGroup) error
+	UpdateImageGroup(id uint, group *models.ImageGroup) error
+	DeleteImageGroup(id uint) error
+	ListImagesByGroup(groupID uint) ([]*models.Image, error)
+
 	LogBootAttempt(macAddress, imageName, ipAddress string, success bool, errorMsg string) error
 	UpdateClientBootStats(macAddress string) error
 	UpdateImageBootStats(imageName string) error

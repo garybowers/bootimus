@@ -784,6 +784,13 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 
+	// Logout endpoint - returns 401 to clear Basic Auth
+	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Bootimus"`)
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte("Logged out successfully. Please close your browser or clear credentials."))
+	})
+
 	mux.HandleFunc("/api/server-info", authWrap(adminHandler.GetServerInfo))
 	mux.HandleFunc("/api/stats", authWrap(adminHandler.GetStats))
 	mux.HandleFunc("/api/logs", authWrap(adminHandler.GetBootLogs))
@@ -889,6 +896,35 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/files/upload", authWrap(adminHandler.UploadCustomFile))
 	mux.HandleFunc("/api/files/update", authWrap(adminHandler.UpdateCustomFile))
 	mux.HandleFunc("/api/files/delete", authWrap(adminHandler.DeleteCustomFile))
+
+	// Driver pack routes
+	mux.HandleFunc("/api/drivers", authWrap(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			adminHandler.ListDriverPacks(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/drivers/upload", authWrap(adminHandler.UploadDriverPack))
+	mux.HandleFunc("/api/drivers/delete", authWrap(adminHandler.DeleteDriverPack))
+	mux.HandleFunc("/api/drivers/rebuild", authWrap(adminHandler.RebuildImageBootWim))
+
+	mux.HandleFunc("/api/groups", authWrap(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			adminHandler.ListImageGroups(w, r)
+		case http.MethodPost:
+			adminHandler.CreateImageGroup(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/groups/update", authWrap(adminHandler.UpdateImageGroup))
+	mux.HandleFunc("/api/groups/delete", authWrap(adminHandler.DeleteImageGroup))
+
+	mux.HandleFunc("/api/images/files", authWrap(adminHandler.ListImageFiles))
+	mux.HandleFunc("/api/images/files/delete", authWrap(adminHandler.DeleteImageFile))
 }
 
 func (s *Server) handleActiveSessions(w http.ResponseWriter, r *http.Request) {
@@ -989,7 +1025,7 @@ func (s *Server) handleIPXEMenu(w http.ResponseWriter, r *http.Request) {
 		images = convertISOsToImages(isos)
 	}
 
-	menu := s.generateIPXEMenu(images, macAddress)
+	menu := s.generateIPXEMenuWithGroups(images, macAddress)
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(menu))
 }
@@ -1012,7 +1048,13 @@ goto ${selected}
 {{range $index, $img := .Images}}
 :iso{{$index}}
 echo Booting {{$img.Name}}...
-{{if eq $img.BootMethod "kernel"}}
+{{if eq $img.BootMethod "memdisk"}}
+echo Using Thin OS memdisk loader...
+kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/thinos-kernel
+initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/thinos-initrd.gz
+imgargs thinos-kernel ISO_NAME={{$img.EncodedFilename}} BOOTIMUS_SERVER={{$.ServerAddr}} console=tty0 console=ttyS0,115200n8 earlyprintk=vga,keep debug loglevel=8 rdinit=/init
+boot || goto failed
+{{else if eq $img.BootMethod "kernel"}}
 echo Loading kernel and initrd...
 {{if $img.AutoInstallEnabled}}
 echo Auto-install enabled for this image
@@ -1022,8 +1064,9 @@ echo Loading Windows boot files via wimboot...
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/wimboot
 initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/bcd BCD
 initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/boot.sdi boot.sdi
-initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/boot.wim boot.wim
-boot || goto failed
+initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/boot.wim @boot.wim
+{{if $img.InstallWimPath}}initrd --name install.wim http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/install.wim
+{{end}}boot || goto failed
 {{else if eq $img.Distro "arch"}}
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}archiso_http_srv=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ ip=dhcp
 {{else if eq $img.Distro "nixos"}}
@@ -1088,6 +1131,7 @@ reboot
 		AutoInstallParam    string
 		SquashfsPath        string
 		NetbootAvailable    bool
+		InstallWimPath      string
 	}
 
 	imageData := make([]ImageData, len(images))
@@ -1128,6 +1172,7 @@ reboot
 			AutoInstallParam:   autoInstallParam,
 			SquashfsPath:       img.SquashfsPath,
 			NetbootAvailable:   img.NetbootAvailable,
+			InstallWimPath:     img.InstallWimPath,
 		}
 	}
 

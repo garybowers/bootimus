@@ -76,6 +76,19 @@ type Client struct {
 	AllowedImages StringSlice    `gorm:"type:text" json:"allowed_images,omitempty"`
 }
 
+type ImageGroup struct {
+	ID          uint           `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	Name        string         `gorm:"uniqueIndex;not null" json:"name"`
+	Description string         `json:"description"`
+	ParentID    *uint          `gorm:"index" json:"parent_id,omitempty"`
+	Parent      *ImageGroup    `gorm:"foreignKey:ParentID" json:"parent,omitempty"`
+	Order       int            `gorm:"default:0" json:"order"`
+	Enabled     bool           `gorm:"default:true" json:"enabled"`
+}
+
 type Image struct {
 	ID          uint           `gorm:"primarykey" json:"id"`
 	CreatedAt   time.Time      `json:"created_at"`
@@ -90,6 +103,9 @@ type Image struct {
 	BootCount   int            `gorm:"default:0" json:"boot_count"`
 	LastBooted  *time.Time     `json:"last_booted,omitempty"`
 	Clients     []Client       `gorm:"many2many:client_images;" json:"clients,omitempty"`
+	GroupID     *uint          `gorm:"index" json:"group_id,omitempty"`
+	Group       *ImageGroup    `gorm:"foreignKey:GroupID" json:"group,omitempty"`
+	Order       int            `gorm:"default:0" json:"order"`
 	Extracted         bool       `gorm:"default:false" json:"extracted"`
 	Distro            string     `json:"distro,omitempty"`
 	BootMethod        string     `gorm:"default:sanboot" json:"boot_method"`
@@ -107,6 +123,7 @@ type Image struct {
 	AutoInstallScript     string `gorm:"type:text" json:"auto_install_script,omitempty"`
 	AutoInstallEnabled    bool   `gorm:"default:false" json:"auto_install_enabled"`
 	AutoInstallScriptType string `json:"auto_install_script_type,omitempty"`
+	InstallWimPath        string `json:"install_wim_path,omitempty"`
 }
 
 type BootLog struct {
@@ -140,4 +157,19 @@ type CustomFile struct {
 	LastDownload    *time.Time     `json:"last_download,omitempty"`
 	DestinationPath string         `json:"destination_path,omitempty"`
 	AutoInstall     bool           `gorm:"default:true" json:"auto_install"`
+}
+
+type DriverPack struct {
+	ID           uint           `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+	Filename     string         `gorm:"not null" json:"filename"`
+	OriginalName string         `gorm:"not null" json:"original_name"`
+	Description  string         `json:"description"`
+	Size         int64          `json:"size"`
+	ImageID      uint           `gorm:"index;not null" json:"image_id"`
+	Image        *Image         `gorm:"foreignKey:ImageID" json:"image,omitempty"`
+	Enabled      bool           `gorm:"default:true" json:"enabled"`
+	LastApplied  *time.Time     `json:"last_applied,omitempty"`
 }

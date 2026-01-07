@@ -30,6 +30,92 @@
             margin-bottom: 30px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-content {
+            flex: 1;
+        }
+
+        .user-profile {
+            position: relative;
+        }
+
+        .user-profile-button {
+            background: #334155;
+            border: 2px solid #475569;
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: #38bdf8;
+            transition: all 0.2s;
+        }
+
+        .user-profile-button:hover {
+            background: #475569;
+            border-color: #38bdf8;
+        }
+
+        .user-profile-dropdown {
+            display: none;
+            position: absolute;
+            top: 55px;
+            right: 0;
+            background: #1e293b;
+            border: 2px solid #334155;
+            border-radius: 8px;
+            padding: 10px;
+            min-width: 200px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+        }
+
+        .user-profile-dropdown.show {
+            display: block;
+        }
+
+        .user-profile-info {
+            padding: 10px;
+            border-bottom: 1px solid #334155;
+            margin-bottom: 10px;
+        }
+
+        .user-profile-info .username {
+            font-weight: bold;
+            color: #38bdf8;
+            font-size: 14px;
+        }
+
+        .user-profile-info .role {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 2px;
+        }
+
+        .user-profile-dropdown button {
+            width: 100%;
+            padding: 10px;
+            background: #334155;
+            border: none;
+            border-radius: 6px;
+            color: #e2e8f0;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .user-profile-dropdown button:hover {
+            background: #475569;
         }
 
         h1 {
@@ -745,8 +831,25 @@
 <body>
     <div class="container">
         <header>
-            <h1>🚀 Bootimus Admin Panel</h1>
-            <p>PXE/HTTP Boot Server Management Interface</p>
+            <div class="header-content">
+                <h1>🚀 Bootimus Admin Panel</h1>
+                <p>PXE/HTTP Boot Server Management Interface</p>
+            </div>
+            <div class="user-profile">
+                <button class="user-profile-button" onclick="toggleUserProfile()">
+                    👤
+                </button>
+                <div class="user-profile-dropdown" id="user-profile-dropdown">
+                    <div class="user-profile-info">
+                        <div class="username" id="current-username">Loading...</div>
+                        <div class="role" id="current-user-role">User</div>
+                    </div>
+                    <button onclick="logout()">
+                        <span>🚪</span>
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
         </header>
 
         <div id="stats-container" class="stats">
@@ -782,6 +885,7 @@
             <button class="tab active" data-tab="server">Server Info</button>
             <button class="tab" data-tab="clients">Clients</button>
             <button class="tab" data-tab="images">Images</button>
+            <button class="tab" data-tab="groups">Groups</button>
             <button class="tab" data-tab="public-files">Public Files</button>
             <button class="tab" data-tab="users">Users</button>
             <button class="tab" data-tab="logs">Logs</button>
@@ -820,6 +924,18 @@
                 <div id="images-table" class="loading">
                     <div class="spinner"></div>
                     Loading images...
+                </div>
+            </div>
+        </div>
+
+        <!-- Groups Tab -->
+        <div id="groups-tab" class="tab-content">
+            <div class="card">
+                <h2>Image Groups</h2>
+                <button class="btn btn-primary" onclick="showAddGroupModal()">+ Add Group</button>
+                <div id="groups-table" class="loading">
+                    <div class="spinner"></div>
+                    Loading groups...
                 </div>
             </div>
         </div>
@@ -1224,6 +1340,153 @@
 
                 <button type="submit" class="btn btn-primary">Save Changes</button>
                 <button type="button" class="btn" onclick="closeModal('edit-file-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Image Properties Modal -->
+    <div id="image-properties-modal" class="modal">
+        <div class="modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <h2>Image Properties: <span id="image-props-name"></span></h2>
+            </div>
+            <input type="hidden" id="image-props-filename">
+
+            <div class="tabs" style="margin-bottom: 20px;">
+                <button class="tab active" data-tab="props-general" onclick="switchPropsTab('props-general')">General</button>
+                <button class="tab" data-tab="props-files" onclick="switchPropsTab('props-files')">File Browser</button>
+            </div>
+
+            <div id="props-general-content" class="props-tab-content">
+                <div class="form-group">
+                    <label>Display Name</label>
+                    <input type="text" id="image-props-display-name" class="form-control">
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="image-props-description" class="form-control" rows="3"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Group Assignment</label>
+                    <select id="image-props-group" class="form-control">
+                        <option value="">Unassigned</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Order</label>
+                    <input type="number" id="image-props-order" class="form-control" min="0" value="0">
+                </div>
+
+                <div class="form-group">
+                    <label>Boot Method</label>
+                    <select id="image-props-boot-method" class="form-control">
+                        <option value="sanboot">SAN Boot</option>
+                        <option value="kernel">Kernel/Initrd</option>
+                        <option value="memdisk">Memdisk (ThinOS)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Boot Parameters</label>
+                    <input type="text" id="image-props-boot-params" class="form-control" placeholder="Optional kernel parameters">
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" id="image-props-enabled">
+                    <label>Enabled</label>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" id="image-props-public">
+                    <label>Public (available to all clients)</label>
+                </div>
+            </div>
+
+            <div id="props-files-content" class="props-tab-content" style="display: none;">
+                <div id="image-file-browser" style="min-height: 400px;">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Loading file browser...
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #334155;">
+                <button class="btn btn-primary" onclick="saveImageProperties()">Save Properties</button>
+                <button class="btn" onclick="closeModal('image-properties-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Group Modals -->
+    <div id="add-group-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add Group</h2>
+            </div>
+            <form id="add-group-form">
+                <div class="form-group">
+                    <label>Group Name *</label>
+                    <input type="text" name="name" placeholder="Linux Distributions" required>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" placeholder="Optional description" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Parent Group</label>
+                    <select name="parent_id" id="add-group-parent-select">
+                        <option value="">None (Root Level)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Order</label>
+                    <input type="number" name="order" value="0" min="0">
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="enabled" checked>
+                    <label>Enabled</label>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Group</button>
+                <button type="button" class="btn" onclick="closeModal('add-group-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="edit-group-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Group</h2>
+            </div>
+            <form id="edit-group-form">
+                <input type="hidden" name="id">
+                <div class="form-group">
+                    <label>Group Name *</label>
+                    <input type="text" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Parent Group</label>
+                    <select name="parent_id" id="edit-group-parent-select">
+                        <option value="">None (Root Level)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Order</label>
+                    <input type="number" name="order" min="0">
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="enabled">
+                    <label>Enabled</label>
+                </div>
+                <button type="submit" class="btn btn-primary">Update Group</button>
+                <button type="button" class="btn" onclick="closeModal('edit-group-modal')">Cancel</button>
             </form>
         </div>
     </div>

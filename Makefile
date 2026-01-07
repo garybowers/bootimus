@@ -75,3 +75,12 @@ push:
 		--no-cache \
 		.
 
+dev-push:
+	docker buildx create --use --name bootimus-builder --driver docker-container || docker buildx use bootimus-builder
+	docker buildx build -f Dockerfile.multistage \
+		--platform linux/amd64 \
+		--build-arg VERSION=$(VERSION) \
+		-t $(DOCKER_USER)/bootimus:$(VERSION) \
+		--push \
+		--no-cache \
+		.
