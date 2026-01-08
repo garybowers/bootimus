@@ -321,9 +321,15 @@ func (s *Server) Start() error {
 		}
 
 		if s.config.Storage != nil {
-			isoFiles := make([]struct{ Name, Filename string; Size int64 }, len(isos))
+			isoFiles := make([]struct {
+				Name, Filename string
+				Size           int64
+			}, len(isos))
 			for i, iso := range isos {
-				isoFiles[i] = struct{ Name, Filename string; Size int64 }{
+				isoFiles[i] = struct {
+					Name, Filename string
+					Size           int64
+				}{
 					Name:     iso.Name,
 					Filename: iso.Filename,
 					Size:     iso.Size,
@@ -1117,21 +1123,21 @@ reboot
 	t, _ := template.New("menu").Parse(tmpl)
 
 	type ImageData struct {
-		Name                string
-		Filename            string
-		EncodedFilename     string
-		SizeStr             string
-		BootMethod          string
-		Extracted           bool
-		BootParams          string
-		CacheDir            string
-		Distro              string
-		AutoInstallEnabled  bool
-		AutoInstallURL      string
-		AutoInstallParam    string
-		SquashfsPath        string
-		NetbootAvailable    bool
-		InstallWimPath      string
+		Name               string
+		Filename           string
+		EncodedFilename    string
+		SizeStr            string
+		BootMethod         string
+		Extracted          bool
+		BootParams         string
+		CacheDir           string
+		Distro             string
+		AutoInstallEnabled bool
+		AutoInstallURL     string
+		AutoInstallParam   string
+		SquashfsPath       string
+		NetbootAvailable   bool
+		InstallWimPath     string
 	}
 
 	imageData := make([]ImageData, len(images))
@@ -1311,7 +1317,6 @@ func (s *Server) handleCustomFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, fullPath)
 }
 
-
 func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/autoinstall/")
 	if path == "" {
@@ -1413,6 +1418,7 @@ func convertISOsToImages(isos []ISOImage) []models.Image {
 			Size:     iso.Size,
 			Enabled:  true,
 			Public:   true,
+			ID:       uint(i + 1),
 		}
 	}
 	return images
