@@ -8,12 +8,12 @@ import (
 )
 
 type MenuBuilder struct {
-	images       []models.Image
-	groups       []*models.ImageGroup
-	macAddress   string
-	serverAddr   string
-	httpPort     int
-	groupStack   []uint
+	images     []models.Image
+	groups     []*models.ImageGroup
+	macAddress string
+	serverAddr string
+	httpPort   int
+	groupStack []uint
 }
 
 func (s *Server) generateIPXEMenuWithGroups(images []models.Image, macAddress string) string {
@@ -65,20 +65,27 @@ func (mb *MenuBuilder) buildMainMenu() string {
 
 	if len(ungroupedImages) > 0 {
 		sb.WriteString("item --gap -- Images:\n")
-		for idx, img := range ungroupedImages {
+		for _, img := range ungroupedImages {
 			sizeStr := formatSize(img.Size)
 			extractedTag := ""
 			if img.Extracted {
 				extractedTag = " [kernel]"
 			}
-			sb.WriteString(fmt.Sprintf("item iso%d %s (%s)%s\n", idx, img.Name, sizeStr, extractedTag))
+			sb.WriteString(fmt.Sprintf("item iso%d %s (%s)%s\n", img.ID, img.Name, sizeStr, extractedTag))
 		}
 	}
 
 	sb.WriteString("item --gap -- Options:\n")
 	sb.WriteString("item shell Drop to iPXE shell\n")
 	sb.WriteString("item reboot Reboot\n")
-	sb.WriteString("choose --default iso0 --timeout 30000 selected || goto start\n")
+	defaultItem := "exit"
+	if len(rootGroups) > 0 {
+		defaultItem = fmt.Sprintf("group%d", rootGroups[0].ID)
+	} else if len(ungroupedImages) > 0 {
+		defaultItem = fmt.Sprintf("iso%d", ungroupedImages[0].ID)
+	}
+
+	sb.WriteString(fmt.Sprintf("choose --default %s --timeout 30000 selected || goto start\n", defaultItem))
 	sb.WriteString("goto ${selected}\n\n")
 
 	return sb.String()
