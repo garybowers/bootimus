@@ -208,7 +208,12 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 		sb.WriteString(fmt.Sprintf("initrd %s/boot/%s/boot.sdi boot.sdi\n", baseURL, cacheDir))
 		sb.WriteString(fmt.Sprintf("initrd %s/boot/%s/boot.wim @boot.wim\n", baseURL, cacheDir))
 		if img.InstallWimPath != "" {
-			sb.WriteString(fmt.Sprintf("initrd --name install.wim %s/boot/%s/install.wim\n", baseURL, cacheDir))
+			// Determine if this is install.wim or install.esd
+			installBasename := "install.wim"
+			if strings.Contains(strings.ToLower(img.InstallWimPath), ".esd") {
+				installBasename = "install.esd"
+			}
+			sb.WriteString(fmt.Sprintf("initrd --name %s %s/boot/%s/%s\n", installBasename, baseURL, cacheDir, installBasename))
 		}
 		sb.WriteString("boot || goto failed\n")
 

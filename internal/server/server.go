@@ -1071,7 +1071,7 @@ kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/wimboot
 initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/bcd BCD
 initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/boot.sdi boot.sdi
 initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/boot.wim @boot.wim
-{{if $img.InstallWimPath}}initrd --name install.wim http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/install.wim
+{{if $img.InstallWimPath}}initrd --name {{$img.InstallBasename}} http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/{{$img.InstallBasename}}
 {{end}}boot || goto failed
 {{else if eq $img.Distro "arch"}}
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/vmlinuz {{$img.AutoInstallParam}}{{$img.BootParams}}archiso_http_srv=http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/iso/ ip=dhcp
@@ -1138,6 +1138,7 @@ reboot
 		SquashfsPath       string
 		NetbootAvailable   bool
 		InstallWimPath     string
+		InstallBasename    string
 	}
 
 	imageData := make([]ImageData, len(images))
@@ -1163,6 +1164,12 @@ reboot
 			}
 		}
 
+		// Determine install image basename (install.wim or install.esd)
+		installBasename := "install.wim"
+		if img.InstallWimPath != "" && strings.Contains(strings.ToLower(img.InstallWimPath), ".esd") {
+			installBasename = "install.esd"
+		}
+
 		imageData[i] = ImageData{
 			Name:               img.Name,
 			Filename:           img.Filename,
@@ -1179,6 +1186,7 @@ reboot
 			SquashfsPath:       img.SquashfsPath,
 			NetbootAvailable:   img.NetbootAvailable,
 			InstallWimPath:     img.InstallWimPath,
+			InstallBasename:    installBasename,
 		}
 	}
 
