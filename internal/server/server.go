@@ -59,17 +59,18 @@ func panicRecoveryMiddleware(next http.Handler) http.Handler {
 }
 
 type Config struct {
-	TFTPPort   int
-	HTTPPort   int
-	AdminPort  int
-	BootDir    string
-	DataDir    string
-	ISODir     string
-	ServerAddr string
-	Storage    storage.Storage
-	Auth       *auth.Manager
-	NBDEnabled bool
-	NBDPort    int
+	TFTPPort       int
+	TFTPSinglePort bool
+	HTTPPort       int
+	AdminPort      int
+	BootDir        string
+	DataDir        string
+	ISODir         string
+	ServerAddr     string
+	Storage        storage.Storage
+	Auth           *auth.Manager
+	NBDEnabled     bool
+	NBDPort        int
 }
 
 type Server struct {
@@ -584,6 +585,10 @@ goto dhcp
 	)
 
 	server.SetTimeout(5 * time.Second)
+	if s.config.TFTPSinglePort {
+		log.Print("Enabling single port mode for TFTP server")
+		server.EnableSinglePort()
+	}
 
 	addr := fmt.Sprintf(":%d", s.config.TFTPPort)
 	if err := server.ListenAndServe(addr); err != nil {

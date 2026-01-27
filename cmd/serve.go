@@ -153,17 +153,18 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	cfg := &server.Config{
-		TFTPPort:   viper.GetInt("tftp_port"),
-		HTTPPort:   viper.GetInt("http_port"),
-		AdminPort:  viper.GetInt("admin_port"),
-		BootDir:    bootloadersDir,
-		DataDir:    dataDir,
-		ISODir:     isoDir,
-		ServerAddr: serverAddr,
-		Storage:    store,
-		Auth:       authMgr,
-		NBDEnabled: viper.GetBool("nbd_enabled"),
-		NBDPort:    viper.GetInt("nbd_port"),
+		TFTPPort:       viper.GetInt("tftp_port"),
+		TFTPSinglePort: viper.GetBool("tftp_single_port"),
+		HTTPPort:       viper.GetInt("http_port"),
+		AdminPort:      viper.GetInt("admin_port"),
+		BootDir:        bootloadersDir,
+		DataDir:        dataDir,
+		ISODir:         isoDir,
+		ServerAddr:     serverAddr,
+		Storage:        store,
+		Auth:           authMgr,
+		NBDEnabled:     viper.GetBool("nbd_enabled"),
+		NBDPort:        viper.GetInt("nbd_port"),
 	}
 
 	srv := server.New(cfg)
