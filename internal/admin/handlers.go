@@ -80,7 +80,6 @@ func (h *Handler) sendJSON(w http.ResponseWriter, status int, resp Response) {
 	}
 }
 
-
 func (h *Handler) ListClients(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -203,7 +202,6 @@ func (h *Handler) DeleteClient(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Admin: Client deleted - MAC: %s", mac)
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Client deleted"})
 }
-
 
 func (h *Handler) syncFilesystemToDatabase() {
 	entries, err := os.ReadDir(h.isoDir)
@@ -546,7 +544,6 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusCreated, Response{Success: true, Message: "Image uploaded", Data: image})
 }
 
-
 func (h *Handler) AssignImages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -554,10 +551,10 @@ func (h *Handler) AssignImages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		MACAddress      string   `json:"mac_address"`
-		ImageFilenames  []string `json:"image_filenames"`
-		ClientID        uint     `json:"client_id"`
-		ImageIDs        []uint   `json:"image_ids"`
+		MACAddress     string   `json:"mac_address"`
+		ImageFilenames []string `json:"image_filenames"`
+		ClientID       uint     `json:"client_id"`
+		ImageIDs       []uint   `json:"image_ids"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -578,7 +575,6 @@ func (h *Handler) AssignImages(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Images assigned to client: %s -> %v", req.MACAddress, req.ImageFilenames)
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Images assigned to client"})
 }
-
 
 func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -668,9 +664,9 @@ func checkSanbootCompatibility(distro, filename string) (bool, string) {
 	filenameLower := strings.ToLower(filename)
 
 	if strings.Contains(filenameLower, "winpe") ||
-	   strings.Contains(filenameLower, "windows pe") ||
-	   strings.Contains(filenameLower, "memtest") ||
-	   strings.Contains(filenameLower, "gparted") && strings.Contains(filenameLower, "live") {
+		strings.Contains(filenameLower, "windows pe") ||
+		strings.Contains(filenameLower, "memtest") ||
+		strings.Contains(filenameLower, "gparted") && strings.Contains(filenameLower, "live") {
 		return true, ""
 	}
 
@@ -765,7 +761,6 @@ func (h *Handler) SetBootMethod(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -818,7 +813,6 @@ func (h *Handler) GetBootLogs(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Boot logs retrieved: %d entries", len(logs))
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: logs})
 }
-
 
 func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -915,7 +909,6 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
-
 
 type Bootloader struct {
 	Name string `json:"name"`
@@ -1109,7 +1102,6 @@ func (h *Handler) DeleteBootloader(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -1128,7 +1120,7 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 			"data_directory": h.dataDir,
 			"iso_directory":  h.isoDir,
 			"boot_directory": h.bootDir,
-			"database_mode":  func() string {
+			"database_mode": func() string {
 				if h.storage != nil {
 					return "Enabled"
 				}
@@ -1142,24 +1134,24 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 			}(),
 		},
 		"environment": map[string]string{
-			"BOOTIMUS_TFTP_PORT":   os.Getenv("BOOTIMUS_TFTP_PORT"),
-			"BOOTIMUS_HTTP_PORT":   os.Getenv("BOOTIMUS_HTTP_PORT"),
-			"BOOTIMUS_ADMIN_PORT":  os.Getenv("BOOTIMUS_ADMIN_PORT"),
-			"BOOTIMUS_DATA_DIR":    os.Getenv("BOOTIMUS_DATA_DIR"),
-			"BOOTIMUS_DB_HOST":     os.Getenv("BOOTIMUS_DB_HOST"),
-			"BOOTIMUS_DB_PORT":     os.Getenv("BOOTIMUS_DB_PORT"),
-			"BOOTIMUS_DB_USER":     os.Getenv("BOOTIMUS_DB_USER"),
-			"BOOTIMUS_DB_NAME":     os.Getenv("BOOTIMUS_DB_NAME"),
-			"BOOTIMUS_DB_SSLMODE":  os.Getenv("BOOTIMUS_DB_SSLMODE"),
-			"BOOTIMUS_DB_DISABLE":  os.Getenv("BOOTIMUS_DB_DISABLE"),
-			"BOOTIMUS_SERVER_ADDR": os.Getenv("BOOTIMUS_SERVER_ADDR"),
+			"BOOTIMUS_TFTP_PORT":        os.Getenv("BOOTIMUS_TFTP_PORT"),
+			"BOOTIMUS_TFTP_SINGLE_PORT": os.Getenv("BOOTIMUS_TFTP_SINGLE_PORT"),
+			"BOOTIMUS_HTTP_PORT":        os.Getenv("BOOTIMUS_HTTP_PORT"),
+			"BOOTIMUS_ADMIN_PORT":       os.Getenv("BOOTIMUS_ADMIN_PORT"),
+			"BOOTIMUS_DATA_DIR":         os.Getenv("BOOTIMUS_DATA_DIR"),
+			"BOOTIMUS_DB_HOST":          os.Getenv("BOOTIMUS_DB_HOST"),
+			"BOOTIMUS_DB_PORT":          os.Getenv("BOOTIMUS_DB_PORT"),
+			"BOOTIMUS_DB_USER":          os.Getenv("BOOTIMUS_DB_USER"),
+			"BOOTIMUS_DB_NAME":          os.Getenv("BOOTIMUS_DB_NAME"),
+			"BOOTIMUS_DB_SSLMODE":       os.Getenv("BOOTIMUS_DB_SSLMODE"),
+			"BOOTIMUS_DB_DISABLE":       os.Getenv("BOOTIMUS_DB_DISABLE"),
+			"BOOTIMUS_SERVER_ADDR":      os.Getenv("BOOTIMUS_SERVER_ADDR"),
 		},
 		"system_stats": sysStats,
 	}
 
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: info})
 }
-
 
 func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := h.storage.ListUsers()
@@ -1305,17 +1297,16 @@ func (h *Handler) ResetUserPassword(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Password reset successfully"})
 }
 
-
 type DownloadProgress struct {
-	URL          string  `json:"url"`
-	Filename     string  `json:"filename"`
-	TotalBytes   int64   `json:"total_bytes"`
-	DownloadedBytes int64   `json:"downloaded_bytes"`
-	Percentage   float64 `json:"percentage"`
-	Speed        string  `json:"speed"`
-	Status       string  `json:"status"`
-	Error        string  `json:"error,omitempty"`
-	StartTime    time.Time `json:"start_time"`
+	URL             string    `json:"url"`
+	Filename        string    `json:"filename"`
+	TotalBytes      int64     `json:"total_bytes"`
+	DownloadedBytes int64     `json:"downloaded_bytes"`
+	Percentage      float64   `json:"percentage"`
+	Speed           string    `json:"speed"`
+	Status          string    `json:"status"`
+	Error           string    `json:"error,omitempty"`
+	StartTime       time.Time `json:"start_time"`
 }
 
 type DownloadManager struct {
@@ -1508,7 +1499,10 @@ func (h *Handler) downloadISO(url, filename, destPath, description string) {
 	log.Printf("Completed ISO download: %s (%d bytes)", filename, downloaded)
 
 	if h.storage != nil {
-		isoFiles := []struct{ Name, Filename string; Size int64 }{
+		isoFiles := []struct {
+			Name, Filename string
+			Size           int64
+		}{
 			{Name: strings.TrimSuffix(filename, filepath.Ext(filename)), Filename: filename, Size: downloaded},
 		}
 
@@ -1539,7 +1533,6 @@ func (h *Handler) ListDownloads(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: downloads})
 }
 
-
 func (h *Handler) GetAutoInstallScript(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -1564,9 +1557,9 @@ func (h *Handler) GetAutoInstallScript(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{
 		Success: true,
 		Data: map[string]interface{}{
-			"script":        image.AutoInstallScript,
-			"enabled":       image.AutoInstallEnabled,
-			"script_type":   image.AutoInstallScriptType,
+			"script":      image.AutoInstallScript,
+			"enabled":     image.AutoInstallEnabled,
+			"script_type": image.AutoInstallScriptType,
 		},
 	})
 }
@@ -1633,7 +1626,6 @@ func (h *Handler) UpdateAutoInstallScript(w http.ResponseWriter, r *http.Request
 		Data:    image,
 	})
 }
-
 
 func (h *Handler) ListCustomFiles(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -1887,7 +1879,6 @@ func (h *Handler) UpdateCustomFile(w http.ResponseWriter, r *http.Request) {
 	if desc, ok := updates["description"].(string); ok {
 		file.Description = desc
 	}
-
 
 	if err = h.storage.UpdateCustomFile(uint(id), file); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})

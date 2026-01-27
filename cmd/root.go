@@ -34,6 +34,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ./bootimus.yaml)")
 
 	rootCmd.PersistentFlags().Int("tftp-port", 69, "TFTP server port")
+	rootCmd.PersistentFlags().Bool("tftp-single-port", false, "Enable TFTP single port")
 	rootCmd.PersistentFlags().Int("http-port", 8080, "HTTP server port")
 	rootCmd.PersistentFlags().Int("admin-port", 8081, "Admin interface port")
 	rootCmd.PersistentFlags().Bool("nbd-enabled", true, "Enable NBD server for network block device ISO mounting")
@@ -49,6 +50,7 @@ func init() {
 	rootCmd.PersistentFlags().String("db-sslmode", "disable", "PostgreSQL SSL mode")
 
 	viper.BindPFlag("tftp_port", rootCmd.PersistentFlags().Lookup("tftp-port"))
+	viper.BindPFlag("tftp_single_port", rootCmd.PersistentFlags().Lookup("tftp-single-port"))
 	viper.BindPFlag("http_port", rootCmd.PersistentFlags().Lookup("http-port"))
 	viper.BindPFlag("admin_port", rootCmd.PersistentFlags().Lookup("admin-port"))
 	viper.BindPFlag("nbd_enabled", rootCmd.PersistentFlags().Lookup("nbd-enabled"))
