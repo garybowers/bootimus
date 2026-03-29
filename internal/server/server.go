@@ -214,10 +214,11 @@ func (s *Server) logAndBroadcast(format string, args ...interface{}) {
 }
 
 type ISOImage struct {
-	Name     string
-	Filename string
-	Size     int64
-	SizeStr  string
+	Name      string
+	Filename  string
+	Size      int64
+	SizeStr   string
+	GroupPath string // relative directory path from isoDir, empty for root
 }
 
 type completionLogger struct {
@@ -325,18 +326,13 @@ func (s *Server) Start() error {
 		}
 
 		if s.config.Storage != nil {
-			isoFiles := make([]struct {
-				Name, Filename string
-				Size           int64
-			}, len(isos))
+			isoFiles := make([]models.SyncFile, len(isos))
 			for i, iso := range isos {
-				isoFiles[i] = struct {
-					Name, Filename string
-					Size           int64
-				}{
-					Name:     iso.Name,
-					Filename: iso.Filename,
-					Size:     iso.Size,
+				isoFiles[i] = models.SyncFile{
+					Name:      iso.Name,
+					Filename:  iso.Filename,
+					Size:      iso.Size,
+					GroupPath: iso.GroupPath,
 				}
 			}
 
@@ -436,35 +432,43 @@ func (s *Server) Shutdown() error {
 func (s *Server) scanISOs() ([]ISOImage, error) {
 	var isos []ISOImage
 
-	entries, err := os.ReadDir(s.config.ISODir)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		name := entry.Name()
-		if !strings.HasSuffix(strings.ToLower(name), ".iso") {
-			continue
-		}
-
-		info, err := entry.Info()
+	err := filepath.WalkDir(s.config.ISODir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			log.Printf("Warning: Failed to get info for %s: %v", name, err)
-			continue
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".iso") {
+			return nil
 		}
 
-		displayName := strings.TrimSuffix(name, filepath.Ext(name))
+		info, err := d.Info()
+		if err != nil {
+			log.Printf("Warning: Failed to get info for %s: %v", path, err)
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(s.config.ISODir, path)
+		groupPath := filepath.Dir(relPath)
+		if groupPath == "." {
+			groupPath = ""
+		}
+
+		displayName := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
 
 		isos = append(isos, ISOImage{
-			Name:     displayName,
-			Filename: name,
-			Size:     info.Size(),
-			SizeStr:  formatBytes(info.Size()),
+			Name:      displayName,
+			Filename:  relPath,
+			Size:      info.Size(),
+			SizeStr:   formatBytes(info.Size()),
+			GroupPath: groupPath,
 		})
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	sort.Slice(isos, func(i, j int) bool {
@@ -964,6 +968,17 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	}))
 	mux.HandleFunc("/api/groups/update", authWrap(adminHandler.UpdateImageGroup))
 	mux.HandleFunc("/api/groups/delete", authWrap(adminHandler.DeleteImageGroup))
+
+	mux.HandleFunc("/api/theme", authWrap(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			adminHandler.GetMenuTheme(w, r)
+		case http.MethodPut:
+			adminHandler.UpdateMenuTheme(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
 
 	mux.HandleFunc("/api/images/files", authWrap(adminHandler.ListImageFiles))
 	mux.HandleFunc("/api/images/files/delete", authWrap(adminHandler.DeleteImageFile))

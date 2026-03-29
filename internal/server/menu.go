@@ -3,13 +3,16 @@ package server
 import (
 	"bootimus/internal/models"
 	"fmt"
+	"log"
 	"net/url"
+	"path/filepath"
 	"strings"
 )
 
 type MenuBuilder struct {
 	images     []models.Image
 	groups     []*models.ImageGroup
+	theme      *models.MenuTheme
 	macAddress string
 	serverAddr string
 	httpPort   int
@@ -22,9 +25,15 @@ func (s *Server) generateIPXEMenuWithGroups(images []models.Image, macAddress st
 		return s.generateIPXEMenu(images, macAddress)
 	}
 
+	theme, err := s.config.Storage.GetMenuTheme()
+	if err != nil {
+		log.Printf("Warning: Failed to load menu theme: %v", err)
+	}
+
 	mb := &MenuBuilder{
 		images:     images,
 		groups:     groups,
+		theme:      theme,
 		macAddress: macAddress,
 		serverAddr: s.config.ServerAddr,
 		httpPort:   s.config.HTTPPort,
@@ -37,6 +46,7 @@ func (mb *MenuBuilder) Build() string {
 	var sb strings.Builder
 
 	sb.WriteString("#!ipxe\n\n")
+	sb.WriteString(mb.buildThemeHeader())
 	sb.WriteString(mb.buildMainMenu())
 	sb.WriteString(mb.buildGroupMenus())
 	sb.WriteString(mb.buildImageBootSections())
@@ -45,11 +55,64 @@ func (mb *MenuBuilder) Build() string {
 	return sb.String()
 }
 
+func (mb *MenuBuilder) menuTitle() string {
+	if mb.theme != nil && mb.theme.Title != "" {
+		return mb.theme.Title
+	}
+	return "Bootimus - Boot Menu"
+}
+
+func (mb *MenuBuilder) buildThemeHeader() string {
+	if mb.theme == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func clamp(v, min, max int) int {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+// encodePathSegments URL-encodes each segment of a path (handling spaces etc.)
+// while preserving / separators, so "linux/Ubuntu Server.iso" becomes "linux/Ubuntu%20Server.iso"
+func encodePathSegments(path string) string {
+	segments := strings.Split(filepath.ToSlash(path), "/")
+	for i, seg := range segments {
+		segments[i] = url.PathEscape(seg)
+	}
+	return strings.Join(segments, "/")
+}
+
+func cssHexToIPXE(hex string) string {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) == 6 {
+		return "0x00" + hex
+	}
+	return "0x00000000"
+}
+
+func writeColour(sb *strings.Builder, index int, cssHex string) {
+	if cssHex == "" {
+		return
+	}
+	sb.WriteString(fmt.Sprintf("colour --rgb %s %d\n", cssHexToIPXE(cssHex), index))
+}
+
 func (mb *MenuBuilder) buildMainMenu() string {
 	var sb strings.Builder
 
 	sb.WriteString(":start\n")
-	sb.WriteString("menu Bootimus - Boot Menu\n")
+	sb.WriteString(fmt.Sprintf("menu %s\n", mb.menuTitle()))
 
 	rootGroups := mb.getRootGroups()
 	ungroupedImages := mb.getUngroupedImages()
@@ -100,7 +163,7 @@ func (mb *MenuBuilder) buildGroupMenus() string {
 		}
 
 		sb.WriteString(fmt.Sprintf(":group%d\n", group.ID))
-		sb.WriteString(fmt.Sprintf("menu Bootimus - %s\n", group.Name))
+		sb.WriteString(fmt.Sprintf("menu %s - %s\n", mb.menuTitle(), group.Name))
 
 		childGroups := mb.getChildGroups(group.ID)
 		groupImages := mb.getGroupImages(group.ID)
@@ -152,8 +215,8 @@ func (mb *MenuBuilder) buildImageBootSections() string {
 		sb.WriteString(fmt.Sprintf(":iso%d\n", img.ID))
 		sb.WriteString(fmt.Sprintf("echo Booting %s...\n", img.Name))
 
-		encodedFilename := url.PathEscape(img.Filename)
-		cacheDir := strings.TrimSuffix(img.Filename, ".iso")
+		encodedFilename := encodePathSegments(img.Filename)
+		cacheDir := encodePathSegments(strings.TrimSuffix(img.Filename, ".iso"))
 
 		switch img.BootMethod {
 		case "nbd":

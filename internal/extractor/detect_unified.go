@@ -44,6 +44,8 @@ func detectDistroNameUnified(reader FileSystemReader, isoPath string) string {
 		"endeavouros": "endeavouros",
 		"garuda":      "garuda",
 		"arco":        "arco",
+		"truenas":     "debian",
+		"proxmox":     "debian",
 	}
 
 	for pattern, distro := range distroPatterns {
@@ -85,6 +87,8 @@ func (e *Extractor) detectUbuntuDebianUnified(reader FileSystemReader) (*BootFil
 		{"/install.amd/vmlinuz", "/install.amd/initrd.gz", "debian", "", true, "http://ftp.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/netboot.tar.gz"},
 		{"/live/vmlinuz", "/live/initrd.img", "debian", "boot=live fetch= ", false, ""},
 		{"/live/vmlinuz1", "/live/initrd1.img", "debian", "boot=live fetch= ", false, ""},
+		{"/vmlinuz", "/initrd.img", "debian", "boot=live fetch= ", false, ""},
+		{"/boot/linux26", "/boot/initrd.img", "debian", "", false, ""},
 	}
 
 	for _, p := range paths {

@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"bootimus/internal/models"
 
@@ -29,7 +30,7 @@ func NewSQLiteStore(dataDir string) (*SQLiteStore, error) {
 }
 
 func (s *SQLiteStore) AutoMigrate() error {
-	if err := s.db.AutoMigrate(&models.User{}, &models.Client{}, &models.ImageGroup{}, &models.Image{}, &models.BootLog{}, &models.CustomFile{}, &models.DriverPack{}); err != nil {
+	if err := s.db.AutoMigrate(&models.User{}, &models.Client{}, &models.ImageGroup{}, &models.Image{}, &models.BootLog{}, &models.CustomFile{}, &models.DriverPack{}, &models.MenuTheme{}); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
@@ -389,22 +390,21 @@ func (s *SQLiteStore) ListImagesByGroup(groupID uint) ([]*models.Image, error) {
 }
 
 func (s *SQLiteStore) GetImagesForClient(macAddress string) ([]models.Image, error) {
-	var images []models.Image
-
-	if err := s.db.Where("enabled = ? AND public = ?", true, true).Find(&images).Error; err != nil {
-		return nil, err
-	}
-
 	var client models.Client
 	if err := s.db.Where("mac_address = ? AND enabled = ?", macAddress, true).First(&client).Error; err == nil {
 		if len(client.AllowedImages) > 0 {
-			var clientImages []models.Image
-			if err := s.db.Where("filename IN ? AND enabled = ?", client.AllowedImages, true).Find(&clientImages).Error; err == nil {
-				images = append(images, clientImages...)
+			var images []models.Image
+			if err := s.db.Where("filename IN ? AND enabled = ?", client.AllowedImages, true).Find(&images).Error; err == nil {
+				return images, nil
 			}
 		}
 	}
 
+	// Unknown client or no assigned images — show all public images
+	var images []models.Image
+	if err := s.db.Where("enabled = ? AND public = ?", true, true).Find(&images).Error; err != nil {
+		return nil, err
+	}
 	return images, nil
 }
 
@@ -448,8 +448,19 @@ func (s *SQLiteStore) UpdateImageBootStats(imageName string) error {
 		}).Error
 }
 
-func (s *SQLiteStore) SyncImages(isoFiles []struct{ Name, Filename string; Size int64 }) error {
+func (s *SQLiteStore) SyncImages(isoFiles []models.SyncFile) error {
+	groupCache := make(map[string]*uint) // groupPath -> groupID
+
 	for _, iso := range isoFiles {
+		var groupID *uint
+		if iso.GroupPath != "" {
+			gid, err := s.resolveGroupPath(iso.GroupPath, groupCache)
+			if err != nil {
+				return fmt.Errorf("failed to resolve group for %s: %w", iso.GroupPath, err)
+			}
+			groupID = gid
+		}
+
 		var image models.Image
 		err := s.db.Where("filename = ?", iso.Filename).First(&image).Error
 
@@ -460,13 +471,21 @@ func (s *SQLiteStore) SyncImages(isoFiles []struct{ Name, Filename string; Size 
 				Size:     iso.Size,
 				Enabled:  true,
 				Public:   true,
+				GroupID:  groupID,
 			}
 			if err := s.db.Create(&image).Error; err != nil {
 				return fmt.Errorf("failed to create image %s: %w", iso.Name, err)
 			}
 		} else if err == nil {
+			updates := map[string]interface{}{}
 			if image.Size != iso.Size {
-				s.db.Model(&image).Update("size", iso.Size)
+				updates["size"] = iso.Size
+			}
+			if groupID != nil {
+				updates["group_id"] = *groupID
+			}
+			if len(updates) > 0 {
+				s.db.Model(&image).Updates(updates)
 			}
 		} else {
 			return err
@@ -474,6 +493,80 @@ func (s *SQLiteStore) SyncImages(isoFiles []struct{ Name, Filename string; Size 
 	}
 
 	return nil
+}
+
+// resolveGroupPath creates ImageGroups for each segment of a path (e.g. "linux/debian")
+// and returns the ID of the leaf group. Results are cached in groupCache.
+func (s *SQLiteStore) resolveGroupPath(groupPath string, cache map[string]*uint) (*uint, error) {
+	if id, ok := cache[groupPath]; ok {
+		return id, nil
+	}
+
+	segments := strings.Split(groupPath, string(filepath.Separator))
+	var parentID *uint
+	builtPath := ""
+
+	for _, seg := range segments {
+		if builtPath == "" {
+			builtPath = seg
+		} else {
+			builtPath = builtPath + string(filepath.Separator) + seg
+		}
+
+		if id, ok := cache[builtPath]; ok {
+			parentID = id
+			continue
+		}
+
+		var group models.ImageGroup
+		query := s.db.Where("name = ?", seg)
+		if parentID != nil {
+			query = query.Where("parent_id = ?", *parentID)
+		} else {
+			query = query.Where("parent_id IS NULL")
+		}
+
+		err := query.First(&group).Error
+		if err == gorm.ErrRecordNotFound {
+			group = models.ImageGroup{
+				Name:     seg,
+				ParentID: parentID,
+				Enabled:  true,
+			}
+			if err := s.db.Create(&group).Error; err != nil {
+				return nil, fmt.Errorf("failed to create group %s: %w", seg, err)
+			}
+		} else if err != nil {
+			return nil, err
+		}
+
+		id := group.ID
+		cache[builtPath] = &id
+		parentID = &id
+	}
+
+	return parentID, nil
+}
+
+func (s *SQLiteStore) GetMenuTheme() (*models.MenuTheme, error) {
+	var theme models.MenuTheme
+	err := s.db.First(&theme).Error
+	if err == gorm.ErrRecordNotFound {
+		theme = models.MenuTheme{ID: 1}
+		if err := s.db.Create(&theme).Error; err != nil {
+			return nil, err
+		}
+		return &theme, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &theme, nil
+}
+
+func (s *SQLiteStore) UpdateMenuTheme(theme *models.MenuTheme) error {
+	theme.ID = 1
+	return s.db.Save(theme).Error
 }
 
 func (s *SQLiteStore) Close() error {

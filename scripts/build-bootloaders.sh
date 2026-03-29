@@ -30,6 +30,7 @@ RUN git clone --depth 1 https://github.com/ipxe/ipxe.git
 COPY embed.ipxe /build/ipxe/src/embed.ipxe
 
 WORKDIR /build/ipxe/src
+
 RUN make bin/undionly.kpxe EMBED=embed.ipxe
 RUN make bin-x86_64-efi/ipxe.efi EMBED=embed.ipxe
 RUN make CROSS=aarch64-linux-gnu- bin-arm64-efi/ipxe.efi EMBED=embed.ipxe

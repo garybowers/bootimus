@@ -1,86 +1,78 @@
-.PHONY: help build build-all build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64 run push clean
+.PHONY: help build run clean docker-build docker-up docker-down docker-push release
 
+VERSION    ?= $(shell cat VERSION)
 DOCKER_USER ?= garybowers
-VERSION ?= $(shell cat VERSION)
-LDFLAGS := -w -s -X bootimus/internal/server.Version=$(VERSION)
+IMAGE      := $(DOCKER_USER)/bootimus
+LDFLAGS    := -w -s -X bootimus/internal/server.Version=$(VERSION)
+BINARY     := bootimus
 
-# Default target
+## Help -----------------------------------------------------------------------
+
 help:
 	@echo "Bootimus Build System"
 	@echo ""
-	@echo "Available targets:"
-	@echo "  make build              - Build for Linux AMD64 (default)"
-	@echo "  make build-all          - Build for all platforms"
-	@echo "  make build-linux-amd64  - Build for Linux AMD64"
-	@echo "  make build-linux-arm64  - Build for Linux ARM64"
-	@echo "  make build-darwin-amd64 - Build for macOS Intel"
-	@echo "  make build-darwin-arm64 - Build for macOS Apple Silicon"
-	@echo "  make build-windows-amd64- Build for Windows AMD64"
-	@echo "  make clean              - Remove all build artifacts"
-	@echo "  make run                - Start Docker Compose"
-	@echo "  make push               - Build and push Docker images"
+	@echo "Local (binary):"
+	@echo "  make build            - Build binary for current platform"
+	@echo "  make run              - Build and run locally"
+	@echo "  make clean            - Remove build artifacts"
 	@echo ""
-	@echo "Set VERSION to override version:"
-	@echo "  VERSION=1.0.0 make build"
+	@echo "Local (container):"
+	@echo "  make docker-build     - Build container image locally"
+	@echo "  make docker-up        - Start services via docker compose"
+	@echo "  make docker-down      - Stop services"
 	@echo ""
+	@echo "Publish:"
+	@echo "  make release          - Build all platform binaries for GitHub release"
+	@echo "  make docker-push      - Build and push multi-arch images to Docker Hub"
+	@echo ""
+	@echo "Override version:  VERSION=1.0.0 make build"
 
-# Build all platforms
-build-all: build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64
-	@echo "All builds complete!"
+## Local (binary) -------------------------------------------------------------
 
-# Default build (Linux AMD64)
-build: build-linux-amd64
+build:
+	@echo "Building bootimus $(VERSION)..."
+	CGO_ENABLED=1 go build -ldflags="$(LDFLAGS)" -o $(BINARY) .
 
-# Linux AMD64
-build-linux-amd64:
-	@echo "Building for Linux AMD64..."
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bootimus-amd64-linux .
+run: build
+	./$(BINARY) serve
 
-# Linux ARM64
-build-linux-arm64:
-	@echo "Building for Linux ARM64..."
-	CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bootimus-arm64-linux .
-
-# macOS AMD64 (Intel)
-build-darwin-amd64:
-	@echo "Building for macOS AMD64..."
-	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bootimus-amd64-darwin .
-
-# macOS ARM64 (Apple Silicon)
-build-darwin-arm64:
-	@echo "Building for macOS ARM64..."
-	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bootimus-arm64-darwin .
-
-# Windows AMD64
-build-windows-amd64:
-	@echo "Building for Windows AMD64..."
-	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bootimus-amd64-windows.exe .
-
-# Clean build artifacts
 clean:
-	@echo "Cleaning build artifacts..."
-	rm -f bootimus-*-linux bootimus-*-darwin bootimus-*-windows.exe bootimus
+	rm -f bootimus bootimus-*
 
-run:
-	docker-compose up -d
+## Local (container) ----------------------------------------------------------
 
-push:
-	docker buildx create --use --name bootimus-builder --driver docker-container || docker buildx use bootimus-builder
-	docker buildx build -f Dockerfile.multistage \
-		--platform linux/amd64,linux/arm64 \
+docker-build:
+	docker build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest \
+		--build-arg VERSION=$(VERSION) .
+
+docker-up:
+	docker compose up -d
+
+docker-down:
+	docker compose down
+
+## Publish --------------------------------------------------------------------
+
+release: clean
+	@echo "Building release v$(VERSION)..."
+	CGO_ENABLED=1 GOOS=linux   GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bootimus-linux-amd64 .
+	CGO_ENABLED=1 GOOS=linux   GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bootimus-linux-arm64 .
+	CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bootimus-darwin-amd64 .
+	CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bootimus-darwin-arm64 .
+	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bootimus-windows-amd64.exe .
+	@echo ""
+	@echo "Release v$(VERSION) binaries built:"
+	@ls -lh bootimus-*
+	@echo ""
+	@echo "Upload these to GitHub: Repo -> Releases -> Draft a new release -> Tag: v$(VERSION)"
+
+PLATFORMS ?= linux/amd64,linux/arm64
+
+docker-push:
+	docker buildx create --use --name bootimus-builder --driver docker-container 2>/dev/null || docker buildx use bootimus-builder
+	docker buildx build \
+		--platform $(PLATFORMS) \
 		--build-arg VERSION=$(VERSION) \
-		-t $(DOCKER_USER)/bootimus:$(VERSION) \
-		-t $(DOCKER_USER)/bootimus:latest \
-		--push \
-		--no-cache \
-		.
-
-dev-push:
-	docker buildx create --use --name bootimus-builder --driver docker-container || docker buildx use bootimus-builder
-	docker buildx build -f Dockerfile.multistage \
-		--platform linux/amd64 \
-		--build-arg VERSION=$(VERSION) \
-		-t $(DOCKER_USER)/bootimus:$(VERSION) \
-		--push \
-		--no-cache \
-		.
+		-t $(IMAGE):$(VERSION) \
+		-t $(IMAGE):latest \
+		--push .

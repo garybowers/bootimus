@@ -306,6 +306,8 @@ func (e *Extractor) detectUbuntuDebian(img *iso9660.Image) (*BootFiles, error) {
 		{"/live/vmlinuz", "/live/initrd.img", "debian", "boot=live fetch= "},
 		{"/live/vmlinuz1", "/live/initrd1.img", "debian", "boot=live fetch= "},
 		{"/live/vmlinuz-*", "/live/initrd.img-*", "debian", "boot=live fetch= "},
+		{"/vmlinuz", "/initrd.img", "debian", "boot=live fetch= "},
+		{"/boot/linux26", "/boot/initrd.img", "debian", ""},
 	}
 
 	for _, p := range paths {

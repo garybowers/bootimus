@@ -206,6 +206,9 @@ function setupTabs() {
             if (tab.dataset.tab === 'groups') {
                 loadGroups();
             }
+            if (tab.dataset.tab === 'settings') {
+                loadTheme();
+            }
         });
     });
 }
@@ -1127,6 +1130,84 @@ function setupForms() {
             showAlert('Failed to update client', 'error');
         }
     });
+
+    document.getElementById('theme-form').addEventListener('submit', saveTheme);
+}
+
+// Theme
+async function loadTheme() {
+    try {
+        const res = await fetch(`${API_BASE}/theme`);
+        const data = await res.json();
+        if (data.success) {
+            const t = data.data;
+            document.getElementById('theme-title').value = t.title || '';
+            document.getElementById('theme-console-width').value = t.console_width || 1920;
+            document.getElementById('theme-console-height').value = t.console_height || 1080;
+            document.getElementById('theme-text-fg').value = t.text_foreground || '#cccccc';
+            document.getElementById('theme-text-bg').value = t.text_background || '#000000';
+            document.getElementById('theme-disabled-fg').value = t.disabled_foreground || '#555555';
+            document.getElementById('theme-disabled-bg').value = t.disabled_background || '#000000';
+            document.getElementById('theme-highlight-fg').value = t.highlight_foreground || '#ffffff';
+            document.getElementById('theme-highlight-bg').value = t.highlight_background || '#0000aa';
+            document.getElementById('theme-separator-fg').value = t.separator_foreground || '#555555';
+            document.getElementById('theme-separator-bg').value = t.separator_background || '#000000';
+            document.getElementById('theme-title-fg').value = t.title_foreground || '#ffffff';
+            document.getElementById('theme-title-bg').value = t.title_background || '#0000aa';
+        }
+    } catch (err) {
+        console.error('Failed to load theme:', err);
+    }
+}
+
+async function saveTheme(e) {
+    e.preventDefault();
+    const theme = {
+        title: document.getElementById('theme-title').value,
+        console_width: parseInt(document.getElementById('theme-console-width').value) || 1920,
+        console_height: parseInt(document.getElementById('theme-console-height').value) || 1080,
+        text_foreground: document.getElementById('theme-text-fg').value,
+        text_background: document.getElementById('theme-text-bg').value,
+        disabled_foreground: document.getElementById('theme-disabled-fg').value,
+        disabled_background: document.getElementById('theme-disabled-bg').value,
+        highlight_foreground: document.getElementById('theme-highlight-fg').value,
+        highlight_background: document.getElementById('theme-highlight-bg').value,
+        separator_foreground: document.getElementById('theme-separator-fg').value,
+        separator_background: document.getElementById('theme-separator-bg').value,
+        title_foreground: document.getElementById('theme-title-fg').value,
+        title_background: document.getElementById('theme-title-bg').value,
+    };
+    try {
+        const res = await fetch(`${API_BASE}/theme`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(theme),
+        });
+        const data = await res.json();
+        if (data.success) {
+            showAlert('Theme saved successfully', 'success');
+        } else {
+            showAlert(data.error || 'Failed to save theme', 'error');
+        }
+    } catch (err) {
+        showAlert('Failed to save theme', 'error');
+    }
+}
+
+function resetThemeDefaults() {
+    document.getElementById('theme-title').value = 'Bootimus - Boot Menu';
+    document.getElementById('theme-console-width').value = 1920;
+    document.getElementById('theme-console-height').value = 1080;
+    document.getElementById('theme-text-fg').value = '#cccccc';
+    document.getElementById('theme-text-bg').value = '#000000';
+    document.getElementById('theme-disabled-fg').value = '#555555';
+    document.getElementById('theme-disabled-bg').value = '#000000';
+    document.getElementById('theme-highlight-fg').value = '#ffffff';
+    document.getElementById('theme-highlight-bg').value = '#0000aa';
+    document.getElementById('theme-separator-fg').value = '#555555';
+    document.getElementById('theme-separator-bg').value = '#000000';
+    document.getElementById('theme-title-fg').value = '#ffffff';
+    document.getElementById('theme-title-bg').value = '#0000aa';
 }
 
 // Upload

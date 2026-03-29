@@ -76,14 +76,21 @@ type Client struct {
 	AllowedImages StringSlice    `gorm:"type:text" json:"allowed_images,omitempty"`
 }
 
+type SyncFile struct {
+	Name      string
+	Filename  string
+	Size      int64
+	GroupPath string // relative directory path from isoDir, empty for root
+}
+
 type ImageGroup struct {
 	ID          uint           `gorm:"primarykey" json:"id"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
-	Name        string         `gorm:"uniqueIndex;not null" json:"name"`
+	Name        string         `gorm:"uniqueIndex:idx_group_name_parent;not null" json:"name"`
 	Description string         `json:"description"`
-	ParentID    *uint          `gorm:"index" json:"parent_id,omitempty"`
+	ParentID    *uint          `gorm:"uniqueIndex:idx_group_name_parent;index" json:"parent_id,omitempty"`
 	Parent      *ImageGroup    `gorm:"foreignKey:ParentID" json:"parent,omitempty"`
 	Order       int            `gorm:"default:0" json:"order"`
 	Enabled     bool           `gorm:"default:true" json:"enabled"`
@@ -172,4 +179,33 @@ type DriverPack struct {
 	Image        *Image         `gorm:"foreignKey:ImageID" json:"image,omitempty"`
 	Enabled      bool           `gorm:"default:true" json:"enabled"`
 	LastApplied  *time.Time     `json:"last_applied,omitempty"`
+}
+
+type MenuTheme struct {
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Console resolution (0 = disabled, may not work on all firmware)
+	ConsoleWidth  int    `gorm:"default:0" json:"console_width"`
+	ConsoleHeight int    `gorm:"default:0" json:"console_height"`
+
+	// Menu title
+	Title string `gorm:"default:Bootimus - Boot Menu" json:"title"`
+
+	// cpair 0: default text
+	TextForeground string `gorm:"default:#cccccc" json:"text_foreground"`
+	TextBackground string `gorm:"default:#000000" json:"text_background"`
+	// cpair 1: disabled/gap items
+	DisabledForeground string `gorm:"default:#555555" json:"disabled_foreground"`
+	DisabledBackground string `gorm:"default:#000000" json:"disabled_background"`
+	// cpair 2: selected/highlight
+	HighlightForeground string `gorm:"default:#ffffff" json:"highlight_foreground"`
+	HighlightBackground string `gorm:"default:#0000aa" json:"highlight_background"`
+	// cpair 4: separator
+	SeparatorForeground string `gorm:"default:#555555" json:"separator_foreground"`
+	SeparatorBackground string `gorm:"default:#000000" json:"separator_background"`
+	// cpair 5: title bar
+	TitleForeground string `gorm:"default:#ffffff" json:"title_foreground"`
+	TitleBackground string `gorm:"default:#0000aa" json:"title_background"`
 }

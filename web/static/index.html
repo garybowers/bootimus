@@ -888,6 +888,7 @@
             <button class="tab" data-tab="groups">Groups</button>
             <button class="tab" data-tab="public-files">Public Files</button>
             <button class="tab" data-tab="users">Users</button>
+            <button class="tab" data-tab="settings">Settings</button>
             <button class="tab" data-tab="logs">Logs</button>
         </div>
 
@@ -964,6 +965,39 @@
                     <div class="spinner"></div>
                     Loading users...
                 </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settings-tab" class="tab-content">
+            <div class="card">
+                <h2>Boot Menu Theme</h2>
+                <p style="color: #94a3b8; margin-bottom: 20px;">
+                    Customise the appearance of the PXE boot menu seen by clients.
+                    Console resolution may not be supported by all iPXE firmware builds.
+                </p>
+                <form id="theme-form">
+                    <div class="form-group">
+                        <label>Menu Title</label>
+                        <input type="text" id="theme-title" placeholder="Bootimus - Boot Menu">
+                    </div>
+                    <!-- Console resolution and colour theme hidden until iPXE build supports them -->
+                    <input type="hidden" id="theme-console-width" value="0">
+                    <input type="hidden" id="theme-console-height" value="0">
+                    <input type="hidden" id="theme-text-fg" value="#cccccc">
+                    <input type="hidden" id="theme-text-bg" value="#000000">
+                    <input type="hidden" id="theme-disabled-fg" value="#555555">
+                    <input type="hidden" id="theme-disabled-bg" value="#000000">
+                    <input type="hidden" id="theme-highlight-fg" value="#ffffff">
+                    <input type="hidden" id="theme-highlight-bg" value="#0000aa">
+                    <input type="hidden" id="theme-separator-fg" value="#555555">
+                    <input type="hidden" id="theme-separator-bg" value="#000000">
+                    <input type="hidden" id="theme-title-fg" value="#ffffff">
+                    <input type="hidden" id="theme-title-bg" value="#0000aa">
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button type="submit" class="btn btn-primary">Save Theme</button>
+                    </div>
+                </form>
             </div>
         </div>
 

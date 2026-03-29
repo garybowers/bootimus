@@ -17,7 +17,7 @@ type Storage interface {
 	CreateImage(image *models.Image) error
 	UpdateImage(filename string, image *models.Image) error
 	DeleteImage(filename string) error
-	SyncImages(isoFiles []struct{ Name, Filename string; Size int64 }) error
+	SyncImages(isoFiles []models.SyncFile) error
 
 	AssignImagesToClient(mac string, imageFilenames []string) error
 	GetClientImages(mac string) ([]string, error)
@@ -56,6 +56,9 @@ type Storage interface {
 	UpdateImageGroup(id uint, group *models.ImageGroup) error
 	DeleteImageGroup(id uint) error
 	ListImagesByGroup(groupID uint) ([]*models.Image, error)
+
+	GetMenuTheme() (*models.MenuTheme, error)
+	UpdateMenuTheme(theme *models.MenuTheme) error
 
 	LogBootAttempt(macAddress, imageName, ipAddress string, success bool, errorMsg string) error
 	UpdateClientBootStats(macAddress string) error

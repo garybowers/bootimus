@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -204,46 +205,47 @@ func (h *Handler) DeleteClient(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) syncFilesystemToDatabase() {
-	entries, err := os.ReadDir(h.isoDir)
+	var isoFiles []models.SyncFile
+
+	err := filepath.WalkDir(h.isoDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".iso") {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			log.Printf("Failed to get file info for %s: %v", path, err)
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(h.isoDir, path)
+		groupPath := filepath.Dir(relPath)
+		if groupPath == "." {
+			groupPath = ""
+		}
+
+		isoFiles = append(isoFiles, models.SyncFile{
+			Name:      strings.TrimSuffix(d.Name(), filepath.Ext(d.Name())),
+			Filename:  relPath,
+			Size:      info.Size(),
+			GroupPath: groupPath,
+		})
+
+		return nil
+	})
 	if err != nil {
-		log.Printf("Failed to read ISO directory for sync: %v", err)
+		log.Printf("Failed to walk ISO directory for sync: %v", err)
 		return
 	}
 
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".iso") {
-			continue
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			log.Printf("Failed to get file info for %s: %v", entry.Name(), err)
-			continue
-		}
-
-		_, err = h.storage.GetImage(entry.Name())
-		exists := (err == nil)
-
-		if !exists {
-			displayName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-			image := &models.Image{
-				Name:     displayName,
-				Filename: entry.Name(),
-				Size:     info.Size(),
-				Enabled:  true,
-				Public:   true,
-			}
-
-			if err := h.storage.CreateImage(image); err != nil {
-				log.Printf("Failed to auto-add image from filesystem: %s - %v", entry.Name(), err)
-			} else {
-				log.Printf("Auto-added image from filesystem: %s", entry.Name())
-			}
-		}
+	if err := h.storage.SyncImages(isoFiles); err != nil {
+		log.Printf("Failed to sync images with database: %v", err)
 	}
 }
 
@@ -820,60 +822,68 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := os.ReadDir(h.isoDir)
+	// Walk filesystem to find all ISOs (including in subdirectories)
+	existingFiles := make(map[string]bool)
+	var isoFiles []models.SyncFile
+
+	err := filepath.WalkDir(h.isoDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".iso") {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(h.isoDir, path)
+		groupPath := filepath.Dir(relPath)
+		if groupPath == "." {
+			groupPath = ""
+		}
+
+		existingFiles[relPath] = true
+		isoFiles = append(isoFiles, models.SyncFile{
+			Name:      strings.TrimSuffix(d.Name(), filepath.Ext(d.Name())),
+			Filename:  relPath,
+			Size:      info.Size(),
+			GroupPath: groupPath,
+		})
+
+		return nil
+	})
 	if err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
 	}
 
-	existingFiles := make(map[string]bool)
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".iso") {
-			existingFiles[entry.Name()] = true
-		}
-	}
-
+	// Sync found ISOs to database (creates groups from folders, adds new images)
 	var newImages []string
-	var deletedImages []string
+	allImagesBefore, _ := h.storage.ListImages()
+	existingFilenames := make(map[string]bool)
+	for _, img := range allImagesBefore {
+		existingFilenames[img.Filename] = true
+	}
 
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".iso") {
-			continue
-		}
+	if err := h.storage.SyncImages(isoFiles); err != nil {
+		log.Printf("Failed to sync images during scan: %v", err)
+	}
 
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		existing, err := h.storage.GetImage(entry.Name())
-		if err != nil {
-			displayName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-			image := &models.Image{
-				Name:     displayName,
-				Filename: entry.Name(),
-				Size:     info.Size(),
-				Enabled:  true,
-				Public:   true,
-			}
-
-			if err := h.storage.CreateImage(image); err == nil {
-				newImages = append(newImages, entry.Name())
-				log.Printf("Admin: Image scan found new ISO - %s (%d MB)", entry.Name(), info.Size()/1024/1024)
-			} else {
-				log.Printf("Failed to add image to database: %s - %v", entry.Name(), err)
-			}
-		} else {
-			if existing.Size != info.Size() {
-				oldSize := existing.Size
-				existing.Size = info.Size()
-				if err := h.storage.UpdateImage(existing.Filename, existing); err == nil {
-					log.Printf("Updated image size: %s (%d -> %d bytes)", existing.Filename, oldSize, info.Size())
-				}
-			}
+	for _, iso := range isoFiles {
+		if !existingFilenames[iso.Filename] {
+			newImages = append(newImages, iso.Filename)
+			log.Printf("Admin: Image scan found new ISO - %s", iso.Filename)
 		}
 	}
 
+	// Remove database entries for ISOs no longer on the filesystem
+	var deletedImages []string
 	allImages, err := h.storage.ListImages()
 	if err == nil {
 		log.Printf("Checking %d database images against %d filesystem ISOs", len(allImages), len(existingFiles))
@@ -1499,10 +1509,7 @@ func (h *Handler) downloadISO(url, filename, destPath, description string) {
 	log.Printf("Completed ISO download: %s (%d bytes)", filename, downloaded)
 
 	if h.storage != nil {
-		isoFiles := []struct {
-			Name, Filename string
-			Size           int64
-		}{
+		isoFiles := []models.SyncFile{
 			{Name: strings.TrimSuffix(filename, filepath.Ext(filename)), Filename: filename, Size: downloaded},
 		}
 
@@ -2299,6 +2306,53 @@ func (h *Handler) DeleteImageGroup(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Deleted image group: %s (ID: %d)", group.Name, group.ID)
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Group deleted"})
+}
+
+func (h *Handler) GetMenuTheme(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	theme, err := h.storage.GetMenuTheme()
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: theme})
+}
+
+func (h *Handler) UpdateMenuTheme(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	var theme models.MenuTheme
+	if err := json.NewDecoder(r.Body).Decode(&theme); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+	if theme.ConsoleWidth != 0 {
+		if theme.ConsoleWidth < 640 {
+			theme.ConsoleWidth = 640
+		}
+		if theme.ConsoleWidth > 1920 {
+			theme.ConsoleWidth = 1920
+		}
+	}
+	if theme.ConsoleHeight != 0 {
+		if theme.ConsoleHeight < 480 {
+			theme.ConsoleHeight = 480
+		}
+		if theme.ConsoleHeight > 1080 {
+			theme.ConsoleHeight = 1080
+		}
+	}
+	if err := h.storage.UpdateMenuTheme(&theme); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+	log.Printf("Admin: Updated menu theme settings")
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Theme updated", Data: theme})
 }
 
 func (h *Handler) ListImageFiles(w http.ResponseWriter, r *http.Request) {

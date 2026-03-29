@@ -58,13 +58,30 @@ curl -u admin:password -X POST http://localhost:8081/api/images/download \
 curl -u admin:password http://localhost:8081/api/downloads/progress?filename=ubuntu-24.04-live-server-amd64.iso
 ```
 
+### Organise with Folders
+
+ISOs placed in subdirectories are automatically grouped in the boot menu:
+
+```
+/data/isos/
+├── ubuntu-24.04.iso              # ungrouped
+├── linux/                        # "linux" group
+│   ├── debian-12.iso
+│   └── servers/                  # "servers" subgroup under "linux"
+│       └── truenas-scale.iso
+└── windows/                      # "windows" group
+    └── win11.iso
+```
+
+Groups are auto-created on startup and when scanning. They can also be managed manually via the Groups tab in the admin UI.
+
 ### Scan Existing ISOs
 
-If you manually copy ISOs to the data directory:
+If you manually copy ISOs to the data directory (including into subdirectories):
 
-1. Copy ISO files to `/data/isos/` directory
+1. Copy ISO files to `/data/isos/` directory (or subdirectories)
 2. Click **"Scan for ISOs"** button in admin panel
-3. Bootimus detects and registers new ISOs
+3. Bootimus detects and registers new ISOs and creates groups from folders
 
 **Via API**:
 ```bash
@@ -315,7 +332,7 @@ ip=dhcp
 
 ## Supported Distributions
 
-### Fully Tested 
+### Fully Tested
 
 | Distribution | Kernel Extraction | Netboot | Notes |
 |--------------|-------------------|---------|-------|
@@ -323,8 +340,14 @@ ip=dhcp
 | **Fedora Workstation** |  Yes |  N/A | `/isolinux/vmlinuz` |
 | **Rocky Linux** |  Yes |  N/A | `/isolinux/vmlinuz` |
 | **Debian (installer)** |  Yes |  Yes | `/install/vmlinuz` + netboot |
+| **Debian Live** |  Yes |  No | `/live/vmlinuz` |
 | **Ubuntu Desktop** |  Yes |  No | `/casper/vmlinuz` + fetch optimisation |
 | **Ubuntu Server** |  Yes |  Yes | `/install/vmlinuz` + netboot |
+| **Pop!_OS** |  Yes |  No | `/casper/vmlinuz` |
+| **TrueNAS SCALE** |  Yes |  No | `/vmlinuz` + `/initrd.img` (root) |
+| **Proxmox VE** |  Yes |  No | `/boot/linux26` + `/boot/initrd.img` |
+| **openSUSE** |  Yes |  N/A | `/boot/x86_64/loader/linux` |
+| **NixOS** |  N/A |  N/A | Sanboot |
 
 ### Detection Patterns
 
@@ -359,6 +382,19 @@ Bootimus detects distributions by scanning for specific file patterns:
 ```
 /install/vmlinuz or /install.amd/vmlinuz
 /install/initrd.gz or /install.amd/initrd.gz
+```
+
+**TrueNAS SCALE**:
+```
+/vmlinuz
+/initrd.img
+/live/filesystem.squashfs
+```
+
+**Proxmox VE**:
+```
+/boot/linux26
+/boot/initrd.img
 ```
 
 ## Troubleshooting

@@ -3,6 +3,8 @@ package storage
 import (
 	"fmt"
 	"log"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"bootimus/internal/models"
@@ -52,6 +54,7 @@ func (s *PostgresStore) AutoMigrate() error {
 		&models.BootLog{},
 		&models.CustomFile{},
 		&models.DriverPack{},
+		&models.MenuTheme{},
 	); err != nil {
 		return err
 	}
@@ -182,8 +185,19 @@ func (s *PostgresStore) DeleteImage(filename string) error {
 	return s.db.Unscoped().Delete(&image).Error
 }
 
-func (s *PostgresStore) SyncImages(isoFiles []struct{ Name, Filename string; Size int64 }) error {
+func (s *PostgresStore) SyncImages(isoFiles []models.SyncFile) error {
+	groupCache := make(map[string]*uint)
+
 	for _, iso := range isoFiles {
+		var groupID *uint
+		if iso.GroupPath != "" {
+			gid, err := s.resolveGroupPath(iso.GroupPath, groupCache)
+			if err != nil {
+				return fmt.Errorf("failed to resolve group for %s: %w", iso.GroupPath, err)
+			}
+			groupID = gid
+		}
+
 		var image models.Image
 		err := s.db.Where("filename = ?", iso.Filename).First(&image).Error
 
@@ -194,13 +208,21 @@ func (s *PostgresStore) SyncImages(isoFiles []struct{ Name, Filename string; Siz
 				Size:     iso.Size,
 				Enabled:  true,
 				Public:   true,
+				GroupID:  groupID,
 			}
 			if err := s.db.Create(&image).Error; err != nil {
 				return fmt.Errorf("failed to create image %s: %w", iso.Name, err)
 			}
 		} else if err == nil {
+			updates := map[string]interface{}{}
 			if image.Size != iso.Size {
-				s.db.Model(&image).Update("size", iso.Size)
+				updates["size"] = iso.Size
+			}
+			if groupID != nil {
+				updates["group_id"] = *groupID
+			}
+			if len(updates) > 0 {
+				s.db.Model(&image).Updates(updates)
 			}
 		} else {
 			return err
@@ -208,6 +230,57 @@ func (s *PostgresStore) SyncImages(isoFiles []struct{ Name, Filename string; Siz
 	}
 
 	return nil
+}
+
+func (s *PostgresStore) resolveGroupPath(groupPath string, cache map[string]*uint) (*uint, error) {
+	if id, ok := cache[groupPath]; ok {
+		return id, nil
+	}
+
+	segments := strings.Split(groupPath, string(filepath.Separator))
+	var parentID *uint
+	builtPath := ""
+
+	for _, seg := range segments {
+		if builtPath == "" {
+			builtPath = seg
+		} else {
+			builtPath = builtPath + string(filepath.Separator) + seg
+		}
+
+		if id, ok := cache[builtPath]; ok {
+			parentID = id
+			continue
+		}
+
+		var group models.ImageGroup
+		query := s.db.Where("name = ?", seg)
+		if parentID != nil {
+			query = query.Where("parent_id = ?", *parentID)
+		} else {
+			query = query.Where("parent_id IS NULL")
+		}
+
+		err := query.First(&group).Error
+		if err == gorm.ErrRecordNotFound {
+			group = models.ImageGroup{
+				Name:     seg,
+				ParentID: parentID,
+				Enabled:  true,
+			}
+			if err := s.db.Create(&group).Error; err != nil {
+				return nil, fmt.Errorf("failed to create group %s: %w", seg, err)
+			}
+		} else if err != nil {
+			return nil, err
+		}
+
+		id := group.ID
+		cache[builtPath] = &id
+		parentID = &id
+	}
+
+	return parentID, nil
 }
 
 
@@ -239,19 +312,20 @@ func (s *PostgresStore) GetClientImages(mac string) ([]string, error) {
 }
 
 func (s *PostgresStore) GetImagesForClient(macAddress string) ([]models.Image, error) {
-	var images []models.Image
-
-	if err := s.db.Where("enabled = ? AND public = ?", true, true).Find(&images).Error; err != nil {
-		return nil, err
-	}
-
 	var client models.Client
 	if err := s.db.Where("mac_address = ? AND enabled = ?", macAddress, true).
 		Preload("Images", "enabled = ?", true).
 		First(&client).Error; err == nil {
-		images = append(images, client.Images...)
+		if len(client.Images) > 0 {
+			return client.Images, nil
+		}
 	}
 
+	// Unknown client or no assigned images — show all public images
+	var images []models.Image
+	if err := s.db.Where("enabled = ? AND public = ?", true, true).Find(&images).Error; err != nil {
+		return nil, err
+	}
 	return images, nil
 }
 
@@ -557,4 +631,25 @@ func (s *PostgresStore) GetStats() (map[string]int64, error) {
 	stats["total_boots"] = totalBoots
 
 	return stats, nil
+}
+
+func (s *PostgresStore) GetMenuTheme() (*models.MenuTheme, error) {
+	var theme models.MenuTheme
+	err := s.db.First(&theme).Error
+	if err == gorm.ErrRecordNotFound {
+		theme = models.MenuTheme{ID: 1}
+		if err := s.db.Create(&theme).Error; err != nil {
+			return nil, err
+		}
+		return &theme, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &theme, nil
+}
+
+func (s *PostgresStore) UpdateMenuTheme(theme *models.MenuTheme) error {
+	theme.ID = 1
+	return s.db.Save(theme).Error
 }

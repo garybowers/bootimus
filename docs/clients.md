@@ -21,8 +21,8 @@ Bootimus uses MAC address-based access control to manage which clients can boot 
 - **Client**: A network boot device identified by MAC address
 - **Enabled**: Client is allowed to boot (shows in boot menu)
 - **Disabled**: Client cannot boot (blocked from accessing boot menu)
-- **Public Images**: Available to all clients (enabled or not registered)
-- **Private Images**: Only available to specifically assigned clients
+- **Assigned Images**: When a client has images assigned, it sees **only those images** (not the full public list)
+- **Unregistered/No Assignments**: Clients with no assignments (or unknown clients) see all public images
 
 ### Database Modes
 
@@ -164,12 +164,12 @@ curl -u admin:password -X PUT "http://localhost:8081/api/images?filename=windows
 
 ### Access Control Matrix
 
-| Client State | Public Images | Private Images |
-|--------------|---------------|----------------|
-| **Enabled + Assigned** |  Yes |  Yes (assigned only) |
-| **Enabled + Not Assigned** |  Yes |  No |
-| **Disabled** |  Yes |  No |
-| **Not Registered** |  Yes |  No |
+| Client State | What They See |
+|--------------|---------------|
+| **Enabled + Assigned** | Only their assigned images |
+| **Enabled + No Assignments** | All public images |
+| **Disabled** | All public images |
+| **Not Registered** | All public images |
 
 ## Client Statistics
 

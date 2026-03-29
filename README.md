@@ -15,14 +15,17 @@ I've used Claude CLI to help with some parts of this project - mostly making the
 - **Self-contained**: Single binary with embedded bootloaders and web UI
 - **Zero configuration**: Sensible defaults, works out of the box
 - **Database-backed**: SQLite (default) or PostgreSQL support
-- **MAC-based ACL**: Granular per-client ISO permissions
+- **MAC-based ACL**: Per-client ISO menus (assigned clients see only their images)
+- **Folder-based groups**: Organise ISOs into subdirectories for automatic menu grouping
 - **Admin interface**: Full-featured web UI with REST API
 - **Docker ready**: Multi-arch images (amd64/arm64)
 - **Kernel extraction**: Faster boots with reduced bandwidth
 - **Netboot support**: Debian/Ubuntu network installer optimisation
 - **Thin OS memdisk**: Universal ISO boot via minimal Linux environment
+- **Custom menu title**: Configurable boot menu title via admin Settings tab
 - **Boot logging**: Real-time tracking with live streaming
 - **HTTP Basic Auth**: Auto-generated password on first run
+- **Spaces in filenames**: ISOs with spaces in names are handled correctly
 
 ## Screenshots
 
@@ -93,23 +96,55 @@ docker-compose up -d
 
 ### Arch Based
 - ✅ archlinux-2025.12.01-x86_64.iso
+- ✅ archlinux-2026.02.01-x86_64.iso
 
 ### RHEL Based
 - ✅ Rocky-10.1-x86_64-minimal.iso
 - ✅ Fedora-KDE-Desktop-Live-43-1.6.x86_64.iso
+- ✅ Fedora-Workstation-Live-43-1.6.x86_64.iso
 
 ### Debian/Ubuntu Based
 - ✅ ubuntu-24.04-live-server-amd64.iso (with netboot)
 - ✅ ubuntu-24.04-desktop-amd64.iso (with fetch optimisation)
-- ✅ debian-13.2.0-amd64-netinst.iso (with netboot)
+- ✅ xubuntu-24.04-desktop-amd64.iso
+- ✅ debian-12.5.0-amd64-netinst.iso (with netboot)
+- ✅ debian-live-13.3.0-amd64-xfce.iso
+- ✅ pop-os_22.04_amd64_intel_39.iso
+- ✅ pop-os_24.04_amd64_generic_22.iso
+- ✅ TrueNAS-SCALE-25.10.2.1.iso
+- ✅ proxmox-ve_9.1-1.iso
+
+### Other
+- ✅ openSUSE-Leap-15.5-DVD-x86_64-Build491.1-Media.iso
+- ✅ nixos-graphical-25.11-x86_64-linux.iso
+- ✅ Windows_ent_22H2.iso (wimboot)
+- ✅ slackware64-15.0-install-dvd.iso (sanboot)
+- ✅ gentoo-install-amd64-minimal.iso (sanboot)
+
+## ISO Organisation
+
+ISOs can be organised into groups by placing them in subdirectories:
+
+```
+data/isos/
+├── ubuntu-24.04.iso              # ungrouped, appears in main menu
+├── linux/                        # creates "linux" group
+│   ├── debian-12.iso             # in "linux" submenu
+│   └── servers/                  # creates "servers" subgroup
+│       └── truenas-scale.iso     # in "linux > servers" submenu
+└── windows/                      # creates "windows" group
+    └── win11.iso                 # in "windows" submenu
+```
+
+Groups are auto-created on startup and when scanning for ISOs. They can also be managed manually via the admin UI.
 
 ## Roadmap
 
+- iPXE colour theming (blocked on iPXE firmware compatibility)
 - NixOS support (and maybe inject nixconfig to the image?)
 - FreeBSD support
 - NetBSD support
 - OpenBSD support
-- Windows support
 
 ## Why Bootimus Over iVentoy?
 
@@ -162,28 +197,27 @@ See [DHCP Configuration Guide](docs/dhcp.md) for Dnsmasq, MikroTik, Ubiquiti, an
 git clone https://github.com/garybowers/bootimus
 cd bootimus
 
-# Build
+# Build and run locally
 make build
+make run
 
-# Or manually
-CGO_ENABLED=1 go build -o bootimus .
+# Build container image locally
+make docker-build
 
-# Run
-./bootimus serve
+# Start services via docker compose
+make docker-up
+
+# Build all platform binaries for GitHub release
+make release
+
+# Build and push multi-arch container to Docker Hub
+make docker-push
+
+# Push amd64 only (faster, skips arm64 QEMU emulation)
+make docker-push PLATFORMS=linux/amd64
 ```
 
-### Multi-Architecture Build
-
-```bash
-# AMD64
-CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o bootimus-amd64
-
-# ARM64
-CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -o bootimus-arm64
-
-# ARMv7
-CGO_ENABLED=1 GOOS=linux GOARCH=arm GOARM=7 go build -o bootimus-armv7
-```
+Run `make help` for all available targets.
 
 ## Security Considerations
 
