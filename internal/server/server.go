@@ -26,6 +26,7 @@ import (
 	"bootimus/internal/auth"
 	"bootimus/internal/models"
 	"bootimus/internal/nbd"
+	"bootimus/internal/profiles"
 	"bootimus/internal/storage"
 	"bootimus/internal/tools"
 	"bootimus/web"
@@ -73,6 +74,7 @@ type Config struct {
 	NBDEnabled        bool
 	NBDPort           int
 	WOLBroadcastAddr  string
+	ProfileManager    *profiles.Manager
 }
 
 type Server struct {
@@ -871,7 +873,7 @@ func (s *Server) startAdminServer() error {
 func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	log.Println("Setting up admin interface")
 
-	adminHandler := admin.NewHandler(s.config.Storage, s.config.DataDir, s.config.ISODir, s.config.BootDir, Version, s, s.toolsManager, s.config.WOLBroadcastAddr)
+	adminHandler := admin.NewHandler(s.config.Storage, s.config.DataDir, s.config.ISODir, s.config.BootDir, Version, s, s.toolsManager, s.config.WOLBroadcastAddr, s.config.ProfileManager)
 
 	staticFS, err := fs.Sub(web.Static, "static")
 	if err != nil {
@@ -984,6 +986,12 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/tools/custom/delete", authWrap(adminHandler.DeleteCustomTool))
 
 	mux.HandleFunc("/api/images/extract", authWrap(adminHandler.ExtractImage))
+	mux.HandleFunc("/api/images/redetect", authWrap(adminHandler.RedetectImage))
+
+	mux.HandleFunc("/api/profiles", authWrap(adminHandler.ListDistroProfiles))
+	mux.HandleFunc("/api/profiles/save", authWrap(adminHandler.SaveDistroProfile))
+	mux.HandleFunc("/api/profiles/delete", authWrap(adminHandler.DeleteDistroProfile))
+	mux.HandleFunc("/api/profiles/update", authWrap(adminHandler.UpdateDistroProfiles))
 	mux.HandleFunc("/api/images/boot-method", authWrap(adminHandler.SetBootMethod))
 
 	mux.HandleFunc("/api/active-sessions", authWrap(s.handleActiveSessions))

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"bootimus/internal/auth"
+	"bootimus/internal/profiles"
 	"bootimus/internal/server"
 	"bootimus/internal/storage"
 
@@ -169,6 +170,11 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Fatalf("Failed to initialise authentication: %v", err)
 	}
 
+	profileMgr := profiles.NewManager(store)
+	if err := profileMgr.SeedProfiles(); err != nil {
+		log.Printf("Warning: Failed to seed distro profiles: %v", err)
+	}
+
 	cfg := &server.Config{
 		TFTPPort:       viper.GetInt("tftp_port"),
 		TFTPSinglePort: viper.GetBool("tftp_single_port"),
@@ -183,6 +189,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		NBDEnabled:       viper.GetBool("nbd_enabled"),
 		NBDPort:          viper.GetInt("nbd_port"),
 		WOLBroadcastAddr: viper.GetString("wol_broadcast_addr"),
+		ProfileManager:   profileMgr,
 	}
 
 	srv := server.New(cfg)

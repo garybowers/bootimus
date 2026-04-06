@@ -320,6 +320,7 @@ function setupTabs() {
             if (item.dataset.tab === 'groups') loadGroups();
             if (item.dataset.tab === 'tools') loadTools();
             if (item.dataset.tab === 'bootloaders') loadBootloaders();
+            if (item.dataset.tab === 'profiles') loadProfiles();
             if (item.dataset.tab === 'settings') { loadTheme(); loadUSBImages(); }
         });
     });
@@ -1133,8 +1134,8 @@ function renderImagesTable() {
                             )}
                         </td>
                         <td>
-                            ${!img.extracted && !extractionProgress[img.filename] && !img.netboot_required ?
-                                '<button class="btn btn-success btn-sm" onclick="extractImage(\''+img.filename+'\', \''+img.name+'\')">Extract</button>' :
+                            ${!extractionProgress[img.filename] && !img.netboot_required ?
+                                '<button class="btn btn-success btn-sm" onclick="extractImage(\''+img.filename+'\', \''+img.name+'\')">' + (img.extracted ? 'Re-Extract' : 'Extract') + '</button>' :
                                 ''
                             }
                             ${img.netboot_required && !img.netboot_available ?
@@ -1226,6 +1227,41 @@ async function scanImages() {
         }
     } catch (err) {
         showAlert('Failed to scan images', 'error');
+    }
+}
+
+async function redetectFromProperties() {
+    const filename = document.getElementById('image-props-filename').value;
+    try {
+        const res = await authFetch(`${API_BASE}/images/redetect?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            const img = data.data;
+            document.getElementById('image-props-boot-params').value = img.boot_params || '';
+            document.getElementById('image-props-boot-params').placeholder = getDefaultBootParams(img) || 'Optional kernel parameters';
+            document.getElementById('image-props-boot-method').value = img.boot_method || 'sanboot';
+            showNotification(data.message || 'Re-detection complete', 'success');
+            loadImages();
+        } else {
+            showNotification(data.error || 'Re-detection failed', 'error');
+        }
+    } catch (err) {
+        showNotification('Re-detection failed', 'error');
+    }
+}
+
+async function redetectImage(filename) {
+    try {
+        const res = await authFetch(`${API_BASE}/images/redetect?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            showNotification(data.message || 'Re-detection complete', 'success');
+            loadImages();
+        } else {
+            showNotification(data.error || 'Re-detection failed', 'error');
+        }
+    } catch (err) {
+        showNotification('Re-detection failed', 'error');
     }
 }
 
@@ -1503,6 +1539,7 @@ function setupForms() {
 
     document.getElementById('theme-form').addEventListener('submit', saveTheme);
     document.getElementById('add-custom-tool-form').addEventListener('submit', createCustomTool);
+    document.getElementById('add-profile-form').addEventListener('submit', createProfile);
 }
 
 // Theme
@@ -1543,6 +1580,120 @@ async function saveTheme(e) {
 }
 
 // Tools
+// Distro Profiles
+async function loadProfiles() {
+    try {
+        const res = await authFetch(`${API_BASE}/profiles`);
+        const data = await res.json();
+        const container = document.getElementById('profiles-list');
+
+        if (!data.success) {
+            container.innerHTML = `<p class="alert alert-error">${data.error || 'Failed to load profiles'}</p>`;
+            return;
+        }
+
+        const profilesList = data.data || [];
+        if (profilesList.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-secondary);">No profiles loaded.</p>';
+            return;
+        }
+
+        let html = '<div class="table-scroll"><table><thead><tr><th>Name</th><th>Family</th><th>Filename Patterns</th><th>Boot Params</th><th>Type</th><th>Version</th><th>Actions</th></tr></thead><tbody>';
+
+        for (const p of profilesList) {
+            const patterns = (p.filename_patterns || []).join(', ');
+            const params = p.default_boot_params || '<span style="color:var(--text-muted);">none</span>';
+            const typeBadge = p.custom ?
+                '<span class="badge badge-warning">Custom</span>' :
+                '<span class="badge badge-info">Built-in</span>';
+
+            html += `<tr>
+                <td><strong>${escapeHtml(p.display_name)}</strong><br><code style="font-size:11px;color:var(--text-muted);">${escapeHtml(p.profile_id)}</code></td>
+                <td>${escapeHtml(p.family || '-')}</td>
+                <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(patterns)}">${escapeHtml(patterns)}</td>
+                <td style="font-size:12px;max-width:250px;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(p.default_boot_params || '')}">${params}</td>
+                <td>${typeBadge}</td>
+                <td style="font-size:12px;">${escapeHtml(p.version || '-')}</td>
+                <td>${p.custom ? '<button class="btn btn-danger btn-sm" onclick="deleteProfile(\'' + escapeHtml(p.profile_id) + '\')">Delete</button>' : ''}</td>
+            </tr>`;
+        }
+
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+    } catch (err) {
+        document.getElementById('profiles-list').innerHTML = `<p class="alert alert-error">Failed to load profiles</p>`;
+    }
+}
+
+async function createProfile(e) {
+    e.preventDefault();
+    const form = e.target;
+    const splitTrim = (v) => v ? v.split(',').map(s => s.trim()).filter(s => s) : [];
+
+    const data = {
+        profile_id: form.profile_id.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+        display_name: form.display_name.value.trim(),
+        family: form.family.value.trim(),
+        filename_patterns: splitTrim(form.filename_patterns.value),
+        kernel_paths: splitTrim(form.kernel_paths.value),
+        initrd_paths: splitTrim(form.initrd_paths.value),
+        squashfs_paths: splitTrim(form.squashfs_paths.value),
+        default_boot_params: form.default_boot_params.value.trim(),
+        boot_params_with_squashfs: form.boot_params_with_squashfs.value.trim(),
+        auto_install_type: form.auto_install_type.value
+    };
+
+    try {
+        const res = await authFetch(`${API_BASE}/profiles/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.success) {
+            showNotification('Profile created', 'success');
+            closeModal('add-profile-modal');
+            form.reset();
+            loadProfiles();
+        } else {
+            showNotification(result.error || 'Failed to create profile', 'error');
+        }
+    } catch (err) {
+        showNotification('Failed to create profile', 'error');
+    }
+}
+
+async function deleteProfile(profileID) {
+    if (!confirm(`Delete custom profile "${profileID}"?`)) return;
+    try {
+        const res = await authFetch(`${API_BASE}/profiles/delete?id=${encodeURIComponent(profileID)}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            showNotification('Profile deleted', 'success');
+            loadProfiles();
+        } else {
+            showNotification(data.error || 'Failed to delete', 'error');
+        }
+    } catch (err) {
+        showNotification('Failed to delete profile', 'error');
+    }
+}
+
+async function updateProfilesFromRemote() {
+    try {
+        const res = await authFetch(`${API_BASE}/profiles/update`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            showNotification(data.message || 'Profiles updated', 'success');
+            loadProfiles();
+        } else {
+            showNotification(data.error || 'Update failed', 'error');
+        }
+    } catch (err) {
+        showNotification('Update failed: ' + err.message, 'error');
+    }
+}
+
 async function loadTools() {
     try {
         const res = await authFetch(`${API_BASE}/tools`);
@@ -3267,6 +3418,7 @@ async function showImagePropertiesModal(filename) {
     document.getElementById('image-props-boot-method').value = img.boot_method || 'sanboot';
     document.getElementById('image-props-boot-params').value = img.boot_params || '';
     document.getElementById('image-props-boot-params').placeholder = getDefaultBootParams(img) || 'Optional kernel parameters';
+    document.getElementById('image-props-redetect-btn').style.display = img.extracted ? '' : 'none';
     document.getElementById('image-props-enabled').checked = img.enabled;
     document.getElementById('image-props-public').checked = img.public;
 

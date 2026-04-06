@@ -2,6 +2,7 @@ package server
 
 import (
 	"bootimus/internal/models"
+	"bootimus/internal/profiles"
 	"bootimus/internal/tools"
 	"fmt"
 	"log"
@@ -20,6 +21,7 @@ type MenuBuilder struct {
 	groupStack       []uint
 	enabledTools     []tools.EnabledTool
 	nextBootImageID  uint
+	profileManager   *profiles.Manager
 }
 
 func (s *Server) generateIPXEMenuWithGroups(images []models.Image, macAddress string, nextBootImageID ...uint) string {
@@ -50,6 +52,7 @@ func (s *Server) generateIPXEMenuWithGroups(images []models.Image, macAddress st
 		httpPort:        s.config.HTTPPort,
 		enabledTools:    enabledTools,
 		nextBootImageID: nbID,
+		profileManager:  s.config.ProfileManager,
 	}
 
 	return mb.Build()
@@ -299,46 +302,30 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 
 // resolveBootParams returns the kernel boot parameters for an image.
 // If the image has user-set boot_params, those are used with placeholder substitution.
-// Otherwise, distro-specific defaults are generated.
+// Otherwise, defaults are looked up from distro profiles, falling back to a generic default.
 func (mb *MenuBuilder) resolveBootParams(img *models.Image, baseURL, encodedFilename, cacheDir string) string {
 	params := img.BootParams
 
-	// If user has set boot params, use them with placeholder substitution
-	if params != "" {
-		params = strings.ReplaceAll(params, "{{BASE_URL}}", baseURL)
-		params = strings.ReplaceAll(params, "{{CACHE_DIR}}", cacheDir)
-		params = strings.ReplaceAll(params, "{{FILENAME}}", encodedFilename)
-		if img.SquashfsPath != "" {
-			params = strings.ReplaceAll(params, "{{SQUASHFS}}", fmt.Sprintf("%s/boot/%s/%s", baseURL, cacheDir, img.SquashfsPath))
-		}
-		return strings.TrimSpace(params)
+	// If no user params, look up from distro profile
+	if params == "" && mb.profileManager != nil && img.Distro != "" {
+		hasSquashfs := img.SquashfsPath != ""
+		params = mb.profileManager.GetBootParams(img.Distro, hasSquashfs)
 	}
 
-	// No user params — generate distro-specific defaults
-	switch img.Distro {
-	case "arch":
-		return fmt.Sprintf("archiso_http_srv=%s/boot/%s/iso/ ip=dhcp", baseURL, cacheDir)
-	case "nixos":
-		return "ip=dhcp"
-	case "fedora", "centos":
-		return fmt.Sprintf("root=live:%s/isos/%s rd.live.image inst.repo=%s/boot/%s/iso/ inst.stage2=%s/boot/%s/iso/ rd.neednet=1 ip=dhcp", baseURL, encodedFilename, baseURL, cacheDir, baseURL, cacheDir)
-	case "debian":
-		if img.SquashfsPath != "" {
-			return fmt.Sprintf("initrd=initrd priority=critical fetch=%s/boot/%s/%s", baseURL, cacheDir, img.SquashfsPath)
-		}
-		return "initrd=initrd priority=critical"
-	case "ubuntu":
-		if img.NetbootAvailable {
-			return "initrd=initrd ip=dhcp"
-		} else if img.SquashfsPath != "" {
-			return fmt.Sprintf("initrd=initrd ip=dhcp fetch=%s/boot/%s/%s", baseURL, cacheDir, img.SquashfsPath)
-		}
-		return fmt.Sprintf("initrd=initrd ip=dhcp url=%s/isos/%s", baseURL, encodedFilename)
-	case "freebsd":
-		return "vfs.root.mountfrom=cd9660:/dev/md0 kernelname=/boot/kernel/kernel"
-	default:
-		return fmt.Sprintf("iso-url=%s/isos/%s ip=dhcp", baseURL, encodedFilename)
+	// Final fallback — generic default
+	if params == "" {
+		params = fmt.Sprintf("iso-url=%s/isos/%s ip=dhcp", baseURL, encodedFilename)
 	}
+
+	// Substitute placeholders
+	params = strings.ReplaceAll(params, "{{BASE_URL}}", baseURL)
+	params = strings.ReplaceAll(params, "{{CACHE_DIR}}", cacheDir)
+	params = strings.ReplaceAll(params, "{{FILENAME}}", encodedFilename)
+	if img.SquashfsPath != "" {
+		params = strings.ReplaceAll(params, "{{SQUASHFS}}", fmt.Sprintf("%s/boot/%s/%s", baseURL, cacheDir, img.SquashfsPath))
+	}
+
+	return strings.TrimSpace(params)
 }
 
 func (mb *MenuBuilder) buildFooter() string {

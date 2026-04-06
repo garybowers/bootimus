@@ -62,6 +62,11 @@ type Storage interface {
 	GetMenuTheme() (*models.MenuTheme, error)
 	UpdateMenuTheme(theme *models.MenuTheme) error
 
+	ListDistroProfiles() ([]*models.DistroProfile, error)
+	GetDistroProfile(profileID string) (*models.DistroProfile, error)
+	SaveDistroProfile(profile *models.DistroProfile) error
+	DeleteDistroProfile(profileID string) error
+
 	ListBootTools() ([]*models.BootTool, error)
 	GetBootTool(name string) (*models.BootTool, error)
 	SaveBootTool(tool *models.BootTool) error

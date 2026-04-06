@@ -203,6 +203,25 @@ type DriverPack struct {
 	LastApplied  *time.Time     `json:"last_applied,omitempty"`
 }
 
+type DistroProfile struct {
+	ID                    uint      `gorm:"primarykey" json:"id"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	ProfileID             string    `gorm:"uniqueIndex;not null" json:"profile_id"`
+	DisplayName           string    `json:"display_name"`
+	Family                string    `json:"family"`
+	FilenamePatterns      StringSlice `gorm:"type:text" json:"filename_patterns"`
+	KernelPaths           StringSlice `gorm:"type:text" json:"kernel_paths"`
+	InitrdPaths           StringSlice `gorm:"type:text" json:"initrd_paths"`
+	SquashfsPaths         StringSlice `gorm:"type:text" json:"squashfs_paths"`
+	DefaultBootParams     string    `json:"default_boot_params"`
+	BootParamsWithSquashfs string   `json:"boot_params_with_squashfs,omitempty"`
+	AutoInstallType       string    `json:"auto_install_type,omitempty"`
+	BootMethod            string    `json:"boot_method,omitempty"`
+	Custom                bool      `gorm:"default:false" json:"custom"`
+	Version               string    `json:"version,omitempty"`
+}
+
 type MenuTheme struct {
 	ID        uint      `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time `json:"created_at"`

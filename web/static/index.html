@@ -522,6 +522,7 @@
                     <span class="nav-group-label">Boot</span>
                     <button class="nav-item" data-tab="bootloaders"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> Bootloaders</button>
                     <button class="nav-item" data-tab="tools"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Tools</button>
+                    <button class="nav-item" data-tab="profiles"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> Distro Profiles</button>
                 </div>
                 <div class="nav-group">
                     <span class="nav-group-label">System</span>
@@ -696,6 +697,24 @@
                 <div id="tools-list" class="loading">
                     <div class="spinner"></div>
                     Loading tools...
+                </div>
+            </div>
+        </div>
+
+        <!-- Distro Profiles Tab -->
+        <div id="profiles-tab" class="tab-content">
+            <div class="card">
+                <h2>Distro Profiles</h2>
+                <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                    Distro profiles define how ISOs are detected and booted. Built-in profiles are updated from the central repository. Custom profiles take priority.
+                </p>
+                <div class="toolbar">
+                    <button class="btn btn-primary" onclick="showModal('add-profile-modal')">+ Add Custom Profile</button>
+                    <button class="btn btn-success" onclick="updateProfilesFromRemote()">Check for Updates</button>
+                </div>
+                <div id="profiles-list" class="loading" style="padding: 0 12px 12px;">
+                    <div class="spinner"></div>
+                    Loading profiles...
                 </div>
             </div>
         </div>
@@ -993,6 +1012,70 @@
                 </div>
                 <button type="submit" class="btn btn-primary">Create Tool</button>
                 <button type="button" class="btn" onclick="closeModal('add-custom-tool-modal')">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="add-profile-modal" class="modal">
+        <div class="modal-content" style="max-width: 560px;">
+            <div class="modal-header">
+                <h2>Add Custom Distro Profile</h2>
+            </div>
+            <form id="add-profile-form">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div class="form-group">
+                        <label>Profile ID</label>
+                        <input type="text" name="profile_id" required placeholder="e.g. my-distro">
+                    </div>
+                    <div class="form-group">
+                        <label>Display Name</label>
+                        <input type="text" name="display_name" required placeholder="e.g. My Distro">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Family</label>
+                    <input type="text" name="family" placeholder="e.g. debian, arch, redhat">
+                </div>
+                <div class="form-group">
+                    <label>Filename Patterns (comma-separated)</label>
+                    <input type="text" name="filename_patterns" required placeholder="e.g. mydistro, my-distro">
+                    <small style="color: var(--text-muted);">Substrings to match in ISO filenames</small>
+                </div>
+                <div class="form-group">
+                    <label>Kernel Paths (comma-separated)</label>
+                    <input type="text" name="kernel_paths" placeholder="e.g. /live/vmlinuz, /boot/vmlinuz">
+                    <small style="color: var(--text-muted);">Paths to try inside the ISO</small>
+                </div>
+                <div class="form-group">
+                    <label>Initrd Paths (comma-separated)</label>
+                    <input type="text" name="initrd_paths" placeholder="e.g. /live/initrd.img, /boot/initrd">
+                </div>
+                <div class="form-group">
+                    <label>Squashfs Paths (comma-separated)</label>
+                    <input type="text" name="squashfs_paths" placeholder="e.g. /live/filesystem.squashfs">
+                </div>
+                <div class="form-group">
+                    <label>Default Boot Parameters</label>
+                    <input type="text" name="default_boot_params" placeholder="e.g. boot=live ip=dhcp">
+                    <small style="color: var(--text-muted);">Placeholders: <code>{{BASE_URL}}</code> <code>{{CACHE_DIR}}</code> <code>{{FILENAME}}</code> <code>{{SQUASHFS}}</code></small>
+                </div>
+                <div class="form-group">
+                    <label>Boot Params with Squashfs</label>
+                    <input type="text" name="boot_params_with_squashfs" placeholder="e.g. boot=live fetch={{SQUASHFS}}">
+                    <small style="color: var(--text-muted);">Used when squashfs is detected. Leave empty to use default params.</small>
+                </div>
+                <div class="form-group">
+                    <label>Auto-Install Type</label>
+                    <select name="auto_install_type">
+                        <option value="">None</option>
+                        <option value="preseed">Preseed (Debian)</option>
+                        <option value="kickstart">Kickstart (RHEL)</option>
+                        <option value="autoinstall">Autoinstall (Ubuntu)</option>
+                        <option value="autounattend">Autounattend (Windows)</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Profile</button>
+                <button type="button" class="btn" onclick="closeModal('add-profile-modal')">Cancel</button>
             </form>
         </div>
     </div>
@@ -1366,7 +1449,10 @@
 
                 <div class="form-group">
                     <label>Boot Parameters</label>
-                    <input type="text" id="image-props-boot-params" class="form-control" placeholder="Optional kernel parameters">
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="image-props-boot-params" class="form-control" placeholder="Optional kernel parameters" style="flex: 1;">
+                        <button type="button" class="btn btn-sm" id="image-props-redetect-btn" onclick="redetectFromProperties()" style="white-space: nowrap; display: none;">Re-detect</button>
+                    </div>
                     <small style="color: var(--text-muted);">Leave empty for distro defaults. Placeholders: <code>{{BASE_URL}}</code> <code>{{CACHE_DIR}}</code> <code>{{FILENAME}}</code> <code>{{SQUASHFS}}</code></small>
                 </div>
 

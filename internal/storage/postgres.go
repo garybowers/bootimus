@@ -57,6 +57,7 @@ func (s *PostgresStore) AutoMigrate() error {
 		&models.MenuTheme{},
 		&models.BootTool{},
 		&models.HardwareInventory{},
+		&models.DistroProfile{},
 	); err != nil {
 		return err
 	}
@@ -137,6 +138,30 @@ func (s *PostgresStore) GetBootTool(name string) (*models.BootTool, error) {
 
 func (s *PostgresStore) SaveBootTool(tool *models.BootTool) error {
 	return s.db.Save(tool).Error
+}
+
+func (s *PostgresStore) ListDistroProfiles() ([]*models.DistroProfile, error) {
+	var profiles []*models.DistroProfile
+	if err := s.db.Order("display_name ASC").Find(&profiles).Error; err != nil {
+		return nil, err
+	}
+	return profiles, nil
+}
+
+func (s *PostgresStore) GetDistroProfile(profileID string) (*models.DistroProfile, error) {
+	var profile models.DistroProfile
+	if err := s.db.Where("profile_id = ?", profileID).First(&profile).Error; err != nil {
+		return nil, err
+	}
+	return &profile, nil
+}
+
+func (s *PostgresStore) SaveDistroProfile(profile *models.DistroProfile) error {
+	return s.db.Save(profile).Error
+}
+
+func (s *PostgresStore) DeleteDistroProfile(profileID string) error {
+	return s.db.Unscoped().Where("profile_id = ?", profileID).Delete(&models.DistroProfile{}).Error
 }
 
 func (s *PostgresStore) DeleteBootTool(name string) error {

@@ -18,6 +18,7 @@ import (
 	"bootimus/bootloaders"
 	"bootimus/internal/extractor"
 	"bootimus/internal/models"
+	"bootimus/internal/profiles"
 	"bootimus/internal/storage"
 	"bootimus/internal/sysstats"
 	"bootimus/internal/tools"
@@ -40,9 +41,10 @@ type Handler struct {
 	bootloaderSelector BootloaderSelector
 	toolsManager       *tools.Manager
 	wolBroadcastAddr   string
+	profileManager     *profiles.Manager
 }
 
-func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir string, version string, blSelector BootloaderSelector, tm *tools.Manager, wolBroadcastAddr string) *Handler {
+func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir string, version string, blSelector BootloaderSelector, tm *tools.Manager, wolBroadcastAddr string, pm *profiles.Manager) *Handler {
 	return &Handler{
 		storage:            store,
 		dataDir:            dataDir,
@@ -51,6 +53,7 @@ func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir st
 		version:            version,
 		bootloaderSelector: blSelector,
 		toolsManager:       tm,
+		profileManager:     pm,
 		wolBroadcastAddr:   wolBroadcastAddr,
 	}
 }
@@ -855,12 +858,7 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if image.Extracted && image.BootMethod == "kernel" {
-		h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Image already extracted", Data: image})
-		return
-	}
-
-	log.Printf("Admin: Starting kernel/initrd extraction - %s", filename)
+	log.Printf("Admin: Starting kernel/initrd extraction - %s (re-extract: %v)", filename, image.Extracted)
 
 	ext, err := extractor.New(h.isoDir)
 	if err != nil {
@@ -893,7 +891,7 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	image.BootMethod = "kernel"
 	image.KernelPath = bootFiles.Kernel
 	image.InitrdPath = bootFiles.Initrd
-	image.BootParams = bootFiles.BootParams + " "
+	image.BootParams = strings.TrimSpace(bootFiles.BootParams)
 	image.SquashfsPath = bootFiles.SquashfsPath
 	image.ExtractionError = ""
 	image.ExtractedAt = &now
@@ -918,6 +916,194 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Message: fmt.Sprintf("Successfully extracted %s boot files", bootFiles.Distro),
 		Data:    image,
+	})
+}
+
+func (h *Handler) RedetectImage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing filename parameter"})
+		return
+	}
+
+	image, err := h.storage.GetImage(filename)
+	if err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+		return
+	}
+
+	if !image.Extracted {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Image must be extracted first"})
+		return
+	}
+
+	// Re-detect distro from filename
+	filenameLower := strings.ToLower(filename)
+	distroPatterns := map[string]string{
+		"popos": "popos", "pop-os": "popos", "pop_os": "popos",
+		"manjaro": "manjaro", "mint": "mint", "linuxmint": "mint",
+		"elementary": "elementary", "zorin": "zorin",
+		"ubuntu": "ubuntu", "debian": "debian", "arch": "arch",
+		"cachyos": "arch", "endeavouros": "arch", "garuda": "arch",
+		"fedora": "fedora", "centos": "centos", "rocky": "fedora",
+		"alma": "fedora", "nixos": "nixos", "opensuse": "opensuse",
+		"freebsd": "freebsd", "void": "void", "alpine": "alpine",
+		"gentoo": "gentoo", "windows": "windows", "proxmox": "debian",
+		"truenas": "debian",
+	}
+	detectedDistro := ""
+	for pattern, distro := range distroPatterns {
+		if strings.Contains(filenameLower, pattern) {
+			detectedDistro = distro
+			break
+		}
+	}
+	if detectedDistro != "" {
+		image.Distro = detectedDistro
+	}
+
+	// Re-scan for squashfs in extracted directory
+	isoBase := strings.TrimSuffix(filename, filepath.Ext(filename))
+	extractedDir := filepath.Join(h.isoDir, isoBase, "iso")
+	var squashfsPath string
+	filepath.Walk(extractedDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(strings.ToLower(info.Name()), ".squashfs") {
+			rel, _ := filepath.Rel(filepath.Join(h.isoDir, isoBase), path)
+			squashfsPath = rel
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	image.SquashfsPath = squashfsPath
+
+	// Clear boot params so defaults are regenerated
+	image.BootParams = ""
+
+	sanbootCompatible, sanbootHint := checkSanbootCompatibility(image.Distro, image.Filename)
+	image.SanbootCompatible = sanbootCompatible
+	image.SanbootHint = sanbootHint
+
+	if err := h.storage.UpdateImage(filename, image); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Admin: Re-detected image %s (distro: %s, squashfs: %s)", filename, image.Distro, squashfsPath)
+	h.sendJSON(w, http.StatusOK, Response{
+		Success: true,
+		Message: fmt.Sprintf("Re-detected: distro=%s, squashfs=%s", image.Distro, squashfsPath),
+		Data:    image,
+	})
+}
+
+func (h *Handler) ListDistroProfiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	profs, err := h.storage.ListDistroProfiles()
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: profs})
+}
+
+func (h *Handler) SaveDistroProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	var profile models.DistroProfile
+	if err := json.NewDecoder(r.Body).Decode(&profile); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+
+	if profile.ProfileID == "" || profile.DisplayName == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Profile ID and display name are required"})
+		return
+	}
+
+	// Check if updating existing
+	existing, err := h.storage.GetDistroProfile(profile.ProfileID)
+	if err == nil {
+		profile.ID = existing.ID
+		profile.CreatedAt = existing.CreatedAt
+	}
+
+	profile.Custom = true
+	if err := h.storage.SaveDistroProfile(&profile); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Admin: Distro profile saved - %s (%s)", profile.DisplayName, profile.ProfileID)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Profile saved", Data: profile})
+}
+
+func (h *Handler) DeleteDistroProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	profileID := r.URL.Query().Get("id")
+	if profileID == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing id parameter"})
+		return
+	}
+
+	profile, err := h.storage.GetDistroProfile(profileID)
+	if err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Profile not found"})
+		return
+	}
+
+	if !profile.Custom {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Cannot delete built-in profiles. They will be restored on next update."})
+		return
+	}
+
+	if err := h.storage.DeleteDistroProfile(profileID); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Admin: Distro profile deleted - %s", profileID)
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Profile deleted"})
+}
+
+func (h *Handler) UpdateDistroProfiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	if h.profileManager == nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Profile manager not available"})
+		return
+	}
+
+	added, updated, version, err := h.profileManager.UpdateFromRemote()
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	log.Printf("Admin: Distro profiles updated from remote (version: %s, added: %d, updated: %d)", version, added, updated)
+	h.sendJSON(w, http.StatusOK, Response{
+		Success: true,
+		Message: fmt.Sprintf("Updated to version %s (%d added, %d updated)", version, added, updated),
 	})
 }
 

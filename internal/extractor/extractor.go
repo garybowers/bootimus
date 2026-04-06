@@ -310,13 +310,13 @@ func (e *Extractor) detectUbuntuDebian(img *iso9660.Image) (*BootFiles, error) {
 	if found := findKernelInitrd(img, "/casper", "vmlinuz", "initrd"); found != nil {
 		log.Printf("Found kernel/initrd in /casper using wildcard matching")
 		found.Distro = "ubuntu"
-		found.BootParams = "boot=casper fetch= "
+		found.BootParams = "boot=casper "
 		return found, nil
 	}
 
 	if found := findCasperVariant(img); found != nil {
 		found.Distro = "ubuntu"
-		found.BootParams = "boot=casper fetch= "
+		found.BootParams = "boot=casper "
 		return found, nil
 	}
 

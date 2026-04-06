@@ -1,4 +1,4 @@
-.PHONY: help build run clean docker-build docker-up docker-down docker-push release binaries secureboot
+.PHONY: help build run clean docker-build docker-up docker-down docker-push release binaries secureboot sync-profiles
 
 VERSION    ?= $(shell cat VERSION)
 DOCKER_USER ?= garybowers
@@ -34,11 +34,14 @@ secureboot:
 
 ## Local (binary) -------------------------------------------------------------
 
-build:
+sync-profiles:
+	@cp distro-profiles.json internal/profiles/distro-profiles.json
+
+build: sync-profiles
 	@echo "Building bootimus $(VERSION)..."
 	CGO_ENABLED=1 go build -ldflags="$(LDFLAGS)" -o $(BINARY) .
 
-run:
+run: sync-profiles
 	CGO_ENABLED=1 go run -ldflags="$(LDFLAGS)" . serve
 
 clean:

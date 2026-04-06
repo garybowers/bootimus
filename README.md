@@ -89,6 +89,7 @@ docker-compose up -d
 - **[DHCP Configuration](docs/dhcp.md)** - Configure your DHCP server
 - **[Client Management](docs/clients.md)** - MAC-based access control, auto-discovery, next boot
 - **[Authentication](docs/authentication.md)** - JWT auth, LDAP/Active Directory setup
+- **[Distro Profiles](docs/distro-profiles.md)** - Data-driven distro detection and boot params
 
 ## Boot Tools
 
@@ -143,6 +144,8 @@ The built-in set is always available as a fallback. Files not present in the act
 - FreeBSD, Windows (via wimboot)
 
 For distributions not in this list, the **generic boot scanner** automatically walks the ISO filesystem to find kernel and initrd files and attempts to extract boot parameters from syslinux/grub configuration files.
+
+Need to add a new distro? Create a **custom distro profile** from the admin UI — no code change required. See the [Distro Profiles Guide](docs/distro-profiles.md). You can also contribute profiles to the official list via pull request.
 
 ## ISO Organisation
 
