@@ -81,7 +81,7 @@
       "kernel_paths": ["/arch/boot/x86_64/vmlinuz-linux", "/boot/vmlinuz-linux", "/arch/boot/x86_64/vmlinuz-linux", "/boot/vmlinuz-linux-cachyos", "/boot/vmlinuz-linux-zen", "/boot/vmlinuz-linux-lts"],
       "initrd_paths": ["/arch/boot/x86_64/initramfs-linux.img", "/boot/initramfs-linux.img", "/arch/boot/x86_64/archiso.img", "/boot/initramfs-linux-cachyos.img", "/boot/initramfs-linux-zen.img", "/boot/initramfs-linux-lts.img"],
       "squashfs_paths": ["/arch/x86_64/airootfs.sfs"],
-      "default_boot_params": "archisobasedir=arch archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ ip=:::::eth0:dhcp",
+      "default_boot_params": "initrd=initrd archisobasedir=arch archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ ip=:::::eth0:dhcp",
       "auto_install_type": ""
     },
     {
