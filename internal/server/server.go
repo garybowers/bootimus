@@ -585,11 +585,15 @@ func (s *Server) startTFTPServer() error {
 			log.Printf("TFTP: Client requesting file: %s", filename)
 
 			if cleanPath == "autoexec.ipxe" {
+				serverAddr := "${next-server}"
+				if s.config.ServerAddr != "" {
+					serverAddr = s.config.ServerAddr
+				}
 				script := fmt.Sprintf(`#!ipxe
 
 # Auto-detect server IP and chain to dynamic menu
 dhcp
-chain http://${next-server}:%d/inventory?mac=${net0/mac}&cpu=${cpuid/0}&memsize=${memsize}&platform=${platform}&buildarch=${buildarch}&product=${product}&manufacturer=${manufacturer}&serial=${serial}&asset=${asset}&uuid=${uuid}&nic_chip=${net0/chip} || chain http://${next-server}:%d/menu.ipxe?mac=${net0/mac} || goto failed
+chain http://%s:%d/inventory?mac=${net0/mac}&cpu=${cpuid/0}&memsize=${memsize}&platform=${platform}&buildarch=${buildarch}&product=${product}&manufacturer=${manufacturer}&serial=${serial}&asset=${asset}&uuid=${uuid}&nic_chip=${net0/chip} || chain http://%s:%d/menu.ipxe?mac=${net0/mac} || goto failed
 
 :failed
 echo Failed to load boot menu
@@ -598,7 +602,7 @@ echo MAC: ${net0/mac}
 echo Press any key to retry...
 prompt
 goto dhcp
-`, s.config.HTTPPort, s.config.HTTPPort)
+`, serverAddr, s.config.HTTPPort, serverAddr, s.config.HTTPPort)
 				data := []byte(script)
 				log.Printf("TFTP: Serving dynamic autoexec.ipxe (HTTP port: %d)", s.config.HTTPPort)
 
@@ -1184,20 +1188,9 @@ func (s *Server) handleAutoexec(w http.ResponseWriter, r *http.Request) {
 	log.Printf("autoexec.ipxe requested, chaining to inventory then menu.ipxe")
 
 	script := fmt.Sprintf(`#!ipxe
-params
-param mac %s
-param cpu ${cpuid/0}
-param memsize ${memsize}
-param platform ${platform}
-param buildarch ${buildarch}
-param product ${product}
-param manufacturer ${manufacturer}
-param serial ${serial}
-param asset ${asset}
-param uuid ${uuid}
-param nic_chip ${net0/chip}
-chain http://%s:%d/inventory##params || chain http://%s:%d/menu.ipxe?mac=%s
-`, macAddress, s.config.ServerAddr, s.config.HTTPPort, s.config.ServerAddr, s.config.HTTPPort, macAddress)
+dhcp
+chain http://%s:%d/inventory?mac=%s&cpu=${cpuid/0}&memsize=${memsize}&platform=${platform}&buildarch=${buildarch}&product=${product}&manufacturer=${manufacturer}&serial=${serial}&asset=${asset}&uuid=${uuid}&nic_chip=${net0/chip} || chain http://%s:%d/menu.ipxe?mac=%s
+`, s.config.ServerAddr, s.config.HTTPPort, macAddress, s.config.ServerAddr, s.config.HTTPPort, macAddress)
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(script))
