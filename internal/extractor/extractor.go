@@ -798,7 +798,33 @@ func (e *Extractor) detectWindows(img *iso9660.Image) (*BootFiles, error) {
 
 func (e *Extractor) cacheBootFiles(files *BootFiles, img *iso9660.Image, isoPath string) error {
 	isoBase := strings.TrimSuffix(filepath.Base(isoPath), filepath.Ext(isoPath))
+	
+	// default fallback
 	bootFilesDir := filepath.Join(e.dataDir, isoBase)
+
+	// read path of iso (ex.: /data/isos/Linux/Ubuntu)
+	isoDir := filepath.Dir(isoPath)
+	
+	// split path in junks (ToSlash makes it windows/linux compatible)
+	parts := strings.Split(filepath.ToSlash(isoDir), "/")
+	
+	// we are searching for "isos" (or "iso") folder in path
+	for i, part := range parts {
+		if part == "isos" || part == "iso" {
+			// is there another "isos" subfolder?
+			if i+1 < len(parts) {
+				// assemble all subfolders afters "isos" (ex.: "Linux/Ubuntu")
+				subPath := filepath.Join(parts[i+1:]...)
+				// create correct destination directory: dataDir + subfolder + iso name
+				bootFilesDir = filepath.Join(e.dataDir, subPath, isoBase)
+			}
+			break
+		}
+	}
+
+	if err := os.MkdirAll(bootFilesDir, 0755); err != nil {
+		return fmt.Errorf("failed to create boot files subdirectory: %w", err)
+	}
 
 	if err := os.MkdirAll(bootFilesDir, 0755); err != nil {
 		return fmt.Errorf("failed to create boot files subdirectory: %w", err)
