@@ -280,9 +280,9 @@
       "family": "arch",
       "filename_patterns": ["systemrescue", "sysresccd", "sysrescue"],
       "kernel_paths": ["/sysresccd/boot/x86_64/vmlinuz"],
-      "initrd_paths": ["/sysresccd/boot/intel_ucode.img"],
+      "initrd_paths": ["/sysresccd/boot/x86_64/sysresccd.img"],
       "squashfs_paths": ["/sysresccd/x86_64/airootfs.sfs"],
-      "default_boot_params": "archisobasedir=sysresccd archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ checksum ip=:::::eth0:dhcp",
+      "default_boot_params": "initrd=initrd archisobasedir=sysresccd archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ checksum ip=dhcp",
       "auto_install_type": ""
     }
   ]
