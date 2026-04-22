@@ -1,0 +1,59 @@
+---
+import { useTranslations, getLocaleFromUrl } from '../i18n';
+const lang = getLocaleFromUrl(Astro.url);
+const { t } = useTranslations(lang);
+const year = new Date().getFullYear();
+---
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="cols">
+      <div>
+        <div class="kv"><span class="k">{t('footer.project')}</span><span class="v text-amber">bootimus</span></div>
+        <div class="kv"><span class="k">{t('footer.licence')}</span><span class="v">{t('footer.licenceValue')}</span></div>
+        <div class="kv"><span class="k">{t('footer.lang')}</span><span class="v">Go</span></div>
+      </div>
+      <div>
+        <div class="kv"><span class="k">{t('footer.repo')}</span><a class="v" href="https://github.com/garybowers/bootimus">github.com/garybowers/bootimus</a></div>
+        <div class="kv"><span class="k">{t('footer.docker')}</span><a class="v" href="https://hub.docker.com/r/garybowers/bootimus">hub.docker.com/r/garybowers/bootimus</a></div>
+        <div class="kv"><span class="k">{t('footer.docs')}</span><a class="v" href="/docs">/docs</a></div>
+      </div>
+    </div>
+    <p class="copy text-faint">
+      <span class="text-amber">$</span> echo "{t('footer.copy', { year })}" <span class="cursor"></span>
+    </p>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    margin-top: 6rem;
+    padding: 3rem 0 4rem;
+    border-top: 1px solid var(--border);
+  }
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 2rem;
+    margin-bottom: 2rem;
+  }
+  .kv {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+    padding: 0.15rem 0;
+  }
+  .k {
+    color: var(--text-faint);
+    width: 70px;
+    flex-shrink: 0;
+  }
+  .k::before { content: '· '; }
+  .v { color: var(--text-dim); }
+  a.v:hover { color: var(--amber); }
+  .copy {
+    font-size: 0.8rem;
+    margin: 0;
+    padding-top: 1.5rem;
+    border-top: 1px dashed var(--border);
+  }
+</style>

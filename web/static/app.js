@@ -133,26 +133,32 @@ let images = [];
 let currentClient = null;
 let imageSortColumn = 'name';
 let imageSortDirection = 'asc';
+let imageGroupedView = (() => {
+    try { return localStorage.getItem('image-grouped-view') === '1'; } catch (_) { return false; }
+})();
+const collapsedImageGroups = (() => {
+    try {
+        const raw = localStorage.getItem('image-collapsed-groups');
+        return new Set(raw ? JSON.parse(raw) : []);
+    } catch (_) { return new Set(); }
+})();
 let extractionProgress = {}; // Track extraction progress by filename
 
 // Theme
 function toggleTheme() {
     const html = document.documentElement;
-    const current = html.getAttribute('data-theme');
-    const next = current === 'dark' ? 'light' : 'dark';
+    const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     html.setAttribute('data-theme', next);
     localStorage.setItem('bootimus_theme', next);
-    document.getElementById('theme-toggle-btn').textContent = next === 'dark' ? '🌙' : '☀️';
+    const btn = document.getElementById('theme-toggle-btn');
+    if (btn) btn.setAttribute('aria-checked', next === 'dark' ? 'true' : 'false');
 }
 
 function loadSavedTheme() {
     const saved = localStorage.getItem('bootimus_theme') || 'light';
-    if (saved === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        document.getElementById('theme-toggle-btn').textContent = '🌙';
-    } else {
-        document.getElementById('theme-toggle-btn').textContent = '☀️';
-    }
+    document.documentElement.setAttribute('data-theme', saved);
+    const btn = document.getElementById('theme-toggle-btn');
+    if (btn) btn.setAttribute('aria-checked', saved === 'dark' ? 'true' : 'false');
 }
 
 // Utility Functions
@@ -429,6 +435,10 @@ async function loadServerInfo() {
             if (data.data && data.data.configuration && data.data.configuration.http_port) {
                 cachedHTTPPort = parseInt(data.data.configuration.http_port, 10) || cachedHTTPPort;
             }
+            if (data.data && data.data.configuration) {
+                const smb = data.data.configuration.windows_smb || '';
+                cachedWindowsSMBActive = smb.startsWith('Enabled');
+            }
             renderServerInfo(data.data);
         }
     } catch (err) {
@@ -440,6 +450,10 @@ async function loadServerInfo() {
 // public HTTP port (where ISOs are served) regardless of what port the
 // admin panel itself is on.
 let cachedHTTPPort = 8080;
+
+// Cached from /api/server-info so the image properties modal knows whether
+// to offer the "Patch SMB" button.
+let cachedWindowsSMBActive = false;
 
 async function powerClient(action) {
     const form = document.getElementById('edit-client-form');
@@ -863,15 +877,11 @@ function toggleClientsAutoRefresh() {
     if (clientsAutoRefreshInterval) {
         clearInterval(clientsAutoRefreshInterval);
         clientsAutoRefreshInterval = null;
-        btn.textContent = 'Auto-Refresh: Off';
-        btn.classList.remove('btn-danger');
-        btn.classList.add('btn-success');
+        if (btn) btn.setAttribute('aria-pressed', 'false');
     } else {
         loadClients();
         clientsAutoRefreshInterval = setInterval(loadClients, 5000);
-        btn.textContent = 'Auto-Refresh: On';
-        btn.classList.remove('btn-success');
-        btn.classList.add('btn-danger');
+        if (btn) btn.setAttribute('aria-pressed', 'true');
     }
 }
 
@@ -1335,13 +1345,15 @@ async function clearNextBoot() {
 // Images
 async function loadImages() {
     try {
-        const [imagesRes, filesRes] = await Promise.all([
+        const [imagesRes, filesRes, groupsRes] = await Promise.all([
             authFetch(`${API_BASE}/images`),
-            authFetch(`${API_BASE}/files`)
+            authFetch(`${API_BASE}/files`),
+            authFetch(`${API_BASE}/groups`),
         ]);
 
         const imagesData = await imagesRes.json();
         const filesData = await filesRes.json();
+        const groupsData = await groupsRes.json();
 
         if (imagesData.success) {
             images = imagesData.data || [];
@@ -1352,6 +1364,11 @@ async function loadImages() {
                 images.forEach(img => {
                     img.files = allFiles.filter(f => !f.public && f.image_id === img.id);
                 });
+            }
+
+            // Cache groups so the tree view can build the parent hierarchy.
+            if (groupsData && groupsData.success) {
+                groups = groupsData.data || [];
             }
 
             renderImagesTable();
@@ -1424,43 +1441,77 @@ function getSortedImages() {
     return sorted;
 }
 
-function renderImagesTable() {
-    const container = document.getElementById('images-table');
+const UNGROUPED_KEY = '__ungrouped__';
 
-    if (images.length === 0) {
-        container.innerHTML = '<p style="color: var(--text-secondary); padding: 20px;">No images yet. Upload or scan for ISOs.</p>';
-        return;
+function toggleImageGrouping() {
+    imageGroupedView = !imageGroupedView;
+    try { localStorage.setItem('image-grouped-view', imageGroupedView ? '1' : '0'); } catch (_) {}
+    syncImageGroupingButton();
+    renderImagesTable();
+}
+
+function syncImageGroupingButton() {
+    const btn = document.getElementById('images-group-toggle');
+    if (!btn) return;
+    btn.setAttribute('aria-pressed', imageGroupedView ? 'true' : 'false');
+}
+
+function toggleImageGroup(key) {
+    if (collapsedImageGroups.has(key)) collapsedImageGroups.delete(key);
+    else collapsedImageGroups.add(key);
+    try { localStorage.setItem('image-collapsed-groups', JSON.stringify([...collapsedImageGroups])); } catch (_) {}
+    renderImagesTable();
+}
+
+function toggleImageGroupFromEvent(el) {
+    if (!el || !el.dataset) return;
+    try { toggleImageGroup(JSON.parse(el.dataset.groupKey)); } catch (_) {}
+}
+
+function _attrEscape(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+// Build a parent/child tree from a flat list of groups using `group.parent.id`.
+// Groups with a missing or unresolved parent become roots. Returns {roots, byId}.
+function _buildGroupTree(allGroups) {
+    const byId = new Map();
+    for (const g of allGroups) {
+        byId.set(g.id, { id: g.id, name: g.name, order: g.order || 0, parentId: g.parent && g.parent.id, children: [] });
     }
+    const roots = [];
+    for (const node of byId.values()) {
+        if (node.parentId != null && byId.has(node.parentId) && node.parentId !== node.id) {
+            byId.get(node.parentId).children.push(node);
+        } else {
+            roots.push(node);
+        }
+    }
+    const sortFn = (a, b) => (a.order - b.order) || a.name.localeCompare(b.name);
+    roots.sort(sortFn);
+    for (const node of byId.values()) node.children.sort(sortFn);
+    return { roots, byId };
+}
 
-    const sortIcon = (column) => {
-        if (imageSortColumn !== column) return '↕';
-        return imageSortDirection === 'asc' ? '↑' : '↓';
-    };
+// Count images directly in this group + all descendant groups.
+function _countTreeImages(node, ownByGroup) {
+    let n = (ownByGroup.get(node.id) || []).length;
+    for (const child of node.children) n += _countTreeImages(child, ownByGroup);
+    return n;
+}
 
-    const sortedImages = getSortedImages().filter(img => rowMatchesFilter('images', [
-        img.name, img.filename, img.distro, img.group && img.group.name,
-    ]));
-
-    const html = `
-        <div class="table-scroll">
-        <table>
-            <thead>
-                <tr>
-                    <th onclick="sortImages('name')" style="cursor: pointer;">Name ${sortIcon('name')}</th>
-                    <th onclick="sortImages('filename')" style="cursor: pointer;">Filename ${sortIcon('filename')}</th>
-                    <th onclick="sortImages('size')" style="cursor: pointer;">Size ${sortIcon('size')}</th>
-                    <th onclick="sortImages('distro')" style="cursor: pointer;">Distro ${sortIcon('distro')}</th>
-                    <th onclick="sortImages('group')" style="cursor: pointer;">Group ${sortIcon('group')}</th>
-                    <th onclick="sortImages('status')" style="cursor: pointer;" class="col-dot" title="Enabled / Disabled">On ${sortIcon('status')}</th>
-                    <th onclick="sortImages('visibility')" style="cursor: pointer;" class="col-dot" title="Public / Private">Pub ${sortIcon('visibility')}</th>
-                    <th onclick="sortImages('boot_method')" style="cursor: pointer;">Boot Method ${sortIcon('boot_method')}</th>
-                    <th>Operations</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${sortedImages.map(img => `
+function imageRowHTML(img, includeGroupCell, depth = 0) {
+    const groupCell = includeGroupCell ? `
+                        <td>
+                            ${img.group && img.group.name ?
+                                '<span class="badge badge-info">' + escapeHtml(img.group.name) + '</span>' :
+                                '<span style="color: var(--text-secondary);">-</span>'
+                            }
+                        </td>` : '';
+    const namePadStyle = depth > 0 ? ` style="padding-left: ${10 + depth * 20}px;"` : '';
+    return `
                     <tr class="row-clickable" onclick="showImagePropertiesModal('${img.filename}')">
-                        <td>${img.name}</td>
+                        <td${namePadStyle}>${img.name}</td>
                         <td><code>${img.filename}</code></td>
                         <td>${formatBytes(img.size)}</td>
                         <td>
@@ -1468,13 +1519,8 @@ function renderImagesTable() {
                                 (img.distro ? '<span class="badge badge-info">'+img.distro+'</span>' : '<span class="badge badge-success">✓ Extracted</span>') :
                                 (img.extraction_error ? '<span class="badge badge-danger" title="'+img.extraction_error+'">Error</span>' : '')
                             }
-                        </td>
-                        <td>
-                            ${img.group && img.group.name ?
-                                '<span class="badge badge-info">' + escapeHtml(img.group.name) + '</span>' :
-                                '<span style="color: var(--text-secondary);">-</span>'
-                            }
-                        </td>
+                            ${img.smb_install_enabled ? ' <span class="badge badge-warning" title="boot.wim patched to auto-mount SMB share and launch setup.exe">SMB</span>' : ''}
+                        </td>${groupCell}
                         <td class="col-dot">
                             <span class="status-dot ${img.enabled ? 'on' : 'off'}" title="${img.enabled ? 'Enabled' : 'Disabled'}"></span>
                         </td>
@@ -1512,14 +1558,127 @@ function renderImagesTable() {
                                 (img.extracted ? '<span style="color: #4caf50;">✓ Ready</span>' : '<span style="color: #999;">Not extracted</span>')
                             )}
                         </td>
-                    </tr>
-                `).join('')}
-            </tbody>
+                    </tr>`;
+}
+
+function renderImagesTable() {
+    const container = document.getElementById('images-table');
+
+    if (images.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary); padding: 20px;">No images yet. Upload or scan for ISOs.</p>';
+        return;
+    }
+
+    syncImageGroupingButton();
+
+    const sortIcon = (column) => {
+        if (imageSortColumn !== column) return '↕';
+        return imageSortDirection === 'asc' ? '↑' : '↓';
+    };
+
+    const sortedImages = getSortedImages().filter(img => rowMatchesFilter('images', [
+        img.name, img.filename, img.distro, img.group && img.group.name,
+    ]));
+
+    const filterActive = !!(tableFilters['images'] && tableFilters['images'].length);
+
+    let bodyHtml;
+    let theadHtml;
+    let colspan;
+
+    if (!imageGroupedView) {
+        colspan = 9;
+        theadHtml = `
+                <tr>
+                    <th onclick="sortImages('name')" style="cursor: pointer;">Name ${sortIcon('name')}</th>
+                    <th onclick="sortImages('filename')" style="cursor: pointer;">Filename ${sortIcon('filename')}</th>
+                    <th onclick="sortImages('size')" style="cursor: pointer;">Size ${sortIcon('size')}</th>
+                    <th onclick="sortImages('distro')" style="cursor: pointer;">Distro ${sortIcon('distro')}</th>
+                    <th onclick="sortImages('group')" style="cursor: pointer;">Group ${sortIcon('group')}</th>
+                    <th onclick="sortImages('status')" style="cursor: pointer;" class="col-dot" title="Enabled / Disabled">On ${sortIcon('status')}</th>
+                    <th onclick="sortImages('visibility')" style="cursor: pointer;" class="col-dot" title="Public / Private">Pub ${sortIcon('visibility')}</th>
+                    <th onclick="sortImages('boot_method')" style="cursor: pointer;">Boot Method ${sortIcon('boot_method')}</th>
+                    <th>Operations</th>
+                </tr>`;
+        bodyHtml = sortedImages.map(img => imageRowHTML(img, true)).join('');
+    } else {
+        colspan = 8;
+        theadHtml = `
+                <tr>
+                    <th onclick="sortImages('name')" style="cursor: pointer;">Name ${sortIcon('name')}</th>
+                    <th onclick="sortImages('filename')" style="cursor: pointer;">Filename ${sortIcon('filename')}</th>
+                    <th onclick="sortImages('size')" style="cursor: pointer;">Size ${sortIcon('size')}</th>
+                    <th onclick="sortImages('distro')" style="cursor: pointer;">Distro ${sortIcon('distro')}</th>
+                    <th onclick="sortImages('status')" style="cursor: pointer;" class="col-dot" title="Enabled / Disabled">On ${sortIcon('status')}</th>
+                    <th onclick="sortImages('visibility')" style="cursor: pointer;" class="col-dot" title="Public / Private">Pub ${sortIcon('visibility')}</th>
+                    <th onclick="sortImages('boot_method')" style="cursor: pointer;">Boot Method ${sortIcon('boot_method')}</th>
+                    <th>Operations</th>
+                </tr>`;
+
+        const tree = _buildGroupTree(groups || []);
+        const ownByGroup = new Map();
+        const ungroupedImgs = [];
+        for (const img of sortedImages) {
+            const gid = img.group && img.group.id;
+            if (gid != null && tree.byId.has(gid)) {
+                if (!ownByGroup.has(gid)) ownByGroup.set(gid, []);
+                ownByGroup.get(gid).push(img);
+            } else {
+                ungroupedImgs.push(img);
+            }
+        }
+
+        const renderNode = (node, depth) => {
+            const total = _countTreeImages(node, ownByGroup);
+            if (total === 0) return ''; // hide empty branches (esp. when filtered)
+            const own = ownByGroup.get(node.id) || [];
+            const collapsed = !filterActive && collapsedImageGroups.has('id:' + node.id);
+            const indent = depth * 18;
+            const dataKey = _attrEscape(JSON.stringify('id:' + node.id));
+            let html = `
+                    <tr class="tr-group" data-group-key="${dataKey}" onclick="toggleImageGroupFromEvent(this)">
+                        <td colspan="${colspan}" style="background: var(--bg-tertiary); cursor: pointer; user-select: none; padding-left: ${10 + indent}px;">
+                            <span style="display: inline-block; width: 14px; color: var(--text-secondary);">${collapsed ? '▶' : '▼'}</span>
+                            <strong style="color: var(--text-primary);">${escapeHtml(node.name)}</strong>
+                            <span style="color: var(--text-muted); font-weight: 400; margin-left: 8px; font-size: 12px;">${total} ${total === 1 ? 'image' : 'images'}</span>
+                        </td>
+                    </tr>`;
+            if (!collapsed) {
+                for (const img of own) html += imageRowHTML(img, false, depth + 1);
+                for (const child of node.children) html += renderNode(child, depth + 1);
+            }
+            return html;
+        };
+
+        let out = '';
+        for (const root of tree.roots) out += renderNode(root, 0);
+
+        if (ungroupedImgs.length > 0) {
+            const collapsed = !filterActive && collapsedImageGroups.has('id:ungrouped');
+            const dataKey = _attrEscape(JSON.stringify('id:ungrouped'));
+            out += `
+                    <tr class="tr-group" data-group-key="${dataKey}" onclick="toggleImageGroupFromEvent(this)">
+                        <td colspan="${colspan}" style="background: var(--bg-tertiary); cursor: pointer; user-select: none;">
+                            <span style="display: inline-block; width: 14px; color: var(--text-secondary);">${collapsed ? '▶' : '▼'}</span>
+                            <strong style="color: var(--text-primary);">Ungrouped</strong>
+                            <span style="color: var(--text-muted); font-weight: 400; margin-left: 8px; font-size: 12px;">${ungroupedImgs.length} ${ungroupedImgs.length === 1 ? 'image' : 'images'}</span>
+                        </td>
+                    </tr>`;
+            if (!collapsed) {
+                for (const img of ungroupedImgs) out += imageRowHTML(img, false, 1);
+            }
+        }
+        bodyHtml = out;
+    }
+
+    container.innerHTML = `
+        <div class="table-scroll">
+        <table>
+            <thead>${theadHtml}</thead>
+            <tbody>${bodyHtml}</tbody>
         </table>
         </div>
     `;
-
-    container.innerHTML = html;
 }
 
 async function toggleImage(filename, currentState) {
@@ -1628,50 +1787,89 @@ async function redetectImage(filename) {
     }
 }
 
+function updateImagePropsProgress(filename) {
+    const modal = document.getElementById('image-properties-modal');
+    if (!modal || !modal.classList.contains('active')) return;
+    const modalFilename = document.getElementById('image-props-filename').value;
+    if (modalFilename !== filename) return;
+
+    const container = document.getElementById('image-props-progress');
+    const fill = document.getElementById('image-props-progress-fill');
+    const text = document.getElementById('image-props-progress-text');
+    const percent = document.getElementById('image-props-progress-percent');
+    const p = extractionProgress[filename];
+
+    const actionBtns = ['image-props-extract-btn', 'image-props-patch-smb-btn', 'image-props-netboot-btn', 'image-props-download-btn', 'image-props-delete-btn'];
+
+    if (p) {
+        container.style.display = '';
+        fill.style.width = p.progress + '%';
+        text.textContent = p.status;
+        if (percent) percent.textContent = Math.round(p.progress) + '%';
+        actionBtns.forEach(id => { const b = document.getElementById(id); if (b) b.disabled = true; });
+    } else {
+        container.style.display = 'none';
+        actionBtns.forEach(id => { const b = document.getElementById(id); if (b) b.disabled = false; });
+    }
+}
+
+function syncImagesProgress(filename) {
+    renderImagesTable();
+    updateImagePropsProgress(filename);
+}
+
+function closeImagePropsIfOpenFor(filename) {
+    const modal = document.getElementById('image-properties-modal');
+    if (!modal || !modal.classList.contains('active')) return;
+    if (document.getElementById('image-props-filename').value !== filename) return;
+    closeModal('image-properties-modal');
+}
+
 async function extractImage(filename, name) {
     if (!confirm(`Extract kernel and initrd from ${name}?\n\nThis will mount the ISO and extract boot files for direct kernel booting.`)) return;
 
-    try {
-        // Set initial progress
-        extractionProgress[filename] = { progress: 0, status: 'Starting extraction...' };
-        renderImagesTable();
+    extractionProgress[filename] = { progress: 0, status: 'Starting extraction...' };
+    syncImagesProgress(filename);
 
-        // Simulate progress updates (since we don't have real progress from backend)
-        const progressInterval = setInterval(() => {
-            if (extractionProgress[filename] && extractionProgress[filename].progress < 90) {
-                extractionProgress[filename].progress += 10;
-                if (extractionProgress[filename].progress < 30) {
-                    extractionProgress[filename].status = 'Mounting ISO...';
-                } else if (extractionProgress[filename].progress < 60) {
-                    extractionProgress[filename].status = 'Detecting distribution...';
-                } else {
-                    extractionProgress[filename].status = 'Extracting boot files...';
-                }
-                renderImagesTable();
+    const poll = setInterval(async () => {
+        try {
+            const r = await authFetch(`${API_BASE}/images/extract-progress?filename=${encodeURIComponent(filename)}`);
+            const d = await r.json();
+            if (!d.success || !d.data) return;
+            const p = d.data;
+            if (p.status === 'running' || p.status === 'done') {
+                extractionProgress[filename] = {
+                    progress: Math.max(1, Math.round(p.percent || 0)),
+                    status: p.stage || 'Extracting...'
+                };
+                syncImagesProgress(filename);
             }
-        }, 500);
+        } catch (e) { /* ignore poll errors */ }
+    }, 500);
 
+    try {
         const res = await authFetch(`${API_BASE}/images/extract?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
         const data = await res.json();
-
-        clearInterval(progressInterval);
+        clearInterval(poll);
 
         if (data.success) {
             extractionProgress[filename] = { progress: 100, status: 'Complete!' };
-            renderImagesTable();
+            syncImagesProgress(filename);
             setTimeout(() => {
                 delete extractionProgress[filename];
+                closeImagePropsIfOpenFor(filename);
                 loadImages();
                 showAlert(data.message || 'Extraction successful', 'success');
-            }, 1000);
+            }, 800);
         } else {
             delete extractionProgress[filename];
-            renderImagesTable();
+            syncImagesProgress(filename);
             showAlert(data.error || 'Extraction failed', 'error');
         }
     } catch (err) {
+        clearInterval(poll);
         delete extractionProgress[filename];
-        renderImagesTable();
+        syncImagesProgress(filename);
         showAlert('Failed to extract image', 'error');
     }
 }
@@ -1680,11 +1878,9 @@ async function downloadNetboot(filename, name) {
     if (!confirm(`Download netboot files for ${name}?\n\nThis will download and extract the proper network boot files required for Debian/Ubuntu network installation.`)) return;
 
     try {
-        // Set initial progress
         extractionProgress[filename] = { progress: 0, status: 'Downloading netboot...' };
-        renderImagesTable();
+        syncImagesProgress(filename);
 
-        // Simulate progress updates
         const progressInterval = setInterval(() => {
             if (extractionProgress[filename] && extractionProgress[filename].progress < 90) {
                 extractionProgress[filename].progress += 10;
@@ -1695,7 +1891,7 @@ async function downloadNetboot(filename, name) {
                 } else {
                     extractionProgress[filename].status = 'Installing netboot files...';
                 }
-                renderImagesTable();
+                syncImagesProgress(filename);
             }
         }, 500);
 
@@ -1706,20 +1902,21 @@ async function downloadNetboot(filename, name) {
 
         if (data.success) {
             extractionProgress[filename] = { progress: 100, status: 'Complete!' };
-            renderImagesTable();
+            syncImagesProgress(filename);
             setTimeout(() => {
                 delete extractionProgress[filename];
+                closeImagePropsIfOpenFor(filename);
                 loadImages();
                 showAlert(data.message || 'Netboot files downloaded successfully', 'success');
             }, 1000);
         } else {
             delete extractionProgress[filename];
-            renderImagesTable();
+            syncImagesProgress(filename);
             showAlert(data.error || 'Netboot download failed', 'error');
         }
     } catch (err) {
         delete extractionProgress[filename];
-        renderImagesTable();
+        syncImagesProgress(filename);
         showAlert('Failed to download netboot files', 'error');
     }
 }
@@ -3820,6 +4017,9 @@ async function showImagePropertiesModal(filename) {
     document.getElementById('image-props-enabled').checked = img.enabled;
     document.getElementById('image-props-public').checked = img.public;
 
+    applyBootParamsWindowsLock(distroSelect.value);
+    distroSelect.onchange = () => applyBootParamsWindowsLock(distroSelect.value);
+
     // Auto-install fields
     document.getElementById('image-props-autoinstall-enabled').checked = img.autoinstall_enabled || false;
     document.getElementById('image-props-autoinstall-type').value = img.autoinstall_script_type || 'preseed';
@@ -3856,14 +4056,50 @@ async function showImagePropertiesModal(filename) {
         netbootBtn.style.display = 'none';
     }
 
+    const patchSmbBtn = document.getElementById('image-props-patch-smb-btn');
+    const smbEligible = cachedWindowsSMBActive && img.extracted && img.distro === 'windows';
+    patchSmbBtn.style.display = smbEligible ? 'inline-block' : 'none';
+    patchSmbBtn.textContent = img.smb_install_enabled ? 'Re-patch SMB' : 'Patch SMB';
+
     switchPropsTab('props-general');
     openModal('image-properties-modal');
+    updateImagePropsProgress(filename);
+}
+
+function applyBootParamsWindowsLock(distro) {
+    const input = document.getElementById('image-props-boot-params');
+    const redetect = document.getElementById('image-props-redetect-btn');
+    const isWindows = distro === 'windows';
+    input.disabled = isWindows;
+    input.style.opacity = isWindows ? '0.5' : '';
+    input.style.cursor = isWindows ? 'not-allowed' : '';
+    input.title = isWindows ? 'Windows boots via wimboot — kernel parameters are not used' : '';
+    if (isWindows) redetect.style.display = 'none';
+}
+
+async function patchSmbFromProperties() {
+    const filename = document.getElementById('image-props-filename').value;
+    const btn = document.getElementById('image-props-patch-smb-btn');
+    btn.disabled = true;
+    btn.textContent = 'Patching...';
+    try {
+        const res = await authFetch(`${API_BASE}/images/patch-smb?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Patch failed');
+        showNotification('boot.wim patched for SMB auto-install', 'success');
+        closeModal('image-properties-modal');
+        loadImages();
+    } catch (err) {
+        showNotification('Patch failed: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Patch SMB';
+    }
 }
 
 function extractFromProperties() {
     const filename = document.getElementById('image-props-filename').value;
     const name = document.getElementById('image-props-display-name').value;
-    closeModal('image-properties-modal');
     extractImage(filename, name);
 }
 
@@ -3877,7 +4113,6 @@ function deleteFromProperties() {
 function downloadNetbootFromProperties() {
     const filename = document.getElementById('image-props-filename').value;
     const name = document.getElementById('image-props-display-name').value;
-    closeModal('image-properties-modal');
     downloadNetboot(filename, name);
 }
 

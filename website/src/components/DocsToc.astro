@@ -1,0 +1,56 @@
+---
+import { useTranslations, getLocaleFromUrl } from '../i18n';
+interface Heading { depth: number; slug: string; text: string; }
+interface Props { headings: Heading[]; }
+const { headings } = Astro.props;
+const lang = getLocaleFromUrl(Astro.url);
+const { t } = useTranslations(lang);
+const items = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
+---
+{items.length > 0 && (
+  <aside class="toc" aria-label="Table of contents">
+    <div class="toc-title">{t('docs.onThisPage')}</div>
+    <ol class="toc-list">
+      {items.map((h) => (
+        <li class:list={["toc-item", h.depth === 3 && "toc-item-sub"]}>
+          <a href={`#${h.slug}`}>{h.text}</a>
+        </li>
+      ))}
+    </ol>
+  </aside>
+)}
+
+<style>
+  .toc {
+    position: sticky;
+    top: 80px;
+    align-self: start;
+    padding: 0 0 0 1.5rem;
+    border-left: 1px solid var(--border);
+    font-size: 0.82rem;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+  }
+  .toc-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    margin-bottom: 0.7rem;
+  }
+  .toc-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 1px; }
+  .toc-item a {
+    display: block;
+    padding: 0.25rem 0;
+    color: var(--text-dim);
+    line-height: 1.4;
+    transition: color 140ms ease;
+  }
+  .toc-item a:hover { color: var(--amber); }
+  .toc-item-sub { padding-left: 0.85rem; font-size: 0.78rem; }
+  .toc-item-sub a { color: var(--text-faint); }
+
+  @media (max-width: 1100px) {
+    .toc { display: none; }
+  }
+</style>

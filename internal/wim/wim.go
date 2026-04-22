@@ -129,6 +129,62 @@ func (m *Manager) GetImageCount(wimPath string) (int, error) {
 	return count, nil
 }
 
+// PatchStartnetCmd overwrites /Windows/System32/startnet.cmd inside image
+// index 2 of the given WIM (the WinPE index used by Windows Setup) AND
+// installs a /Windows/System32/winpeshl.ini that explicitly invokes it.
+//
+// Why both:
+//   - In a recovery WIM, winpeshl.exe's default action runs startnet.cmd.
+//   - In a Windows Setup WIM, winpeshl.exe's default action is to launch
+//     setup.exe directly — startnet.cmd is bypassed unless winpeshl.ini
+//     redirects it.
+// Writing winpeshl.ini forces the execution path regardless of which kind
+// of WIM we're dealing with.
+//
+// content should use \n line endings; this function converts them to the
+// CRLF that WinPE expects.
+func (m *Manager) PatchStartnetCmd(wimPath, content string) error {
+	startnetTmp, err := writeTempCRLF("startnet-*.cmd", content)
+	if err != nil {
+		return fmt.Errorf("failed to stage startnet.cmd: %w", err)
+	}
+	defer os.Remove(startnetTmp)
+
+	winpeshlTmp, err := writeTempCRLF("winpeshl-*.ini",
+		"[LaunchApps]\n%SYSTEMROOT%\\System32\\cmd.exe, /c %SYSTEMROOT%\\System32\\startnet.cmd\n")
+	if err != nil {
+		return fmt.Errorf("failed to stage winpeshl.ini: %w", err)
+	}
+	defer os.Remove(winpeshlTmp)
+
+	script := fmt.Sprintf(
+		"add %s /Windows/System32/startnet.cmd\nadd %s /Windows/System32/winpeshl.ini\n",
+		startnetTmp, winpeshlTmp,
+	)
+	cmd := exec.Command(m.wimlibPath, "update", wimPath, "2", "--rebuild")
+	cmd.Stdin = strings.NewReader(script)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("wimlib-imagex update failed: %w\nOutput: %s", err, string(output))
+	}
+
+	log.Printf("WIM: patched startnet.cmd + winpeshl.ini in %s", wimPath)
+	return nil
+}
+
+func writeTempCRLF(pattern, content string) (string, error) {
+	f, err := os.CreateTemp("", pattern)
+	if err != nil {
+		return "", err
+	}
+	if _, err := f.WriteString(strings.ReplaceAll(content, "\n", "\r\n")); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", err
+	}
+	f.Close()
+	return f.Name(), nil
+}
+
 // OptimizeWIM optimizes a WIM file
 func (m *Manager) OptimizeWIM(wimPath string) error {
 	log.Printf("Optimizing WIM file: %s", wimPath)

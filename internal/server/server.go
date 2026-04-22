@@ -31,6 +31,7 @@ import (
 	"bootimus/internal/proxydhcp"
 	"bootimus/internal/redfish"
 	"bootimus/internal/scheduler"
+	"bootimus/internal/smb"
 	"bootimus/internal/storage"
 	"bootimus/internal/tools"
 	"bootimus/internal/webhook"
@@ -91,6 +92,14 @@ type Config struct {
 	ProxyDHCPBootfileBIOS string
 	ProxyDHCPBootfileUEFI string
 	ProxyDHCPBootfileARM  string
+
+	// WindowsSMBEnabled opts into running an embedded smbd that exposes
+	// extracted Windows installation media as guest read-only shares so
+	// WinPE can auto-mount them and launch setup.exe. Off by default;
+	// requires smbd in PATH (samba package). A missing smbd is logged but
+	// does not abort startup — the feature degrades to disabled.
+	WindowsSMBEnabled bool
+	WindowsSMBPort    int
 }
 
 type Server struct {
@@ -109,6 +118,7 @@ type Server struct {
 	activeBootloaderSet   string // name of active set folder, empty = built-in
 	activeBootloaderSetMu sync.RWMutex
 	toolsManager          *tools.Manager
+	smbManager            *smb.Manager
 }
 
 type ActiveSession struct {
@@ -449,6 +459,22 @@ func (s *Server) Start() error {
 		}
 	}
 
+	// Start SMB before the admin server so admin.NewHandler captures a live
+	// *smb.Manager rather than a nil pointer. Shares for already-extracted
+	// Windows images are populated into the manager's map *before* smbd
+	// launches so the initial smb.conf already lists them — avoids a reload
+	// race where SIGHUP/reload-config lands before smbd has installed its
+	// signal/messaging handlers and kills the daemon.
+	if s.config.WindowsSMBEnabled {
+		mgr := smb.NewManager(s.config.DataDir, s.config.WindowsSMBPort)
+		s.preloadSMBShares(mgr)
+		if err := mgr.Start(); err != nil {
+			log.Printf("Windows SMB: requested but could not start: %v - feature disabled for this run", err)
+		} else {
+			s.smbManager = mgr
+		}
+	}
+
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -517,6 +543,37 @@ func (s *Server) Start() error {
 	return nil
 }
 
+// preloadSMBShares seeds the manager's in-memory share map with all
+// already-extracted Windows images that have a successful SMB patch, so
+// that the initial smb.conf written by Start() already lists them. Called
+// *before* smbd launches — no reload/SIGHUP needed at startup.
+func (s *Server) preloadSMBShares(mgr *smb.Manager) {
+	if mgr == nil || s.config.Storage == nil {
+		return
+	}
+	images, err := s.config.Storage.ListImages()
+	if err != nil {
+		log.Printf("Windows SMB: failed to list images for share preload: %v", err)
+		return
+	}
+	added := 0
+	for _, img := range images {
+		if img.Distro != "windows" || !img.SMBInstallEnabled {
+			continue
+		}
+		isoBase := strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename))
+		sharePath := filepath.Join(s.config.ISODir, isoBase, "iso")
+		if _, err := os.Stat(sharePath); err != nil {
+			continue
+		}
+		mgr.AddShare(smb.SanitizeShareName(isoBase), sharePath)
+		added++
+	}
+	if added > 0 {
+		log.Printf("Windows SMB: preloaded %d share(s) for smbd startup", added)
+	}
+}
+
 func (s *Server) Wait() {
 	s.wg.Wait()
 }
@@ -560,6 +617,11 @@ func (s *Server) Shutdown() error {
 	if s.scheduler != nil {
 		s.scheduler.Stop()
 		log.Println("Scheduler stopped")
+	}
+
+	if s.smbManager != nil {
+		s.smbManager.Stop()
+		log.Println("SMB server stopped")
 	}
 
 	log.Println("Shutdown complete")
@@ -969,7 +1031,7 @@ func (s *Server) startAdminServer() error {
 func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	log.Println("Setting up admin interface")
 
-	adminHandler := admin.NewHandler(s.config.Storage, s.config.DataDir, s.config.ISODir, s.config.BootDir, Version, s, s.toolsManager, s.config.WOLBroadcastAddr, s.config.ProfileManager, s.config.ProxyDHCPEnabled, s.config.HTTPPort)
+	adminHandler := admin.NewHandler(s.config.Storage, s.config.DataDir, s.config.ISODir, s.config.BootDir, Version, s, s.toolsManager, s.config.WOLBroadcastAddr, s.config.ProfileManager, s.config.ProxyDHCPEnabled, s.config.HTTPPort, s.config.ServerAddr, s.config.WindowsSMBPort, s.smbManager, s.config.WindowsSMBEnabled)
 	if s.scheduler != nil {
 		adminHandler.SchedulerReload = s.scheduler.Reload
 		adminHandler.SchedulerRunNow = s.scheduler.RunNow
@@ -1086,7 +1148,9 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/tools/custom/delete", authWrap(adminHandler.DeleteCustomTool))
 
 	mux.HandleFunc("/api/images/extract", authWrap(adminHandler.ExtractImage))
+	mux.HandleFunc("/api/images/extract-progress", authWrap(adminHandler.ExtractProgress))
 	mux.HandleFunc("/api/images/redetect", authWrap(adminHandler.RedetectImage))
+	mux.HandleFunc("/api/images/patch-smb", authWrap(adminHandler.PatchImageSMB))
 
 	mux.HandleFunc("/api/profiles", authWrap(adminHandler.ListDistroProfiles))
 	mux.HandleFunc("/api/profiles/save", authWrap(adminHandler.SaveDistroProfile))

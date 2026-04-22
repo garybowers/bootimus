@@ -1,0 +1,14 @@
+node_modules
+dist
+.astro
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.DS_Store
+*.md
+Dockerfile
+.dockerignore
+npm-debug.log*
+yarn-error.log*

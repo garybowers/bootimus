@@ -1,0 +1,396 @@
+---
+import Base from '../../layouts/Base.astro';
+import Nav from '../Nav.astro';
+import Footer from '../Footer.astro';
+import Terminal from '../Terminal.astro';
+import { dockerImage, applianceImage, tools } from '../../data/manifest';
+import { getLatestRelease, deriveArtifact, strV } from '../../lib/github';
+import { useTranslations, getLocaleFromUrl } from '../../i18n';
+
+const lang = getLocaleFromUrl(Astro.url);
+const { t } = useTranslations(lang);
+
+const release = await getLatestRelease();
+const version = strV(release?.tag_name) ?? null;
+const tagName = release?.tag_name ?? null;
+const releaseUrl = release?.html_url ?? 'https://github.com/garybowers/bootimus/releases';
+const isPrerelease = release?.prerelease ?? false;
+const dated = release?.published_at
+  ? new Date(release.published_at).toLocaleDateString('en-GB', {
+      year: 'numeric', month: 'short', day: 'numeric',
+    })
+  : null;
+
+const ghBinaries = (release?.assets ?? [])
+  .map(deriveArtifact)
+  .filter((a) => a.kind === 'binary');
+
+const ghChecksums = (release?.assets ?? [])
+  .map(deriveArtifact)
+  .filter((a) => a.kind === 'checksum');
+
+const ghOther = (release?.assets ?? [])
+  .map(deriveArtifact)
+  .filter((a) => a.kind === 'archive' || a.kind === 'other');
+---
+<Base title={t('meta.downloadsTitle')} description={t('meta.downloadsDescription')}>
+  <Nav />
+
+  <section class="dl-head">
+    <div class="container">
+      <span class="section-kicker text-amber">{t('downloads.kicker')}</span>
+      <h1>{t('downloads.title')}</h1>
+      <p class="lede text-dim">{t('downloads.lede')}</p>
+
+      <div class="release-meta">
+        {version ? (
+          <>
+            <span class="badge"><span class="badge-dot"></span>{isPrerelease ? t('downloads.badgePrerelease') : t('downloads.badgeStable')}</span>
+            <a href={releaseUrl} target="_blank" rel="noopener" class="pill">v{version}</a>
+            {dated && <span class="pill-dim">{t('downloads.released')} {dated}</span>}
+            <a class="pill-link" href="/api/manifest.json"><span class="text-cyan">{t('downloads.pillManifest')}</span> ↗</a>
+            <a class="pill-src" href={releaseUrl} target="_blank" rel="noopener"><span class="text-faint">{t('downloads.via')}</span> {t('downloads.pillSource')}</a>
+          </>
+        ) : (
+          <>
+            <span class="badge badge-warn"><span class="badge-dot badge-dot-warn"></span>{t('downloads.badgeNone')}</span>
+            <a href="https://github.com/garybowers/bootimus" target="_blank" rel="noopener" class="pill">{t('downloads.pillBuildSrc')}</a>
+            <a class="pill-link" href="/api/manifest.json"><span class="text-cyan">{t('downloads.pillManifest')}</span> ↗</a>
+          </>
+        )}
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2 class="group-title"><span class="text-amber">#</span> {t('downloads.sectionArtifacts')}</h2>
+
+      <div class="art-grid">
+        <a class="art art-primary" href={dockerImage.url} target="_blank" rel="noopener">
+          <div class="art-top">
+            <span class="art-kind text-faint">{dockerImage.kind} · {dockerImage.platform}</span>
+          </div>
+          <div class="art-label">{dockerImage.label}</div>
+          <div class="art-notes text-faint">{dockerImage.notes}</div>
+          <div class="art-cta"><span>{t('downloads.get')}</span></div>
+        </a>
+
+        {ghBinaries.length > 0 ? ghBinaries.map((a) => (
+          <a class="art" href={a.url} target="_blank" rel="noopener">
+            <div class="art-top">
+              <span class="art-kind text-faint">{a.kind}{a.platform ? ` · ${a.platform}` : ''}</span>
+              <span class="art-size">{a.size}</span>
+            </div>
+            <div class="art-label">{a.label}</div>
+            <div class="art-file text-dim">{a.filename}</div>
+            {a.sha256 && (
+              <div class="art-hash">
+                <span class="text-faint">sha256</span>
+                <code>{a.sha256.slice(0, 12)}…{a.sha256.slice(-8)}</code>
+              </div>
+            )}
+            <div class="art-cta"><span>{t('downloads.get')}</span></div>
+          </a>
+        )) : (
+          <div class="art art-empty">
+            <div class="art-top"><span class="art-kind text-faint">binary · pending</span></div>
+            <div class="art-label">{t('downloads.emptyTitle')}</div>
+            <div class="art-notes text-faint">{t('downloads.emptyBody')}</div>
+            <div class="art-cta text-faint"><span>{t('downloads.buildFromSource')}</span></div>
+          </div>
+        )}
+
+        <a class="art" href={applianceImage.url}>
+          <div class="art-top">
+            <span class="art-kind text-faint">{applianceImage.kind} · {applianceImage.platform}</span>
+            <span class="art-size">{applianceImage.size}</span>
+          </div>
+          <div class="art-label">{applianceImage.label}</div>
+          <div class="art-file text-dim">{applianceImage.filename}</div>
+          <div class="art-notes text-faint">{applianceImage.notes}</div>
+          <div class="art-cta"><span>{t('downloads.get')}</span></div>
+        </a>
+
+        {ghChecksums.map((a) => (
+          <a class="art art-aux" href={a.url} target="_blank" rel="noopener">
+            <div class="art-top">
+              <span class="art-kind text-faint">{a.kind}</span>
+              <span class="art-size">{a.size}</span>
+            </div>
+            <div class="art-label">{a.label}</div>
+            <div class="art-cta"><span>{t('downloads.get')}</span></div>
+          </a>
+        ))}
+
+        {ghOther.map((a) => (
+          <a class="art art-aux" href={a.url} target="_blank" rel="noopener">
+            <div class="art-top">
+              <span class="art-kind text-faint">{a.kind}</span>
+              <span class="art-size">{a.size}</span>
+            </div>
+            <div class="art-label">{a.label}</div>
+            <div class="art-cta"><span>{t('downloads.get')}</span></div>
+          </a>
+        ))}
+      </div>
+
+      <div class="verify">
+        <Terminal title={`${t('downloads.verifyTitle')} ${version ? `v${version}` : ''}`.trim()}>
+          <pre><span class="comment"># Fetch + verify (latest release tag)</span>
+<span class="prompt">$</span> TAG=$(curl -s https://api.github.com/repos/garybowers/bootimus/releases/latest | jq -r .tag_name)
+<span class="prompt">$</span> echo $TAG
+<span class="ok">{tagName ?? 'v0.0.0'}</span>
+
+<span class="prompt">$</span> curl -LO https://github.com/garybowers/bootimus/releases/download/$TAG/bootimus-linux-amd64
+<span class="prompt">$</span> curl -LO https://github.com/garybowers/bootimus/releases/download/$TAG/SHA256SUMS
+<span class="prompt">$</span> sha256sum -c SHA256SUMS --ignore-missing
+<span class="ok">bootimus-linux-amd64: OK</span>
+
+<span class="comment"># Or pull the container</span>
+<span class="prompt">$</span> docker pull <span class="kw">garybowers/bootimus:{version ?? 'latest'}</span>
+<span class="prompt">$</span> docker pull <span class="kw">garybowers/bootimus:latest</span><span class="cursor"></span></pre>
+        </Terminal>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-muted">
+    <div class="container">
+      <h2 class="group-title"><span class="text-cyan">#</span> {t('downloads.sectionTools')}</h2>
+      <p class="text-dim" style="max-width:60ch; margin-bottom:2rem;">{t('downloads.toolsLede')}</p>
+
+      <div class="tool-grid">
+        {tools.map((tool) => (
+          <article class="tool">
+            <div class="tool-head">
+              <h3>{tool.name}</h3>
+              <span class="tool-v">{tool.version}</span>
+            </div>
+            <p class="tool-sum">{tool.summary}</p>
+            <div class="tool-foot">
+              <span class="text-faint">{tool.size}</span>
+              <div class="tool-links">
+                <a href={tool.mirror}>{t('downloads.mirror')}</a>
+                <a href={tool.upstream} target="_blank" rel="noopener" class="text-faint">{t('downloads.upstream')}</a>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2 class="group-title"><span class="text-magenta">#</span> {t('downloads.sectionApi')}</h2>
+      <p class="text-dim" style="max-width:60ch; margin-bottom:1.5rem;">{t('downloads.apiLede')}</p>
+
+      <Terminal title={t('downloads.apiTitle')}>
+        <pre><span class="prompt">$</span> curl -s https://bootimus.com/api/manifest.json | jq '.release.version, (.release.artifacts | length)'
+<span class="ok">"{version ?? '0.0.0'}"</span>
+<span class="ok">{(ghBinaries.length + ghChecksums.length + ghOther.length + 2)}</span>
+
+<span class="prompt">$</span> curl -s https://bootimus.com/api/manifest.json | jq -r '.tools[] | [.name, .version, .mirror] | @tsv'
+{tools.map(tool => `${tool.name}\t${tool.version}\t${tool.mirror}`).join('\n')}<span class="cursor"></span></pre>
+      </Terminal>
+    </div>
+  </section>
+
+  <Footer />
+</Base>
+
+<style>
+  .dl-head {
+    padding: 4rem 0 2rem;
+  }
+  .dl-head h1 { margin: 0.5rem 0 1rem; }
+  .lede {
+    font-size: 1.05rem;
+    max-width: 64ch;
+    line-height: 1.65;
+  }
+  .release-meta {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px dashed var(--border-bright);
+    align-items: center;
+  }
+  .pill, .pill-dim, .pill-link, .pill-src {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.7rem;
+    border: 1px solid var(--border-bright);
+    border-radius: 100px;
+    letter-spacing: 0.02em;
+  }
+  .pill {
+    color: var(--amber);
+    border-color: rgba(255, 176, 0, 0.3);
+    background: rgba(255, 176, 0, 0.06);
+    font-weight: 600;
+    transition: all 160ms ease;
+  }
+  .pill:hover {
+    border-color: var(--amber);
+    background: rgba(255, 176, 0, 0.12);
+  }
+  .pill-dim { color: var(--text-dim); }
+  .pill-src { color: var(--text-faint); border-style: dashed; }
+  .pill-link { color: var(--cyan); transition: all 160ms ease; }
+  .pill-link:hover { border-color: var(--cyan); background: rgba(0, 224, 255, 0.06); }
+
+  .badge-warn { color: var(--amber-bright); border-color: rgba(255, 176, 0, 0.3); }
+  .badge-dot-warn { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+
+  .group-title {
+    font-size: 0.95rem;
+    color: var(--text-dim);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    margin-bottom: 1.5rem;
+    text-transform: lowercase;
+  }
+
+  .art-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .art {
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    transition: all 180ms ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .art:hover {
+    border-color: var(--border-bright);
+    transform: translateY(-2px);
+    background: var(--bg-term);
+  }
+  .art-primary {
+    background: linear-gradient(135deg, rgba(255, 176, 0, 0.08), rgba(255, 176, 0, 0.02));
+    border-color: rgba(255, 176, 0, 0.25);
+  }
+  .art-primary:hover {
+    border-color: var(--amber);
+    box-shadow: 0 8px 30px -12px rgba(255, 176, 0, 0.35);
+  }
+  .art-aux { opacity: 0.85; }
+  .art-empty {
+    background: transparent;
+    border-style: dashed;
+    cursor: default;
+  }
+  .art-empty:hover { transform: none; background: transparent; border-color: var(--border); }
+  .art-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+  }
+  .art-size {
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .art-label {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+  .art-file {
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+    word-break: break-all;
+  }
+  .art-notes {
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+    line-height: 1.5;
+  }
+  .art-hash {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.72rem;
+    margin-bottom: 0.75rem;
+  }
+  .art-hash code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-dim);
+    font-size: 0.75rem;
+  }
+  .art-cta {
+    display: flex;
+    justify-content: flex-end;
+    font-size: 0.78rem;
+    color: var(--text-faint);
+    margin-top: auto;
+    padding-top: 0.5rem;
+    letter-spacing: 0.05em;
+    transition: color 160ms ease;
+  }
+  .art:hover .art-cta { color: var(--amber); }
+
+  .verify { max-width: 780px; margin-top: 2rem; }
+
+  .tool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+  }
+  .tool {
+    padding: 1.25rem 1.4rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+  }
+  .tool-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.4rem;
+  }
+  .tool-head h3 {
+    margin: 0;
+    color: var(--text);
+    font-size: 0.95rem;
+  }
+  .tool-v {
+    font-size: 0.72rem;
+    color: var(--amber);
+    letter-spacing: 0.03em;
+  }
+  .tool-sum {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin: 0 0 1rem;
+    line-height: 1.55;
+    flex: 1;
+  }
+  .tool-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 0.75rem;
+    border-top: 1px dashed var(--border);
+    font-size: 0.78rem;
+  }
+  .tool-links { display: flex; gap: 0.9rem; }
+</style>

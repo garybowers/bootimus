@@ -1,0 +1,180 @@
+---
+interface Props {
+  title?: string;
+  user?: string;
+  host?: string;
+  tty?: string;
+}
+
+const { title, user = 'root', host = 'bootimus', tty = 'pts/0' } = Astro.props;
+const displayTitle = title ?? `${user}@${host}: ~`;
+---
+<div class="term" role="figure" aria-label={displayTitle}>
+  <div class="term-bar">
+    <div class="term-tag">
+      <span class="term-dot" aria-hidden="true"></span>
+      <span class="term-tty">{tty}</span>
+    </div>
+    <div class="term-title">{displayTitle}</div>
+    <div class="term-ctrls" aria-hidden="true">
+      <span class="ctrl" title="minimize">
+        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5 8.5h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </span>
+      <span class="ctrl" title="maximize">
+        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" stroke="currentColor" stroke-width="1.1" fill="none" rx="0.5"/></svg>
+      </span>
+      <span class="ctrl ctrl-close" title="close">
+        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      </span>
+    </div>
+  </div>
+  <div class="term-body">
+    <slot />
+  </div>
+  <div class="term-status" aria-hidden="true">
+    <span class="status-seg status-seg-accent">[0] bash<span class="text-amber">*</span></span>
+    <span class="status-seg">1:vim</span>
+    <span class="status-seg">2:htop</span>
+    <span class="status-sp"></span>
+    <span class="status-seg">"{host}"</span>
+    <span class="status-seg status-seg-time">{new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+  </div>
+</div>
+
+<style>
+  .term {
+    background: var(--bg-term);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.03) inset,
+      0 24px 60px -20px rgba(0, 0, 0, 0.6),
+      0 0 0 1px rgba(255, 176, 0, 0.04);
+  }
+
+  .term-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.7rem;
+    background: linear-gradient(to bottom, var(--bar-from), var(--bar-to));
+    border-bottom: 1px solid var(--border);
+  }
+
+  .term-tag {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 110px;
+  }
+  .term-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 8px rgba(255, 176, 0, 0.7);
+    animation: pulse 2.6s ease-in-out infinite;
+  }
+  .term-tty {
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .term-title {
+    flex: 1;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+  }
+
+  .term-ctrls {
+    display: flex;
+    gap: 2px;
+    min-width: 110px;
+    justify-content: flex-end;
+  }
+  .ctrl {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 3px;
+    color: var(--text-faint);
+    transition: background 120ms ease, color 120ms ease;
+    cursor: default;
+  }
+  .ctrl:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+  }
+  .ctrl-close:hover {
+    background: rgba(230, 76, 60, 0.2);
+    color: #ff6b5c;
+  }
+
+  .term-body {
+    padding: 1.25rem 1.5rem;
+    font-size: 0.88rem;
+    line-height: 1.65;
+    color: var(--text);
+    overflow-x: auto;
+  }
+  .term-body :global(.prompt) { color: var(--amber); font-weight: 600; }
+  .term-body :global(.ps) { color: var(--cyan); }
+  .term-body :global(.comment) { color: var(--text-faint); }
+  .term-body :global(.ok) { color: var(--green); }
+  .term-body :global(.warn) { color: var(--amber-bright); }
+  .term-body :global(.err) { color: var(--red); }
+  .term-body :global(.dim) { color: var(--text-dim); }
+  .term-body :global(.kw) { color: var(--magenta); }
+  .term-body :global(pre) {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    font-size: inherit;
+  }
+
+  .term-status {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.3rem 0.75rem;
+    background: var(--status-bg);
+    border-top: 1px solid var(--border);
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .status-seg-accent {
+    color: var(--green);
+    font-weight: 600;
+  }
+  .status-sp { flex: 1; }
+  .status-seg-time { color: var(--text-dim); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(255, 176, 0, 0.7); }
+    50% { opacity: 0.55; box-shadow: 0 0 4px rgba(255, 176, 0, 0.3); }
+  }
+
+  @media (max-width: 640px) {
+    .term-tag { min-width: auto; }
+    .term-tty { display: none; }
+    .term-ctrls { min-width: auto; }
+    .term-status { gap: 0.5rem; flex-wrap: wrap; }
+    .term-status .status-seg:nth-child(2),
+    .term-status .status-seg:nth-child(3) { display: none; }
+  }
+</style>

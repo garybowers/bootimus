@@ -2,7 +2,9 @@ package storage
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -777,6 +779,38 @@ func (s *SQLiteStore) Close() error {
 		return err
 	}
 	return db.Close()
+}
+
+// Snapshot writes a clean, consistent copy of the SQLite database to w
+// using `VACUUM INTO`, which is WAL- and concurrent-write-safe (the live
+// .db / .db-wal / .db-shm files can be in any state).
+func (s *SQLiteStore) Snapshot(w io.Writer) (string, error) {
+	tmp, err := os.CreateTemp("", "bootimus-snapshot-*.db")
+	if err != nil {
+		return "", fmt.Errorf("create temp snapshot: %w", err)
+	}
+	tmpPath := tmp.Name()
+	tmp.Close()
+	os.Remove(tmpPath)
+	defer os.Remove(tmpPath)
+
+	// VACUUM INTO refuses to overwrite an existing file, hence the remove above.
+	// Single-quote escape the path to survive any apostrophes in TMPDIR.
+	escaped := strings.ReplaceAll(tmpPath, "'", "''")
+	if err := s.db.Exec(fmt.Sprintf("VACUUM INTO '%s'", escaped)).Error; err != nil {
+		return "", fmt.Errorf("vacuum into snapshot: %w", err)
+	}
+
+	f, err := os.Open(tmpPath)
+	if err != nil {
+		return "", fmt.Errorf("open snapshot: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(w, f); err != nil {
+		return "", fmt.Errorf("stream snapshot: %w", err)
+	}
+	return "bootimus.db", nil
 }
 
 func (s *SQLiteStore) ListScheduledTasks() ([]*models.ScheduledTask, error) {

@@ -1,10 +1,25 @@
 package storage
 
-import "bootimus/internal/models"
+import (
+	"io"
+
+	"bootimus/internal/models"
+)
+
+// Snapshot writes a portable, restore-ready dump of the database to w and
+// returns the suggested filename to use inside a backup tarball.
+//
+// SQLite returns "bootimus.db" (a clean copy produced via VACUUM INTO,
+// safe under WAL/concurrent writes). PostgreSQL returns "bootimus.sql"
+// (a pg_dump in plain SQL format).
+type Snapshotter interface {
+	Snapshot(w io.Writer) (filename string, err error)
+}
 
 type Storage interface {
 	AutoMigrate() error
 	Close() error
+	Snapshotter
 
 	ListClients() ([]*models.Client, error)
 	GetClient(mac string) (*models.Client, error)

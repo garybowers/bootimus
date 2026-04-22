@@ -1,0 +1,12 @@
+---
+import Landing from '../../components/pages/Landing.astro';
+import { locales, defaultLocale, type Locale } from '../../i18n';
+
+export const prerender = false;
+
+const lang = Astro.params.lang as Locale;
+if (!lang || !locales.includes(lang) || lang === defaultLocale) {
+  return new Response('Not found', { status: 404 });
+}
+---
+<Landing />

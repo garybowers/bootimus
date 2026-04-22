@@ -100,8 +100,56 @@
         .header-content h1 { color: var(--text-primary); font-size: 22px; font-weight: 700; margin-bottom: 1px; letter-spacing: -0.3px; }
         .header-content p { color: var(--text-secondary); font-size: 14px; font-weight: 400; }
 
-        /* Theme toggle & user profile */
-        .theme-toggle, .user-profile-button {
+        /* Theme switch — iOS-style track + thumb. Sun on left, moon on right.
+           Thumb slides to indicate the CURRENT mode (light = thumb left, dark = thumb right).
+           The opposite-side icon stays visible as the "switch to" hint. */
+        .theme-switch {
+            position: relative;
+            width: 56px;
+            height: 28px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            cursor: pointer;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            box-sizing: border-box;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .theme-switch:hover { border-color: var(--text-secondary); }
+        .theme-switch-icon {
+            position: relative;
+            z-index: 1;
+            width: 14px;
+            height: 14px;
+            margin: 0 7px;
+            color: var(--text-secondary);
+            pointer-events: none;
+            transition: color 0.2s;
+        }
+        .theme-switch-icon-sun { color: #d97706; }
+        [data-theme="dark"] .theme-switch-icon-sun { color: var(--text-secondary); }
+        [data-theme="dark"] .theme-switch-icon-moon { color: #93c5fd; }
+        .theme-switch-thumb {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 22px;
+            height: 22px;
+            background: var(--bg-secondary);
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+            transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s;
+        }
+        [data-theme="dark"] .theme-switch-thumb {
+            transform: translateX(28px);
+            background: var(--bg-tertiary);
+        }
+
+        /* User profile button — keep round chip style next to the theme switch. */
+        .user-profile-button {
             background: var(--bg-tertiary);
             border: none;
             border-radius: 50%;
@@ -112,7 +160,7 @@
             transition: all 0.2s;
             color: var(--text-secondary);
         }
-        .theme-toggle:hover, .user-profile-button:hover {
+        .user-profile-button:hover {
             background: var(--accent-light);
             color: var(--accent);
         }
@@ -259,23 +307,57 @@
         tr:hover { background: var(--bg-tertiary); }
         td:last-child { white-space: nowrap; }
 
-        /* Buttons */
+        /* Buttons — design system
+           ────────────────────────
+           .btn         = base outlined (transparent bg, neutral border) — secondary actions
+           .btn-primary = solid amber — the ONE main action per toolbar
+           .btn-danger  = solid red — destructive (delete, reset) only
+           .btn-toggle  = outlined + amber-tinted when [aria-pressed="true"] — view/mode toggles
+           .btn-icon    = 32×32 square modifier for icon-only buttons
+           .btn-sm      = small variant for inline/row actions
+           .btn-success / .btn-info / .btn-warning kept for backward compat — avoid in new code,
+           reserve those colours for badges/dots where they actually carry meaning. */
         .btn {
-            padding: 8px 16px; border: none; border-radius: var(--radius-sm);
-            cursor: pointer; font-size: 13px; font-weight: 500;
+            height: 34px; padding: 0 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+            background: transparent; color: var(--text-primary);
+            cursor: pointer; font-size: 13px; font-weight: 500; box-sizing: border-box;
             transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
+            line-height: 1; user-select: none; vertical-align: middle;
         }
-        .btn-primary { background: var(--accent); color: var(--bg-primary); }
-        .btn-primary:hover { background: var(--accent-hover); }
-        .btn-danger { background: var(--danger); color: white; }
-        .btn-danger:hover { background: var(--danger-hover); }
-        .btn-success { background: var(--success); color: white; }
-        .btn-success:hover { background: var(--success-hover); }
-        .btn-info { background: var(--info); color: white; }
-        .btn-info:hover { background: var(--info-hover); }
-        .btn-warning { background: var(--warning); color: white; }
-        .btn-warning:hover { background: var(--warning-hover); }
-        .btn-sm { padding: 5px 10px; font-size: 12px; margin: 0 2px; }
+        .btn:hover { background: var(--bg-tertiary); border-color: var(--text-secondary); }
+        .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--bg-primary); }
+        .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--bg-primary); }
+        .btn-danger { background: var(--danger); border-color: var(--danger); color: white; }
+        .btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
+        .btn-success { background: var(--success); border-color: var(--success); color: white; }
+        .btn-success:hover { background: var(--success-hover); border-color: var(--success-hover); }
+        .btn-info { background: var(--info); border-color: var(--info); color: white; }
+        .btn-info:hover { background: var(--info-hover); border-color: var(--info-hover); }
+        .btn-warning { background: var(--warning); border-color: var(--warning); color: white; }
+        .btn-warning:hover { background: var(--warning-hover); border-color: var(--warning-hover); }
+        .btn-sm { height: 26px; padding: 0 10px; font-size: 12px; margin: 0 2px; }
+        .btn svg { flex-shrink: 0; }
+
+        /* Toggle button — identical to .btn when unpressed; amber-tinted when [aria-pressed=true].
+           NO base overrides here, so off-state is byte-for-byte the same as a regular .btn. */
+        .btn-toggle[aria-pressed="true"] {
+            background: var(--accent-light);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        .btn-toggle[aria-pressed="true"]:hover {
+            background: var(--accent-light);
+            border-color: var(--accent-hover);
+            color: var(--accent);
+        }
+        /* Icon-only button (no text) — square, same height as .btn. */
+        .btn-icon {
+            width: 34px;
+            padding: 0;
+            justify-content: center;
+        }
+        .btn-icon.btn-sm { width: 26px; }
+        .btn-icon svg { display: block; }
 
         /* Modals */
         .modal {
@@ -444,6 +526,10 @@
         .progress-fill { height: 100%; background: var(--teal); transition: width 0.4s ease; border-radius: 2px; }
         .progress-text { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
 
+        /* Taller variant for modals */
+        .progress-bar.progress-bar-lg { height: 8px; border-radius: 4px; }
+        .progress-bar.progress-bar-lg .progress-fill { background: var(--accent); border-radius: 4px; }
+
         /* Stats grid (used elsewhere) */
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 16px; }
         .stat-card-header { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
@@ -488,8 +574,8 @@
         /* Pin both scrollbars inside the viewport when a tab's main content
            is a wide table. Without this, a tall table pushes its horizontal
            scrollbar off-screen because the whole tab scrolls vertically. */
-        .tab-content.active:has(.table-scroll) { overflow: hidden; }
-        .tab-content.active:has(.table-scroll) > .card { flex: 1; min-height: 0; }
+        .tab-content.active:has(.table-scroll):not(#settings-tab) { overflow: hidden; }
+        .tab-content.active:has(.table-scroll):not(#settings-tab) > .card { flex: 1; min-height: 0; }
         /* Every wrapper between .card and .table-scroll must be a flex column
            so heights propagate. This catches render-target divs (#images-table)
            and subtab wrappers (#images-subtab, #clients-subtab) transparently. */
@@ -552,7 +638,11 @@
             <p>PXE/HTTP Boot Server Management Interface</p>
         </div>
         <div style="display: flex; align-items: center; gap: 10px;">
-            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" id="theme-toggle-btn">☀️</button>
+            <button id="theme-toggle-btn" class="theme-switch" type="button" role="switch" aria-checked="false" aria-label="Toggle dark mode" title="Toggle dark mode" onclick="toggleTheme()">
+                <svg class="theme-switch-icon theme-switch-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                <svg class="theme-switch-icon theme-switch-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <span class="theme-switch-thumb" aria-hidden="true"></span>
+            </button>
             <div class="user-profile">
                 <button class="user-profile-button" onclick="toggleUserProfile()">👤</button>
                 <div class="user-profile-dropdown" id="user-profile-dropdown">
@@ -677,11 +767,26 @@
                         Manage PXE boot clients. Discovered clients appear automatically when they connect.
                     </p>
                     <div class="toolbar">
-                        <button class="btn btn-primary" onclick="showAddClientModal()">+ Add Client</button>
-                        <button class="btn btn-sm" onclick="loadClients()">Refresh</button>
-                        <button class="btn btn-sm btn-success" id="clients-autorefresh-btn" onclick="toggleClientsAutoRefresh()">Auto-Refresh: Off</button>
-                        <button class="btn btn-sm" onclick="exportClientsCSV()">Export CSV</button>
-                        <button class="btn btn-sm" onclick="showImportClientsModal()">Import CSV</button>
+                        <button class="btn" type="button" onclick="showAddClientModal()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Add Client
+                        </button>
+                        <button class="btn" type="button" onclick="loadClients()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                            Refresh
+                        </button>
+                        <button class="btn btn-toggle" type="button" id="clients-autorefresh-btn" onclick="toggleClientsAutoRefresh()" aria-pressed="false" title="Auto-refresh client list every 5 seconds">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                            Auto-refresh
+                        </button>
+                        <button class="btn" type="button" onclick="exportClientsCSV()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export CSV
+                        </button>
+                        <button class="btn" type="button" onclick="showImportClientsModal()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            Import CSV
+                        </button>
                         <input type="search" class="toolbar-filter" placeholder="Filter clients…" oninput="applyTableFilter('clients', this.value, renderClientsTable)">
                     </div>
                     <div id="clients-table" class="loading">
@@ -696,7 +801,10 @@
                         Group clients by location, role, or fleet. Bulk wake all members, set a next-boot image on all, and overlay assigned images.
                     </p>
                     <div class="toolbar">
-                        <button class="btn btn-primary" onclick="showAddClientGroupModal()">+ Add Client Group</button>
+                        <button class="btn" type="button" onclick="showAddClientGroupModal()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Add Client Group
+                        </button>
                         <input type="search" class="toolbar-filter" placeholder="Filter groups…" oninput="applyTableFilter('client-groups', this.value, renderClientGroupsTable)">
                     </div>
                     <div id="client-groups-table" class="loading">
@@ -721,9 +829,39 @@
                         Upload, download, and manage OS images available for PXE booting.
                     </p>
                     <div class="toolbar">
-                        <button class="btn btn-primary" onclick="showUploadModal()">📤 Upload ISO</button>
-                        <button class="btn btn-primary" onclick="showDownloadModal()">⬇️ Download ISO</button>
-                        <button class="btn btn-success" onclick="scanImages()">🔍 Scan for ISOs</button>
+                        <button class="btn" type="button" onclick="showUploadModal()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            Upload ISO
+                        </button>
+                        <button class="btn" type="button" onclick="showDownloadModal()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            Download ISO
+                        </button>
+                        <button class="btn" type="button" onclick="scanImages()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="23 4 23 10 17 10"/>
+                                <polyline points="1 20 1 14 7 14"/>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                            </svg>
+                            Scan for ISOs
+                        </button>
+                        <button id="images-group-toggle" class="btn btn-toggle" type="button" onclick="toggleImageGrouping()" aria-pressed="false" title="Group images by their assigned folder">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/>
+                                <path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/>
+                                <path d="M3 5a2 2 0 0 0 2 2h3"/>
+                                <path d="M3 3v13a2 2 0 0 0 2 2h3"/>
+                            </svg>
+                            Group
+                        </button>
                         <input type="search" class="toolbar-filter" placeholder="Filter images…" oninput="applyTableFilter('images', this.value, renderImagesTable)">
                     </div>
                     <div id="images-table" class="loading">
@@ -738,7 +876,10 @@
                         Organise images into groups and subgroups for the PXE boot menu.
                     </p>
                     <div class="toolbar">
-                        <button class="btn btn-primary" onclick="showAddGroupModal()">+ Add Image Group</button>
+                        <button class="btn" type="button" onclick="showAddGroupModal()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Add Image Group
+                        </button>
                         <input type="search" class="toolbar-filter" placeholder="Filter groups…" oninput="applyTableFilter('image-groups', this.value, renderGroupsTable)">
                     </div>
                     <div id="groups-table" class="loading">
@@ -757,7 +898,10 @@
                     Files available to all clients. For image-specific files, manage them from the Images tab.
                 </p>
                 <div class="toolbar">
-                    <button class="btn btn-primary" onclick="showUploadPublicFileModal()">+ Upload Public File</button>
+                    <button class="btn" type="button" onclick="showUploadPublicFileModal()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Upload Public File
+                    </button>
                 </div>
                 <div id="public-files-table" class="loading">
                     <div class="spinner"></div>
@@ -774,7 +918,10 @@
                     Manage admin panel user accounts and permissions.
                 </p>
                 <div class="toolbar">
-                    <button class="btn btn-primary" onclick="showAddUserModal()">+ Add User</button>
+                    <button class="btn" type="button" onclick="showAddUserModal()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add User
+                    </button>
                     <input type="search" class="toolbar-filter" placeholder="Filter users…" oninput="applyTableFilter('users', this.value, renderUsersTable)">
                 </div>
                 <div id="users-table" class="loading">
@@ -792,7 +939,10 @@
                     Download a tool to make it available, then enable it to show in the boot menu.
                 </p>
                 <div class="toolbar">
-                    <button class="btn btn-primary" onclick="showModal('add-custom-tool-modal')">+ Add Custom Tool</button>
+                    <button class="btn" type="button" onclick="showModal('add-custom-tool-modal')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add Custom Tool
+                    </button>
                 </div>
                 <div id="tools-list" class="loading">
                     <div class="spinner"></div>
@@ -809,8 +959,14 @@
                     Distro profiles define how ISOs are detected and booted. Built-in profiles are updated from the central repository. Custom profiles take priority.
                 </p>
                 <div class="toolbar">
-                    <button class="btn btn-primary" onclick="showModal('add-profile-modal')">+ Add Custom Profile</button>
-                    <button class="btn btn-success" onclick="updateProfilesFromRemote()">Check for Updates</button>
+                    <button class="btn" type="button" onclick="showModal('add-profile-modal')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add Custom Profile
+                    </button>
+                    <button class="btn" type="button" onclick="updateProfilesFromRemote()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        Check for Updates
+                    </button>
                 </div>
                 <div id="profiles-list" class="loading" style="padding: 0 12px 12px;">
                     <div class="spinner"></div>
@@ -827,7 +983,10 @@
                     Manage iPXE bootloader sets served to PXE clients. Create custom sets with your own bootloader files.
                 </p>
                 <div class="toolbar">
-                    <button class="btn btn-primary" onclick="showCreateBootloaderSetModal()">+ Create Set</button>
+                    <button class="btn" type="button" onclick="showCreateBootloaderSetModal()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Create Set
+                    </button>
                 </div>
                 <div id="bootloaders-table" class="loading">
                     <div class="spinner"></div>
@@ -855,7 +1014,10 @@
                         <small style="color: var(--text-secondary);">Time before auto-booting the default entry. Set to 0 to disable (wait forever).</small>
                     </div>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <button type="submit" class="btn btn-primary">Save Theme</button>
+                        <button type="submit" class="btn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            Save Theme
+                        </button>
                     </div>
                 </form>
             </div>
@@ -889,8 +1051,14 @@
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px;">
-                        <button type="submit" class="btn btn-primary">Save Webhook</button>
-                        <button type="button" class="btn" onclick="testWebhook()">Send Test</button>
+                        <button type="submit" class="btn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            Save Webhook
+                        </button>
+                        <button type="button" class="btn" onclick="testWebhook()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                            Send Test
+                        </button>
                         <span id="webhook-test-result" style="align-self: center; font-size: 13px;"></span>
                     </div>
                 </form>
@@ -902,7 +1070,10 @@
                     Download a <code>.tar.gz</code> of the bootimus data directory: database, bootloader configuration, custom bootloader sets, and settings. ISOs and downloaded tool binaries are excluded (they're reproducible).
                 </p>
                 <div style="display: flex; gap: 10px; padding: 0 12px 12px;">
-                    <button class="btn btn-primary" onclick="downloadBackup()">⬇ Download Backup</button>
+                    <button class="btn" type="button" onclick="downloadBackup()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download Backup
+                    </button>
                 </div>
                 <p style="color: var(--text-muted); font-size: 12px; padding: 0 12px 12px; margin: 0;">
                     Restore is manual: stop bootimus, extract the tarball over the data directory, start bootimus.
@@ -932,10 +1103,22 @@
                     Live server log output for TFTP, HTTP, and PXE boot activity.
                 </p>
                 <div class="toolbar">
-                    <button class="btn btn-sm btn-success" id="connect-logs-btn" onclick="connectLiveLogs()">Start Auto-Refresh</button>
-                    <button class="btn btn-sm btn-danger" id="disconnect-logs-btn" onclick="disconnectLiveLogs()" style="display: none;">Stop Auto-Refresh</button>
-                    <button class="btn btn-sm" onclick="loadServerLogs()">Refresh Now</button>
-                    <button class="btn btn-sm" onclick="clearLiveLogs()">Clear</button>
+                    <button class="btn" type="button" id="connect-logs-btn" onclick="connectLiveLogs()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Start Auto-Refresh
+                    </button>
+                    <button class="btn" type="button" id="disconnect-logs-btn" onclick="disconnectLiveLogs()" style="display: none;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                        Stop Auto-Refresh
+                    </button>
+                    <button class="btn" type="button" onclick="loadServerLogs()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        Refresh Now
+                    </button>
+                    <button class="btn" type="button" onclick="clearLiveLogs()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                        Clear
+                    </button>
                     <span id="log-status" style="color: var(--text-secondary); font-size: 12px;"></span>
                 </div>
                 <div id="live-logs" style="background: #1a1a1a; padding: 16px; border-radius: var(--radius-sm); max-height: 500px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; color: #e0e0e0; margin: 0 12px 12px;">
@@ -1296,7 +1479,9 @@
                 <p id="about-version" style="color: var(--text-muted); font-size: 12px; margin: 6px 0 0;"></p>
             </div>
             <div style="text-align: left; font-size: 13px; color: var(--text-secondary); line-height: 1.8; border-top: 1px solid var(--border); padding-top: 16px;">
-                <p><strong style="color: var(--text-primary);">GitHub</strong><br>
+                <p><strong style="color: var(--text-primary);">Website</strong><br>
+                <a href="https://bootimus.com" target="_blank" style="color: var(--teal);">bootimus.com</a></p>
+                <p style="margin-top: 12px;"><strong style="color: var(--text-primary);">GitHub</strong><br>
                 <a href="https://github.com/garybowers/bootimus" target="_blank" style="color: var(--teal);">github.com/garybowers/bootimus</a></p>
                 <p style="margin-top: 12px;"><strong style="color: var(--text-primary);">Report Issues</strong><br>
                 <a href="https://github.com/garybowers/bootimus/issues" target="_blank" style="color: var(--teal);">github.com/garybowers/bootimus/issues</a></p>
@@ -1671,14 +1856,15 @@
                     <small style="color: var(--text-muted);">Leave empty for distro defaults. Placeholders: <code>{{BASE_URL}}</code> <code>{{CACHE_DIR}}</code> <code>{{FILENAME}}</code> <code>{{SQUASHFS}}</code></small>
                 </div>
 
-                <div class="form-group checkbox-group">
-                    <input type="checkbox" id="image-props-enabled">
-                    <label>Enabled</label>
-                </div>
-
-                <div class="form-group checkbox-group">
-                    <input type="checkbox" id="image-props-public">
-                    <label>Public (available to all clients)</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="image-props-enabled">
+                        <label>Enabled</label>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" id="image-props-public">
+                        <label>Public (available to all clients)</label>
+                    </div>
                 </div>
             </div>
 
@@ -1746,10 +1932,21 @@
                 </div>
             </div>
 
+            <div id="image-props-progress" style="display: none; margin-top: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+                    <span class="progress-text" id="image-props-progress-text" style="margin: 0; font-size: 13px; color: var(--text-primary); font-weight: 500;">Starting...</span>
+                    <span id="image-props-progress-percent" style="font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums;">0%</span>
+                </div>
+                <div class="progress-bar progress-bar-lg">
+                    <div class="progress-fill" id="image-props-progress-fill" style="width: 0%"></div>
+                </div>
+            </div>
+
             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <button id="image-props-extract-btn" class="btn btn-success" style="display: none;" onclick="extractFromProperties()">Extract</button>
-                <button id="image-props-netboot-btn" class="btn btn-warning" style="display: none;" onclick="downloadNetbootFromProperties()">⬇ Netboot</button>
-                <button id="image-props-download-btn" class="btn" onclick="downloadISOFromProperties()">⬇ Download ISO</button>
+                <button id="image-props-extract-btn" class="btn" style="display: none;" onclick="extractFromProperties()">Extract</button>
+                <button id="image-props-patch-smb-btn" class="btn" style="display: none;" onclick="patchSmbFromProperties()" title="Rewrite boot.wim so WinPE auto-mounts the SMB share and launches setup.exe">Patch SMB</button>
+                <button id="image-props-netboot-btn" class="btn" style="display: none;" onclick="downloadNetbootFromProperties()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Netboot</button>
+                <button id="image-props-download-btn" class="btn" onclick="downloadISOFromProperties()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download ISO</button>
                 <button id="image-props-delete-btn" class="btn btn-danger" onclick="deleteFromProperties()">Delete</button>
                 <div style="flex: 1;"></div>
                 <button class="btn" onclick="closeModal('image-properties-modal')">Cancel</button>

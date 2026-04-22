@@ -1,0 +1,31 @@
+---
+import { render } from 'astro:content';
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import { flatNav } from '../../lib/docs-nav';
+import { getDoc } from '../../lib/docs';
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+if (!slug) return new Response('Not found', { status: 404 });
+
+const doc = await getDoc('en', slug);
+if (!doc) return new Response('Not found', { status: 404 });
+
+const { Content, headings } = await render(doc.entry);
+
+const navItem = flatNav().find((l) => l.slug === slug);
+const title = navItem?.title ?? doc.entry.data.title ?? slug;
+const description = navItem?.description ?? doc.entry.data.description;
+const editPath = `docs/en/${slug}.md`;
+---
+<DocsLayout
+  title={title}
+  description={description}
+  slug={slug}
+  headings={headings}
+  editPath={editPath}
+  locale="en"
+>
+  <Content />
+</DocsLayout>

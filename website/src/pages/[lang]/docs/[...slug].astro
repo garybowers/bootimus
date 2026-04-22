@@ -1,0 +1,39 @@
+---
+import { render } from 'astro:content';
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import { flatNav } from '../../../lib/docs-nav';
+import { getDoc } from '../../../lib/docs';
+import { locales, defaultLocale, type Locale } from '../../../i18n';
+
+export const prerender = false;
+
+const lang = Astro.params.lang as Locale;
+const slug = Astro.params.slug;
+
+if (!lang || !locales.includes(lang) || lang === defaultLocale) {
+  return new Response('Not found', { status: 404 });
+}
+if (!slug) return new Response('Not found', { status: 404 });
+
+const doc = await getDoc(lang, slug);
+if (!doc) return new Response('Not found', { status: 404 });
+
+const { Content, headings } = await render(doc.entry);
+
+const navItem = flatNav().find((l) => l.slug === slug);
+const title = navItem?.title ?? doc.entry.data.title ?? slug;
+const description = navItem?.description ?? doc.entry.data.description;
+const editPath = `docs/${doc.served}/${slug}.md`;
+---
+<DocsLayout
+  title={title}
+  description={description}
+  slug={slug}
+  headings={headings}
+  editPath={editPath}
+  locale={lang}
+  isFallback={doc.isFallback}
+  servedLocale={doc.served}
+>
+  <Content />
+</DocsLayout>

@@ -68,6 +68,9 @@ func init() {
 	rootCmd.PersistentFlags().String("proxy-dhcp-bootfile-uefi", "bootimus.efi", "Bootfile advertised to UEFI x64 PXE clients")
 	rootCmd.PersistentFlags().String("proxy-dhcp-bootfile-arm64", "bootimus-arm64.efi", "Bootfile advertised to UEFI ARM64 PXE clients")
 
+	rootCmd.PersistentFlags().Bool("windows-smb", false, "Enable Samba share for unattended Windows PXE installs (requires smbd in PATH)")
+	rootCmd.PersistentFlags().Int("windows-smb-port", 445, "SMB port (Windows 'net use' always uses 445; override only for testing)")
+
 	viper.BindPFlag("tftp_port", rootCmd.PersistentFlags().Lookup("tftp-port"))
 	viper.BindPFlag("tftp_single_port", rootCmd.PersistentFlags().Lookup("tftp-single-port"))
 	viper.BindPFlag("http_port", rootCmd.PersistentFlags().Lookup("http-port"))
@@ -101,6 +104,9 @@ func init() {
 	viper.BindPFlag("proxy_dhcp.bootfile_bios", rootCmd.PersistentFlags().Lookup("proxy-dhcp-bootfile-bios"))
 	viper.BindPFlag("proxy_dhcp.bootfile_uefi", rootCmd.PersistentFlags().Lookup("proxy-dhcp-bootfile-uefi"))
 	viper.BindPFlag("proxy_dhcp.bootfile_arm64", rootCmd.PersistentFlags().Lookup("proxy-dhcp-bootfile-arm64"))
+
+	viper.BindPFlag("windows_smb.enabled", rootCmd.PersistentFlags().Lookup("windows-smb"))
+	viper.BindPFlag("windows_smb.port", rootCmd.PersistentFlags().Lookup("windows-smb-port"))
 }
 
 func initConfig() {

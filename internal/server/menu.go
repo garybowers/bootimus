@@ -113,6 +113,12 @@ func (mb *MenuBuilder) buildMainMenu() string {
 			visibleGroups = append(visibleGroups, group)
 		}
 	}
+
+	if len(mb.enabledTools) > 0 {
+		sb.WriteString("item --gap -- Tools:\n")
+		sb.WriteString("item tools Tools >>\n")
+	}
+
 	if len(visibleGroups) > 0 {
 		sb.WriteString("item --gap -- Groups:\n")
 		for _, group := range visibleGroups {
@@ -130,10 +136,6 @@ func (mb *MenuBuilder) buildMainMenu() string {
 			}
 			sb.WriteString(fmt.Sprintf("item iso%d %s (%s)%s\n", img.ID, img.Name, sizeStr, extractedTag))
 		}
-	}
-
-	if len(mb.enabledTools) > 0 {
-		sb.WriteString("item tools Tools >>\n")
 	}
 
 	sb.WriteString("item --gap -- Options:\n")

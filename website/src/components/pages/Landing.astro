@@ -1,0 +1,383 @@
+---
+import Base from '../../layouts/Base.astro';
+import Nav from '../Nav.astro';
+import Footer from '../Footer.astro';
+import Terminal from '../Terminal.astro';
+import { useTranslations, getLocaleFromUrl } from '../../i18n';
+
+const lang = getLocaleFromUrl(Astro.url);
+const { t, tx } = useTranslations(lang);
+
+const featureKeys = ['01', '02', '03', '04', '05', '06', '07', '08'] as const;
+const features = featureKeys.map((k) => ({
+  tag: `[${k}]`,
+  title: t(`features.items.${k}.title` as any),
+  body: t(`features.items.${k}.body` as any),
+}));
+
+const transparencyKeys = ['binary', 'blobs', 'telemetry', 'licence', 'deps', 'byo'] as const;
+const transparency = transparencyKeys.map((k) => ({
+  title: t(`transparency.items.${k}.t` as any),
+  desc: t(`transparency.items.${k}.d` as any),
+}));
+
+const loaderKeys = ['uefi64', 'uefiArm', 'bios', 'shim', 'themed', 'grub'] as const;
+const loaders = loaderKeys.map((k) => ({
+  title: t(`bootloaders.cards.${k}.t` as any),
+  desc: t(`bootloaders.cards.${k}.d` as any),
+  tag: t(`bootloaders.cards.${k}.tag` as any),
+  byo: t(`bootloaders.cards.${k}.tag` as any).includes('BYO'),
+}));
+---
+<Base>
+  <Nav />
+
+  <section class="hero">
+    <div class="container hero-inner">
+      <div class="hero-badges">
+        <span class="badge"><span class="badge-dot"></span>{t('hero.badgeStable')}</span>
+        <span class="badge text-dim">{t('hero.badgeStack')}</span>
+      </div>
+
+      <h1 class="hero-title">
+        {t('hero.titleLine1')}<br />
+        <span class="text-amber glow-amber">{t('hero.titleLine2')}</span>.
+      </h1>
+
+      <p class="hero-sub">{t('hero.sub')}</p>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/downloads">
+          <span>{t('hero.ctaPrimary')}</span>
+        </a>
+        <a class="btn" href="https://github.com/garybowers/bootimus" target="_blank" rel="noopener">
+          <span>{t('hero.ctaSecondary')}</span>
+          <span class="text-dim">→</span>
+        </a>
+      </div>
+
+      <div class="hero-term">
+        <Terminal title={t('hero.quickstartTitle')}>
+          <pre><span class="comment"># Pull, run, PXE boots. Thirty seconds.</span>
+<span class="prompt">$</span> docker run -d --name bootimus \
+    --cap-add NET_BIND_SERVICE \
+    -p 67:67/udp -p 69:69/udp \
+    -p 8080:8080/tcp -p 8081:8081/tcp \
+    -v $(pwd)/data:/data \
+    <span class="kw">garybowers/bootimus:latest</span>
+
+<span class="prompt">$</span> docker logs bootimus | grep Password
+<span class="dim">admin: </span><span class="ok">Password: 7f3a-plum-swift-echo</span>
+
+<span class="prompt">$</span> open http://localhost:8081<span class="cursor"></span></pre>
+        </Terminal>
+      </div>
+
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-n text-amber">{t('hero.statDistrosN')}</div><div class="stat-l">{t('hero.statDistrosL')}</div></div>
+        <div class="stat"><div class="stat-n text-cyan">{t('hero.statBinaryN')}</div><div class="stat-l">{t('hero.statBinaryL')}</div></div>
+        <div class="stat"><div class="stat-n text-magenta">{t('hero.statReconfigsN')}</div><div class="stat-l">{t('hero.statReconfigsL')}</div></div>
+        <div class="stat"><div class="stat-n text-green">{t('hero.statArchN')}</div><div class="stat-l">{t('hero.statArchL')}</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="section">
+    <div class="container">
+      <header class="section-head">
+        <span class="section-kicker text-amber">{t('features.kicker')}</span>
+        <h2>{t('features.title')}</h2>
+        <p class="text-dim">{t('features.sub')}</p>
+      </header>
+
+      <div class="feature-grid">
+        {features.map((f) => (
+          <article class="feature">
+            <div class="feature-head">
+              <span class="feature-tag">{f.tag}</span>
+              <h3>{f.title}</h3>
+            </div>
+            <p>{f.body}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section id="boot" class="section section-muted">
+    <div class="container">
+      <header class="section-head">
+        <span class="section-kicker text-cyan">{t('howItWorks.kicker')}</span>
+        <h2>{t('howItWorks.title')}</h2>
+        <p class="text-dim">{t('howItWorks.sub')}</p>
+      </header>
+
+      <div class="boot-term">
+        <Terminal title={t('howItWorks.termTitle')}>
+          <pre><span class="comment"># Client boots, sends DHCPDISCOVER broadcast</span>
+<span class="ps">[dhcp]</span>  <span class="dim">→</span> DHCPDISCOVER from <span class="kw">b4:2e:99:01:5f:a3</span> (no PXE options from primary DHCP)
+<span class="ps">[proxy]</span> <span class="dim">←</span> DHCPOFFER-PXE: next-server=bootimus, filename=ipxe.efi
+<span class="ps">[tftp]</span>  <span class="dim">→</span> RRQ ipxe.efi  <span class="ok">(198 KiB, 14 ms)</span>
+
+<span class="comment"># iPXE loads, chains to HTTP menu</span>
+<span class="ps">[http]</span>  <span class="dim">→</span> GET /menu.ipxe  <span class="ok">200</span>  <span class="dim">2.1 KiB</span>
+<span class="ps">[menu]</span> <span class="dim">↳</span> 17 images · 3 groups · 6 tools
+<span class="ps">[menu]</span> <span class="dim">↳</span> user selected: <span class="kw">ubuntu-24.04-live-server</span>
+
+<span class="comment"># Kernel + initrd stream over HTTP</span>
+<span class="ps">[http]</span>  <span class="dim">→</span> GET /iso/ubuntu-24.04/vmlinuz  <span class="ok">200</span>  <span class="dim">14 MiB · 612 MB/s</span>
+<span class="ps">[http]</span>  <span class="dim">→</span> GET /iso/ubuntu-24.04/initrd   <span class="ok">200</span>  <span class="dim">76 MiB · 598 MB/s</span>
+<span class="ps">[boot]</span>  <span class="ok">handoff ok</span> · client booting<span class="cursor"></span></pre>
+        </Terminal>
+      </div>
+    </div>
+  </section>
+
+  <section id="open" class="section">
+    <div class="container">
+      <header class="section-head">
+        <span class="section-kicker text-magenta">{t('transparency.kicker')}</span>
+        <h2>{t('transparency.title')}</h2>
+        <p class="text-dim">{t('transparency.sub')}</p>
+      </header>
+
+      <div class="split">
+        <ul class="check-list">
+          {transparency.map((c) => (
+            <li><span class="check">✓</span><div><strong class="text-amber">{c.title}</strong><span class="text-dim"> · {c.desc}</span></div></li>
+          ))}
+        </ul>
+
+        <div class="split-term">
+          <Terminal title={t('transparency.termTitle')}>
+            <pre><span class="prompt">$</span> bootimus version --verbose
+<span class="kw">bootimus</span>      1.0.0
+<span class="dim">commit</span>       8e87824 (clean)
+<span class="dim">go</span>           1.23.4 linux/amd64
+<span class="dim">build</span>        static · reproducible
+<span class="dim">licence</span>      Apache-2.0
+
+<span class="dim">embedded</span>
+  ipxe        1.21.1+upstream  <span class="ok">GPL-2.0</span>
+  proprietary <span class="ok">0 blobs</span>
+  telemetry   <span class="ok">disabled (compile-time)</span>
+
+<span class="prompt">$</span> ldd ./bootimus
+<span class="ok">not a dynamic executable</span>
+
+<span class="prompt">$</span> sha256sum ./bootimus
+<span class="dim">7f3a9b0c…</span>  bootimus<span class="cursor"></span></pre>
+          </Terminal>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="bootloaders" class="section section-muted">
+    <div class="container">
+      <header class="section-head">
+        <span class="section-kicker text-amber">{t('bootloaders.kicker')}</span>
+        <h2>{t('bootloaders.title')}</h2>
+        <p class="text-dim">{t('bootloaders.sub')}</p>
+      </header>
+
+      <div class="loader-grid">
+        {loaders.map((l) => (
+          <article class="loader">
+            <h3>{l.title}</h3>
+            <p class="text-dim">{l.desc}</p>
+            <span class:list={["loader-tag", l.byo ? "text-cyan" : "text-faint"]}>{l.tag}</span>
+          </article>
+        ))}
+      </div>
+
+      <div class="loader-term">
+        <Terminal title={t('bootloaders.termTitle')}>
+          <pre><span class="prompt">$</span> tree /var/lib/bootimus/bootloaders
+data/bootloaders
+├── <span class="kw">ipxe-builtin/</span>          <span class="comment"># embedded — always available</span>
+│   ├── ipxe.efi
+│   ├── ipxe-arm64.efi
+│   └── undionly.kpxe
+├── <span class="kw">ipxe-secureboot/</span>       <span class="comment"># your custom set</span>
+│   ├── shimx64.efi             <span class="ok">(signed by Microsoft)</span>
+│   ├── grubx64.efi             <span class="ok">(signed by Microsoft)</span>
+│   └── ipxe.efi                <span class="ok">(signed by your CA)</span>
+└── <span class="kw">ipxe-themed/</span>
+    └── ipxe.efi                <span class="ok">(custom branding)</span>
+
+<span class="prompt">$</span> bootimus bootloaders use ipxe-secureboot
+<span class="ok">✓</span> active set: <span class="kw">ipxe-secureboot</span>
+<span class="ok">✓</span> falls back to <span class="dim">ipxe-builtin</span> for: <span class="dim">ipxe-arm64.efi, undionly.kpxe</span>
+
+<span class="comment"># PXE boot trace, Secure Boot client</span>
+<span class="ps">[tftp]</span> RRQ shimx64.efi      <span class="ok">→ ipxe-secureboot/shimx64.efi</span>
+<span class="ps">[tftp]</span> RRQ ipxe-arm64.efi   <span class="ok">→ ipxe-builtin/ipxe-arm64.efi (fallback)</span><span class="cursor"></span></pre>
+        </Terminal>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container cta">
+      <h2>{t('cta.title')}</h2>
+      <p class="text-dim">{t('cta.sub')}</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/downloads">{t('cta.primary')}</a>
+        <a class="btn" href="/docs">{t('cta.secondary')}</a>
+      </div>
+    </div>
+  </section>
+
+  <Footer />
+</Base>
+
+<style>
+  .hero {
+    padding: clamp(3rem, 8vw, 6rem) 0 clamp(3rem, 6vw, 5rem);
+    position: relative;
+  }
+  .hero-inner {
+    position: relative;
+  }
+  .hero-badges {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+  }
+  .hero-title {
+    margin: 0 0 1.25rem;
+    max-width: 14ch;
+  }
+  .hero-sub {
+    font-size: clamp(1rem, 1.5vw, 1.15rem);
+    max-width: 58ch;
+    margin: 0 0 2rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .hero-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 3.5rem;
+  }
+  .hero-term {
+    margin-bottom: 3.5rem;
+    max-width: 820px;
+  }
+  .hero-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1.5rem;
+    padding-top: 2rem;
+    border-top: 1px dashed var(--border-bright);
+  }
+  .stat-n {
+    font-family: var(--font-display);
+    font-size: 3rem;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem;
+  }
+  .stat-l {
+    font-size: 0.8rem;
+    color: var(--text-faint);
+    letter-spacing: 0.03em;
+  }
+
+  .section {
+    padding: clamp(3rem, 8vw, 6rem) 0;
+  }
+  .section-muted {
+    background:
+      linear-gradient(to bottom, transparent, rgba(255, 176, 0, 0.015), transparent);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .section-head {
+    max-width: 60ch;
+    margin-bottom: 3rem;
+  }
+  .section-kicker {
+    display: inline-block;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.75rem;
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .feature {
+    padding: 1.75rem;
+    background: var(--bg);
+    transition: background 200ms ease;
+  }
+  .feature:hover { background: var(--bg-elev); }
+  .feature-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-bottom: 0.6rem;
+  }
+  .feature-tag {
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    letter-spacing: 0.05em;
+  }
+  .feature h3 { margin: 0; font-size: 1rem; }
+  .feature p {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+
+  .boot-term { max-width: 920px; }
+
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2.5rem;
+    align-items: start;
+  }
+  @media (max-width: 880px) {
+    .split { grid-template-columns: 1fr; }
+  }
+  .check-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 1rem; }
+  .check-list li { display: flex; gap: 0.7rem; align-items: flex-start; font-size: 0.88rem; line-height: 1.55; }
+  .check { color: var(--green); font-weight: 700; flex-shrink: 0; padding-top: 1px; }
+  .split-term { width: 100%; }
+
+  .loader-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .loader {
+    padding: 1.25rem 1.4rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+  }
+  .loader h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+  .loader p { margin: 0 0 1rem; font-size: 0.85rem; line-height: 1.55; flex: 1; }
+  .loader-tag { font-size: 0.7rem; letter-spacing: 0.05em; text-transform: lowercase; }
+
+  .loader-term { max-width: 920px; }
+
+  .cta { text-align: center; padding: 3rem 0; }
+  .cta h2 { margin-bottom: 0.5rem; }
+  .cta .hero-actions { justify-content: center; margin-top: 2rem; }
+</style>

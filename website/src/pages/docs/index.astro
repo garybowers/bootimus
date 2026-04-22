@@ -1,0 +1,104 @@
+---
+import Base from '../../layouts/Base.astro';
+import Nav from '../../components/Nav.astro';
+import Footer from '../../components/Footer.astro';
+import DocsSidebar from '../../components/DocsSidebar.astro';
+import { docsNav } from '../../lib/docs-nav';
+import { docUrl } from '../../lib/docs';
+import { useTranslations, getLocaleFromUrl } from '../../i18n';
+
+const lang = getLocaleFromUrl(Astro.url);
+const { t } = useTranslations(lang);
+---
+<Base title={t('meta.docsTitle')} description={t('meta.docsDescription')}>
+  <Nav />
+
+  <div class="docs-shell container">
+    <DocsSidebar locale={lang} />
+
+    <article class="docs-article">
+      <header class="docs-head">
+        <span class="section-kicker text-amber">// {t('docs.title').toLowerCase()}</span>
+        <h1>{t('docs.title')}</h1>
+        <p class="docs-lede text-dim">{t('docs.subtitle')}</p>
+      </header>
+
+      <div class="docs-index">
+        {docsNav.map((section) => (
+          <section class="dx-section">
+            <h2 class="dx-section-title">{section.title}</h2>
+            <div class="dx-grid">
+              {section.items.map((item) => (
+                <a class="dx-card" href={docUrl(lang, item.slug)}>
+                  <h3>{item.title}</h3>
+                  {item.description && <p class="text-dim">{item.description}</p>}
+                  <span class="dx-go">read →</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </article>
+  </div>
+
+  <Footer />
+</Base>
+
+<style>
+  .docs-shell {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 2rem;
+    align-items: start;
+    padding-top: 1rem;
+  }
+  .docs-article { min-width: 0; padding: 1.5rem 0 3rem; max-width: 960px; }
+  .docs-head {
+    margin-bottom: 3rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px dashed var(--border-bright);
+  }
+  .docs-head h1 { font-size: clamp(2rem, 4vw, 3rem); margin: 0.5rem 0 0.8rem; }
+  .docs-lede { font-size: 1.05rem; max-width: 60ch; margin: 0; }
+  .section-kicker { display: inline-block; font-size: 0.8rem; letter-spacing: 0.08em; }
+
+  .docs-index { display: flex; flex-direction: column; gap: 2.5rem; }
+  .dx-section-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-faint);
+    margin: 0 0 1rem;
+    font-weight: 500;
+  }
+  .dx-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .dx-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1.1rem 1.2rem 1rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: all 180ms ease;
+    color: var(--text);
+  }
+  .dx-card:hover {
+    border-color: var(--amber);
+    transform: translateY(-2px);
+    background: var(--bg-term);
+  }
+  .dx-card h3 { margin: 0 0 0.4rem; font-size: 1rem; color: var(--text); }
+  .dx-card:hover h3 { color: var(--amber); }
+  .dx-card p { margin: 0 0 1rem; font-size: 0.85rem; line-height: 1.55; flex: 1; }
+  .dx-go { font-size: 0.78rem; color: var(--text-faint); align-self: flex-end; transition: color 160ms ease; }
+  .dx-card:hover .dx-go { color: var(--amber); }
+
+  @media (max-width: 960px) {
+    .docs-shell { grid-template-columns: 1fr; gap: 0; }
+  }
+</style>

@@ -1,0 +1,105 @@
+---
+import { docsNav } from '../lib/docs-nav';
+import { docUrl } from '../lib/docs';
+import { getLocaleFromUrl, defaultLocale, type Locale } from '../i18n';
+
+interface Props {
+  current?: string;
+  locale?: Locale;
+}
+
+const propsLocale = Astro.props.locale;
+const locale: Locale = propsLocale ?? getLocaleFromUrl(Astro.url);
+const { current } = Astro.props;
+---
+<aside class="ds">
+  <div class="ds-inner">
+    <a href={docUrl(locale)} class:list={["ds-home", !current && "ds-home-active"]}>
+      <span class="ds-home-mark">[</span>docs<span class="ds-home-mark">]</span>
+    </a>
+    {docsNav.map((section) => (
+      <nav class="ds-section" aria-label={section.title}>
+        <div class="ds-title">{section.title}</div>
+        <ul class="ds-list">
+          {section.items.map((item) => (
+            <li>
+              <a
+                href={docUrl(locale, item.slug)}
+                class:list={["ds-item", current === item.slug && "ds-item-active"]}
+                aria-current={current === item.slug ? 'page' : undefined}
+              >
+                {item.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    ))}
+  </div>
+</aside>
+
+<style>
+  .ds {
+    border-right: 1px solid var(--border);
+    padding: 1.5rem 1.25rem 1.5rem 0;
+    position: sticky;
+    top: 56px;
+    align-self: start;
+    height: calc(100vh - 56px);
+    overflow-y: auto;
+  }
+  .ds-inner { display: flex; flex-direction: column; gap: 1.6rem; }
+
+  .ds-home {
+    display: inline-block;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text);
+    letter-spacing: -0.01em;
+    margin-bottom: 0.25rem;
+  }
+  .ds-home-mark { color: var(--amber); font-weight: 500; }
+  .ds-home:hover { color: var(--amber); }
+  .ds-home-active { color: var(--amber); }
+
+  .ds-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    margin-bottom: 0.6rem;
+    padding-left: 0.5rem;
+  }
+  .ds-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+  .ds-item {
+    display: block;
+    padding: 0.4rem 0.7rem;
+    border-left: 2px solid transparent;
+    font-size: 0.85rem;
+    color: var(--text);
+    opacity: 0.78;
+    border-radius: 0;
+    transition: all 140ms ease;
+  }
+  .ds-item:hover {
+    color: var(--amber);
+    opacity: 1;
+    border-left-color: var(--border-bright);
+  }
+  .ds-item-active {
+    color: var(--amber);
+    opacity: 1;
+    border-left-color: var(--amber);
+    background: linear-gradient(to right, rgba(255, 176, 0, 0.05), transparent 60%);
+  }
+
+  @media (max-width: 960px) {
+    .ds {
+      position: static;
+      height: auto;
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 0;
+    }
+  }
+</style>

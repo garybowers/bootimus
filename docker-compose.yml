@@ -36,6 +36,9 @@ services:
       BOOTIMUS_ADMIN_PORT: 8081
       # Uncomment to set a static server address (Recommended)
       # BOOTIMUS_SERVER_ADDR: 192.168.1.100
+      # Uncomment to enable Windows unattended install (SMB share + boot.wim patch).
+      # Also uncomment the 445 port mapping below.
+      # BOOTIMUS_WINDOWS_SMB_ENABLED: "true"
     networks:
       bootimus_net:
         ipv4_address: 172.20.0.3
@@ -46,6 +49,9 @@ services:
       - "69:69/udp"
       - "8080:8080/tcp"
       - "8081:8081/tcp"
+      # Uncomment together with BOOTIMUS_WINDOWS_SMB_ENABLED above.
+      # Windows clients ignore non-445 SMB ports, so this must be 445.
+      # - "445:445/tcp"
     volumes:
       - ./data:/data
     cap_add:

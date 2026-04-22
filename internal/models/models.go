@@ -208,6 +208,7 @@ type Image struct {
 	AutoInstallEnabled    bool   `gorm:"default:false" json:"auto_install_enabled"`
 	AutoInstallScriptType string `json:"auto_install_script_type,omitempty"`
 	InstallWimPath        string `json:"install_wim_path,omitempty"`
+	SMBInstallEnabled     bool   `gorm:"default:false" json:"smb_install_enabled"`
 }
 
 type BootLog struct {

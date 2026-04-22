@@ -1,0 +1,178 @@
+---
+import Base from '../../../layouts/Base.astro';
+import Nav from '../../../components/Nav.astro';
+import Footer from '../../../components/Footer.astro';
+import DocsSidebar from '../../../components/DocsSidebar.astro';
+import { docsNav } from '../../../lib/docs-nav';
+import { docUrl } from '../../../lib/docs';
+import { useTranslations, locales, defaultLocale, type Locale } from '../../../i18n';
+
+export const prerender = false;
+
+const lang = Astro.params.lang as Locale;
+if (!lang || !locales.includes(lang) || lang === defaultLocale) {
+  return new Response('Not found', { status: 404 });
+}
+
+const { t } = useTranslations(lang);
+---
+<Base title={t('meta.docsTitle')} description={t('meta.docsDescription')}>
+  <Nav />
+
+  <div class="docs-shell container">
+    <DocsSidebar locale={lang} />
+
+    <article class="docs-article">
+      <div class="fb-banner" role="note">
+        <span class="fb-dot" aria-hidden="true"></span>
+        <div class="fb-body">
+          <div class="fb-title">{t('docs.fallbackBanner')}</div>
+          <a class="fb-cta" href={`https://github.com/garybowers/bootimus/tree/main/docs/${lang}`} target="_blank" rel="noopener">
+            {t('docs.translateCta')}
+          </a>
+        </div>
+        <code class="fb-tag">en → {lang}</code>
+      </div>
+
+      <header class="docs-head">
+        <span class="section-kicker text-amber">// {t('docs.title').toLowerCase()}</span>
+        <h1>{t('docs.title')}</h1>
+        <p class="docs-lede text-dim">{t('docs.subtitle')}</p>
+      </header>
+
+      <div class="docs-index">
+        {docsNav.map((section) => (
+          <section class="dx-section">
+            <h2 class="dx-section-title">{section.title}</h2>
+            <div class="dx-grid">
+              {section.items.map((item) => (
+                <a class="dx-card" href={docUrl(lang, item.slug)}>
+                  <div class="dx-card-head">
+                    <h3>{item.title}</h3>
+                    <span class="dx-pending">{t('docs.pending')}</span>
+                  </div>
+                  {item.description && <p class="text-dim">{item.description}</p>}
+                  <span class="dx-go">read →</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </article>
+  </div>
+
+  <Footer />
+</Base>
+
+<style>
+  .docs-shell {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 2rem;
+    align-items: start;
+    padding-top: 1rem;
+  }
+  .docs-article { min-width: 0; padding: 1.5rem 0 3rem; max-width: 960px; }
+
+  .fb-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 1rem;
+    margin-bottom: 2rem;
+    background: linear-gradient(to right, rgba(255, 176, 0, 0.08), transparent);
+    border: 1px solid rgba(255, 176, 0, 0.25);
+    border-radius: 4px;
+    font-size: 0.82rem;
+  }
+  .fb-dot {
+    width: 7px; height: 7px;
+    background: var(--amber);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--amber);
+    flex-shrink: 0;
+    animation: pulse-fb 2.2s ease-in-out infinite;
+  }
+  .fb-body { flex: 1; display: flex; flex-wrap: wrap; gap: 0.25rem 0.8rem; align-items: baseline; }
+  .fb-title { color: var(--text); }
+  .fb-cta { color: var(--amber); font-size: 0.78rem; }
+  .fb-tag {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    padding: 0.15rem 0.5rem;
+    border-radius: 100px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  @keyframes pulse-fb {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+
+  .docs-head {
+    margin-bottom: 3rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px dashed var(--border-bright);
+  }
+  .docs-head h1 { font-size: clamp(2rem, 4vw, 3rem); margin: 0.5rem 0 0.8rem; }
+  .docs-lede { font-size: 1.05rem; max-width: 60ch; margin: 0; }
+  .section-kicker { display: inline-block; font-size: 0.8rem; letter-spacing: 0.08em; }
+
+  .docs-index { display: flex; flex-direction: column; gap: 2.5rem; }
+  .dx-section-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-faint);
+    margin: 0 0 1rem;
+    font-weight: 500;
+  }
+  .dx-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .dx-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1.1rem 1.2rem 1rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: all 180ms ease;
+    color: var(--text);
+  }
+  .dx-card:hover {
+    border-color: var(--amber);
+    transform: translateY(-2px);
+    background: var(--bg-term);
+  }
+  .dx-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+  }
+  .dx-card h3 { margin: 0; font-size: 1rem; color: var(--text); }
+  .dx-card:hover h3 { color: var(--amber); }
+  .dx-pending {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    border: 1px dashed var(--border);
+    border-radius: 100px;
+    padding: 0.05rem 0.45rem;
+  }
+  .dx-card p { margin: 0 0 1rem; font-size: 0.85rem; line-height: 1.55; flex: 1; }
+  .dx-go { font-size: 0.78rem; color: var(--text-faint); align-self: flex-end; transition: color 160ms ease; }
+  .dx-card:hover .dx-go { color: var(--amber); }
+
+  @media (max-width: 960px) {
+    .docs-shell { grid-template-columns: 1fr; gap: 0; }
+  }
+</style>

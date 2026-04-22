@@ -30,12 +30,12 @@ COPY --from=builder /out/ /
 FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wimtools ca-certificates \
+    wimtools samba ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/bootimus /bootimus
 
-EXPOSE 69/udp 8080/tcp 8081/tcp 10809/tcp
+EXPOSE 69/udp 8080/tcp 8081/tcp 10809/tcp 445/tcp
 
 USER root
 

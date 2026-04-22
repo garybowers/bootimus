@@ -43,13 +43,18 @@ type BootFiles struct {
 }
 
 type Extractor struct {
-	dataDir string
+	dataDir  string
+	progress *ProgressReporter
 }
 
 func New(dataDir string) (*Extractor, error) {
 	return &Extractor{
 		dataDir: dataDir,
 	}, nil
+}
+
+func (e *Extractor) SetProgress(p *ProgressReporter) {
+	e.progress = p
 }
 
 func (e *Extractor) Extract(isoPath string) (*BootFiles, error) {
@@ -814,19 +819,19 @@ func (e *Extractor) cacheBootFiles(files *BootFiles, img *iso9660.Image, isoPath
 
 	if files.Distro == "windows" {
 		bcdDest := filepath.Join(bootFilesDir, "bcd")
-		if err := extractFile(img, files.Kernel, bcdDest); err != nil {
+		if err := e.extractNamedFile(img, files.Kernel, bcdDest); err != nil {
 			return fmt.Errorf("failed to extract BCD: %w", err)
 		}
 		files.Kernel = bcdDest
 
 		bootSdiDest := filepath.Join(bootFilesDir, "boot.sdi")
-		if err := extractFile(img, files.Initrd, bootSdiDest); err != nil {
+		if err := e.extractNamedFile(img, files.Initrd, bootSdiDest); err != nil {
 			return fmt.Errorf("failed to extract boot.sdi: %w", err)
 		}
 		files.Initrd = bootSdiDest
 
 		bootWimDest := filepath.Join(bootFilesDir, "boot.wim")
-		if err := extractFile(img, files.BootParams, bootWimDest); err != nil {
+		if err := e.extractNamedFile(img, files.BootParams, bootWimDest); err != nil {
 			return fmt.Errorf("failed to extract boot.wim: %w", err)
 		}
 		files.BootParams = bootWimDest
@@ -836,13 +841,13 @@ func (e *Extractor) cacheBootFiles(files *BootFiles, img *iso9660.Image, isoPath
 	}
 
 	kernelDest := filepath.Join(bootFilesDir, "vmlinuz")
-	if err := extractFile(img, files.Kernel, kernelDest); err != nil {
+	if err := e.extractNamedFile(img, files.Kernel, kernelDest); err != nil {
 		return fmt.Errorf("failed to extract kernel: %w", err)
 	}
 	files.Kernel = kernelDest
 
 	initrdDest := filepath.Join(bootFilesDir, "initrd")
-	if err := extractFile(img, files.Initrd, initrdDest); err != nil {
+	if err := e.extractNamedFile(img, files.Initrd, initrdDest); err != nil {
 		return fmt.Errorf("failed to extract initrd: %w", err)
 	}
 	files.Initrd = initrdDest
@@ -922,10 +927,12 @@ func (e *Extractor) extractFile(file *iso9660.File, destPath, isoPath string) er
 	}
 	defer outFile.Close()
 
-	if _, err := io.Copy(outFile, reader); err != nil {
+	n, err := io.Copy(outFile, reader)
+	if err != nil {
 		os.Remove(destPath)
 		return fmt.Errorf("failed to copy file contents: %w", err)
 	}
+	e.progress.AddBytes(n)
 
 	return nil
 }
@@ -1101,7 +1108,7 @@ func findFile(img *iso9660.Image, path string) (*iso9660.File, error) {
 	return current, nil
 }
 
-func extractFile(img *iso9660.Image, isoPath, destPath string) error {
+func (e *Extractor) extractNamedFile(img *iso9660.Image, isoPath, destPath string) error {
 	file, err := findFile(img, isoPath)
 	if err != nil {
 		return fmt.Errorf("file not found in ISO: %s: %w", isoPath, err)
@@ -1119,8 +1126,12 @@ func extractFile(img *iso9660.Image, isoPath, destPath string) error {
 	}
 	defer dest.Close()
 
-	_, err = io.Copy(dest, reader)
-	return err
+	n, err := io.Copy(dest, reader)
+	if err != nil {
+		return err
+	}
+	e.progress.AddBytes(n)
+	return nil
 }
 
 func (e *Extractor) extractViaUDF(isoPath string) (*BootFiles, error) {
@@ -1266,7 +1277,7 @@ func fileExistsUDF(reader *udf.Reader, path string) bool {
 	return err == nil
 }
 
-func extractFileUDF(reader *udf.Reader, isoPath, destPath string) error {
+func (e *Extractor) extractNamedFileUDF(reader *udf.Reader, isoPath, destPath string) error {
 	file, err := findFileUDF(reader, isoPath)
 	if err != nil {
 		return fmt.Errorf("file not found in UDF: %s: %w", isoPath, err)
@@ -1287,8 +1298,12 @@ func extractFileUDF(reader *udf.Reader, isoPath, destPath string) error {
 	}
 	defer dest.Close()
 
-	_, err = io.Copy(dest, fileReader)
-	return err
+	n, err := io.Copy(dest, fileReader)
+	if err != nil {
+		return err
+	}
+	e.progress.AddBytes(n)
+	return nil
 }
 
 func (e *Extractor) extractUDFContents(reader *udf.Reader, destDir string) error {
@@ -1337,10 +1352,12 @@ func (e *Extractor) extractUDFFile(reader *udf.Reader, file *udf.File, destDir, 
 		}
 		defer outFile.Close()
 
-		if _, err := io.Copy(outFile, fileReader); err != nil {
+		n, err := io.Copy(outFile, fileReader)
+		if err != nil {
 			os.Remove(destPath)
 			return err
 		}
+		e.progress.AddBytes(n)
 	}
 
 	return nil

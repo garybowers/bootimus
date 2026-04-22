@@ -1,0 +1,211 @@
+---
+import Base from './Base.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+import DocsSidebar from '../components/DocsSidebar.astro';
+import DocsToc from '../components/DocsToc.astro';
+import { findNeighbours } from '../lib/docs-nav';
+import { docUrl } from '../lib/docs';
+import { useTranslations, getLocaleFromUrl, type Locale } from '../i18n';
+
+interface Heading { depth: number; slug: string; text: string; }
+
+interface Props {
+  title: string;
+  description?: string;
+  slug?: string;
+  headings?: Heading[];
+  editPath?: string;
+  locale?: Locale;
+  isFallback?: boolean;
+  servedLocale?: Locale;
+}
+
+const {
+  title,
+  description,
+  slug,
+  headings = [],
+  editPath,
+  locale: propsLocale,
+  isFallback = false,
+  servedLocale,
+} = Astro.props;
+
+const locale: Locale = propsLocale ?? getLocaleFromUrl(Astro.url);
+const { t } = useTranslations(locale);
+const { prev, next } = slug ? findNeighbours(slug) : { prev: undefined, next: undefined };
+---
+<Base title={`${title} — Bootimus docs`} description={description}>
+  <Nav />
+
+  <div class="docs-shell container">
+    <DocsSidebar current={slug} locale={locale} />
+
+    <article class="docs-article" data-pagefind-body>
+      {isFallback && (
+        <div class="fb-banner" role="note">
+          <span class="fb-dot" aria-hidden="true"></span>
+          <div class="fb-body">
+            <div class="fb-title">{t('docs.fallbackBanner')}</div>
+            <a class="fb-cta" href={`https://github.com/garybowers/bootimus/tree/main/docs/${locale}`} target="_blank" rel="noopener">
+              {t('docs.translateCta')}
+            </a>
+          </div>
+          <code class="fb-tag">{servedLocale ?? 'en'} → {locale}</code>
+        </div>
+      )}
+
+      <header class="docs-head">
+        <div class="docs-crumbs">
+          <a href={docUrl(locale)} class="text-faint">docs</a>
+          <span class="text-faint">/</span>
+          <span>{title}</span>
+        </div>
+        <h1>{title}</h1>
+        {description && <p class="docs-lede text-dim">{description}</p>}
+        {editPath && (
+          <a class="docs-edit" href={`https://github.com/garybowers/bootimus/blob/main/${editPath}`} target="_blank" rel="noopener">
+            {t('docs.editOnGithub')} ↗
+          </a>
+        )}
+      </header>
+
+      <div class="docs-prose">
+        <slot />
+      </div>
+
+      {(prev || next) && (
+        <nav class="docs-pager" aria-label="Pagination">
+          {prev ? (
+            <a class="pager pager-prev" href={docUrl(locale, prev.slug)}>
+              <span class="pager-label">← {t('docs.prev')}</span>
+              <span class="pager-title">{prev.title}</span>
+            </a>
+          ) : <span />}
+          {next ? (
+            <a class="pager pager-next" href={docUrl(locale, next.slug)}>
+              <span class="pager-label">{t('docs.next')} →</span>
+              <span class="pager-title">{next.title}</span>
+            </a>
+          ) : <span />}
+        </nav>
+      )}
+    </article>
+
+    <DocsToc headings={headings} />
+  </div>
+
+  <Footer />
+</Base>
+
+<style>
+  .docs-shell {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr) 220px;
+    gap: 2rem;
+    align-items: start;
+    padding-top: 1rem;
+  }
+  .docs-article {
+    min-width: 0;
+    padding: 1.5rem 0 3rem;
+  }
+
+  .fb-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 1rem;
+    margin-bottom: 2rem;
+    background: linear-gradient(to right, rgba(255, 176, 0, 0.08), transparent);
+    border: 1px solid rgba(255, 176, 0, 0.25);
+    border-radius: 4px;
+    font-size: 0.82rem;
+  }
+  .fb-dot {
+    width: 7px;
+    height: 7px;
+    background: var(--amber);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--amber);
+    flex-shrink: 0;
+    animation: pulse-fb 2.2s ease-in-out infinite;
+  }
+  .fb-body { flex: 1; display: flex; flex-wrap: wrap; gap: 0.25rem 0.8rem; align-items: baseline; }
+  .fb-title { color: var(--text); }
+  .fb-cta { color: var(--amber); font-size: 0.78rem; }
+  .fb-cta:hover { color: var(--amber-bright); }
+  .fb-tag {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    padding: 0.15rem 0.5rem;
+    border-radius: 100px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  @keyframes pulse-fb {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+
+  .docs-head {
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px dashed var(--border-bright);
+  }
+  .docs-crumbs {
+    display: flex;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    margin-bottom: 0.8rem;
+    letter-spacing: 0.02em;
+  }
+  .docs-crumbs a:hover { color: var(--amber); }
+  .docs-head h1 { font-size: clamp(1.7rem, 3vw, 2.4rem); margin: 0 0 0.6rem; }
+  .docs-lede { font-size: 1rem; max-width: 60ch; margin: 0; }
+  .docs-edit {
+    display: inline-block;
+    margin-top: 1rem;
+    font-size: 0.78rem;
+    color: var(--text-faint);
+    border: 1px dashed var(--border-bright);
+    border-radius: 100px;
+    padding: 0.2rem 0.6rem;
+  }
+  .docs-edit:hover { color: var(--cyan); border-color: var(--cyan); }
+
+  .docs-pager {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px dashed var(--border-bright);
+  }
+  .pager {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem 1.2rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: all 160ms ease;
+  }
+  .pager-next { text-align: right; align-items: flex-end; }
+  .pager:hover { border-color: var(--amber); transform: translateY(-1px); }
+  .pager-label { font-size: 0.72rem; color: var(--text-faint); letter-spacing: 0.05em; text-transform: uppercase; }
+  .pager-title { font-size: 0.95rem; color: var(--text); font-weight: 500; }
+  .pager:hover .pager-title { color: var(--amber); }
+
+  @media (max-width: 1100px) {
+    .docs-shell { grid-template-columns: 220px minmax(0, 1fr); }
+  }
+  @media (max-width: 960px) {
+    .docs-shell { grid-template-columns: 1fr; gap: 0; }
+  }
+</style>

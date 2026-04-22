@@ -25,9 +25,11 @@ import (
 	"bootimus/internal/models"
 	"bootimus/internal/profiles"
 	"bootimus/internal/redfish"
+	"bootimus/internal/smb"
 	"bootimus/internal/storage"
 	"bootimus/internal/sysstats"
 	"bootimus/internal/tools"
+	"bootimus/internal/wim"
 	"bootimus/internal/wol"
 )
 
@@ -50,6 +52,12 @@ type Handler struct {
 	profileManager     *profiles.Manager
 	proxyDHCPEnabled   bool
 	httpPort           int
+	serverAddr         string
+	smbPort            int
+	smbManager         *smb.Manager
+	smbRequested       bool
+	extractionMu       sync.RWMutex
+	extractionStates   map[string]*extractionState
 	// SchedulerReload is called after any CRUD change on ScheduledTask so
 	// the cron daemon picks up the new state without a server restart.
 	SchedulerReload func() error
@@ -57,7 +65,13 @@ type Handler struct {
 	SchedulerRunNow func(id uint) error
 }
 
-func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir string, version string, blSelector BootloaderSelector, tm *tools.Manager, wolBroadcastAddr string, pm *profiles.Manager, proxyDHCPEnabled bool, httpPort int) *Handler {
+type extractionState struct {
+	reporter *extractor.ProgressReporter
+	status   string
+	errMsg   string
+}
+
+func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir string, version string, blSelector BootloaderSelector, tm *tools.Manager, wolBroadcastAddr string, pm *profiles.Manager, proxyDHCPEnabled bool, httpPort int, serverAddr string, smbPort int, smbManager *smb.Manager, smbRequested bool) *Handler {
 	return &Handler{
 		storage:            store,
 		dataDir:            dataDir,
@@ -70,7 +84,125 @@ func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir st
 		wolBroadcastAddr:   wolBroadcastAddr,
 		proxyDHCPEnabled:   proxyDHCPEnabled,
 		httpPort:           httpPort,
+		serverAddr:         serverAddr,
+		smbPort:            smbPort,
+		smbManager:         smbManager,
+		smbRequested:       smbRequested,
+		extractionStates:   make(map[string]*extractionState),
 	}
+}
+
+// patchWindowsBootWim rewrites the WinPE startnet.cmd inside the extracted
+// ISO's boot.wim so that setup.exe auto-launches against an SMB share hosted
+// by bootimus. Returns true on success. A nil smbManager (feature disabled)
+// is a no-op returning false. Any failure is logged and returns false — the
+// image still boots into WinPE, the user just has to kick off setup manually.
+func (h *Handler) patchWindowsBootWim(isoFilename string) bool {
+	if h.smbManager == nil {
+		return false
+	}
+	if h.serverAddr == "" {
+		log.Printf("Windows SMB: skipping boot.wim patch - server address not configured")
+		return false
+	}
+	if !wim.IsAvailable() {
+		log.Printf("Windows SMB: skipping boot.wim patch - wimlib-imagex not available")
+		return false
+	}
+
+	isoBase := strings.TrimSuffix(isoFilename, filepath.Ext(isoFilename))
+	sharePath := filepath.Join(h.isoDir, isoBase, "iso")
+
+	bootWimPath := findExtractedBootWim(sharePath)
+	if bootWimPath == "" {
+		log.Printf("Windows SMB: skipping boot.wim patch - %s has no extracted sources/boot.wim", isoFilename)
+		return false
+	}
+
+	wimMgr, err := wim.NewManager()
+	if err != nil {
+		log.Printf("Windows SMB: skipping boot.wim patch - %v", err)
+		return false
+	}
+
+	shareName := smb.SanitizeShareName(isoBase)
+	if err := wimMgr.PatchStartnetCmd(bootWimPath, buildStartnetScript(h.serverAddr, shareName, h.smbPort)); err != nil {
+		log.Printf("Windows SMB: failed to patch boot.wim for %s: %v", isoFilename, err)
+		return false
+	}
+
+	h.smbManager.AddShare(shareName, sharePath)
+	if err := h.smbManager.Reload(); err != nil {
+		log.Printf("Windows SMB: failed to reload smbd after adding share %q: %v", shareName, err)
+	}
+	log.Printf("Windows SMB: boot.wim patched for %s (share: %s)", isoFilename, shareName)
+	return true
+}
+
+// findExtractedBootWim returns the path to sources/boot.wim (or the uppercase
+// variant) inside an extracted Windows ISO directory, or "" if neither exists.
+func findExtractedBootWim(extractedISODir string) string {
+	for _, rel := range []string{"sources/boot.wim", "SOURCES/BOOT.WIM"} {
+		p := filepath.Join(extractedISODir, rel)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+func buildStartnetScript(serverAddr, shareName string, smbPort int) string {
+	if smbPort == 0 {
+		smbPort = 445
+	}
+	return fmt.Sprintf(`@echo off
+wpeinit
+echo Waiting for network...
+set /a TRIES=0
+:waitnet
+ping -n 1 -w 1000 %s >nul 2>&1
+if not errorlevel 1 goto netready
+set /a TRIES+=1
+if %%TRIES%% geq 30 goto netfail
+timeout /t 1 /nobreak >nul
+goto waitnet
+:netfail
+echo ERROR: Could not reach %s after 30 seconds.
+echo Dropping to shell. Try: ipconfig, ping %s
+echo Type 'exit' to reboot.
+cmd.exe
+exit /b 1
+:netready
+
+echo Connecting to bootimus installation source...
+set /a TRIES=0
+:mapshare
+net use Z: \\%s\%s /persistent:no >nul 2>&1
+if not errorlevel 1 goto mapped
+set /a TRIES+=1
+if %%TRIES%% geq 10 goto mapfail
+timeout /t 2 /nobreak >nul
+goto mapshare
+:mapfail
+echo.
+echo ERROR: Failed to connect to \\%s\%s (SMB port %d)
+echo Dropping to shell for debugging. Try: net use Z: \\%s\%s
+echo Type 'exit' to reboot.
+cmd.exe
+exit /b 1
+:mapped
+
+if not exist Z:\setup.exe (
+	echo.
+	echo ERROR: Z:\setup.exe not found on the share.
+	dir Z:\
+	echo Type 'exit' to reboot.
+	cmd.exe
+	exit /b 1
+)
+echo Starting Windows Setup...
+Z:\setup.exe
+`, serverAddr, serverAddr, serverAddr, serverAddr, shareName, serverAddr, shareName, smbPort, serverAddr, shareName)
 }
 
 func isRunningInDocker() bool {
@@ -672,6 +804,17 @@ func (h *Handler) DeleteImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.smbManager != nil {
+		isoBase := strings.TrimSuffix(filename, filepath.Ext(filename))
+		shareName := smb.SanitizeShareName(isoBase)
+		if h.smbManager.HasShare(shareName) {
+			h.smbManager.RemoveShare(shareName)
+			if err := h.smbManager.Reload(); err != nil {
+				log.Printf("Windows SMB: failed to reload after removing share %q: %v", shareName, err)
+			}
+		}
+	}
+
 	log.Printf("Admin: Image deleted - %s", filename)
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Image deleted"})
 }
@@ -885,8 +1028,35 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	isoPath := filepath.Join(h.isoDir, filename)
+
+	reporter := extractor.NewProgressReporter()
+	reporter.SetStage("Scanning ISO...")
+	if info, statErr := os.Stat(isoPath); statErr == nil {
+		reporter.SetTotalBytes(info.Size())
+	}
+	ext.SetProgress(reporter)
+
+	state := &extractionState{reporter: reporter, status: "running"}
+	h.extractionMu.Lock()
+	h.extractionStates[filename] = state
+	h.extractionMu.Unlock()
+	defer func() {
+		go func() {
+			time.Sleep(5 * time.Second)
+			h.extractionMu.Lock()
+			delete(h.extractionStates, filename)
+			h.extractionMu.Unlock()
+		}()
+	}()
+
+	reporter.SetStage("Extracting boot files...")
 	bootFiles, err := ext.Extract(isoPath)
 	if err != nil {
+		h.extractionMu.Lock()
+		state.status = "error"
+		state.errMsg = err.Error()
+		h.extractionMu.Unlock()
+
 		image.ExtractionError = err.Error()
 		h.storage.UpdateImage(filename, image)
 
@@ -896,6 +1066,7 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	reporter.SetStage("Saving metadata...")
 
 	if err := ext.SaveMetadata(filename, bootFiles); err != nil {
 		log.Printf("Failed to save extraction metadata: %v", err)
@@ -932,6 +1103,10 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	image.NetbootAvailable = false
 	image.InstallWimPath = bootFiles.InstallWim
 
+	if bootFiles.Distro == "windows" {
+		image.SMBInstallEnabled = h.patchWindowsBootWim(filename)
+	}
+
 	log.Printf("Setting boot_method to 'kernel' for image ID=%d, filename=%s", image.ID, image.Filename)
 
 	if err := h.storage.UpdateImage(filename, image); err != nil {
@@ -942,11 +1117,89 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Admin: Image extraction completed - %s (distro: %s, kernel: %s, initrd: %s)",
 		filename, bootFiles.Distro, bootFiles.Kernel, bootFiles.Initrd)
 
+	reporter.SetStage("Complete")
+	h.extractionMu.Lock()
+	state.status = "done"
+	h.extractionMu.Unlock()
+
 	h.sendJSON(w, http.StatusOK, Response{
 		Success: true,
 		Message: fmt.Sprintf("Successfully extracted %s boot files", bootFiles.Distro),
 		Data:    image,
 	})
+}
+
+func (h *Handler) ExtractProgress(w http.ResponseWriter, r *http.Request) {
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing filename parameter"})
+		return
+	}
+
+	h.extractionMu.RLock()
+	state, ok := h.extractionStates[filename]
+	h.extractionMu.RUnlock()
+
+	if !ok {
+		h.sendJSON(w, http.StatusOK, Response{Success: true, Data: map[string]any{"status": "idle"}})
+		return
+	}
+
+	snap := state.reporter.Snapshot()
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: map[string]any{
+		"status":  state.status,
+		"stage":   snap.Stage,
+		"percent": snap.Percent,
+		"error":   state.errMsg,
+	}})
+}
+
+// PatchImageSMB re-runs the boot.wim SMB patch for an already-extracted
+// Windows image. Used when the feature was enabled after extraction, or
+// when the first patch failed.
+func (h *Handler) PatchImageSMB(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing filename parameter"})
+		return
+	}
+
+	if h.smbManager == nil {
+		h.sendJSON(w, http.StatusPreconditionFailed, Response{Success: false, Error: "Windows SMB is not enabled on this server"})
+		return
+	}
+
+	image, err := h.storage.GetImage(filename)
+	if err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+		return
+	}
+	if image.Distro != "windows" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Not a Windows image"})
+		return
+	}
+	if !image.Extracted {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Image must be extracted first"})
+		return
+	}
+
+	ok := h.patchWindowsBootWim(filename)
+	image.SMBInstallEnabled = ok
+	if err := h.storage.UpdateImage(filename, image); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	if !ok {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Patch failed — see server logs"})
+		return
+	}
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "boot.wim patched for SMB auto-install", Data: image})
 }
 
 func (h *Handler) RedetectImage(w http.ResponseWriter, r *http.Request) {
@@ -1991,6 +2244,15 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 					return "Enabled (standalone — no external DHCP PXE config needed)"
 				}
 				return "Disabled (external DHCP must set next-server/bootfile)"
+			}(),
+			"windows_smb": func() string {
+				if !h.smbRequested {
+					return "Disabled"
+				}
+				if h.smbManager == nil {
+					return "Requested but unavailable (install samba and ensure smbd is in PATH)"
+				}
+				return fmt.Sprintf("Enabled (%d share(s) active, port %d)", h.smbManager.ShareCount(), h.smbManager.Port())
 			}(),
 			"http_port": fmt.Sprintf("%d", h.httpPort),
 		},
@@ -3496,14 +3758,18 @@ func (h *Handler) TestWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ExportBackup streams a tar.gz of the bootimus data directory, excluding
-// the large mostly-reproducible payloads (ISOs, downloaded tool binaries).
-// What's included: SQLite DB, bootloader-config.json, custom bootloader sets,
-// and any other top-level config/state files.
+// ExportBackup streams a tar.gz containing a portable database snapshot
+// (SQLite VACUUM INTO copy or Postgres pg_dump) plus the rest of the data
+// directory: bootloader-config.json, custom bootloader sets, settings, etc.
+// ISOs and downloaded tool binaries are excluded — large and reproducible.
 //
-// Restore is manual for now: stop bootimus, extract the tarball over the
-// data directory, start bootimus. A live restore would need to close the
-// DB atomically and we want to avoid that complexity on this pass.
+// The DB snapshot is generated first via the storage layer, then the walker
+// skips the live SQLite files (bootimus.db, -wal, -shm, -journal) so we
+// don't ship a half-written copy alongside the clean snapshot.
+//
+// Restore is manual: stop bootimus, restore the snapshot (drop the SQLite
+// file in place, or `psql < bootimus.sql` for Postgres), extract the rest
+// of the tarball over the data directory, start bootimus.
 func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -3512,6 +3778,16 @@ func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 	dataDir := filepath.Clean(h.dataDir)
 	if dataDir == "" {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Data directory not configured"})
+		return
+	}
+
+	// Take the DB snapshot into a buffer first so we can fail loudly *before*
+	// streaming any bytes to the client, while we can still send a JSON error.
+	var dbBuf bytes.Buffer
+	dbName, err := h.storage.Snapshot(&dbBuf)
+	if err != nil {
+		log.Printf("Backup snapshot failed: %v", err)
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Database snapshot failed: " + err.Error()})
 		return
 	}
 
@@ -3524,13 +3800,36 @@ func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 	tw := tar.NewWriter(gz)
 	defer tw.Close()
 
+	// Write the DB snapshot first.
+	dbHdr := &tar.Header{
+		Name:    dbName,
+		Mode:    0o600,
+		Size:    int64(dbBuf.Len()),
+		ModTime: time.Now(),
+	}
+	if err := tw.WriteHeader(dbHdr); err != nil {
+		log.Printf("Backup export failed writing db header: %v", err)
+		return
+	}
+	if _, err := io.Copy(tw, &dbBuf); err != nil {
+		log.Printf("Backup export failed writing db body: %v", err)
+		return
+	}
+
 	// Top-level directories we deliberately skip — reproducible and potentially huge.
 	skipDirs := map[string]bool{
 		"isos":  true,
 		"tools": true,
 	}
+	// Live SQLite files — replaced by the clean snapshot above.
+	skipFiles := map[string]bool{
+		"bootimus.db":         true,
+		"bootimus.db-wal":     true,
+		"bootimus.db-shm":     true,
+		"bootimus.db-journal": true,
+	}
 
-	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(dataDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -3550,6 +3849,9 @@ func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if !info.IsDir() && skipFiles[filepath.Base(rel)] {
 			return nil
 		}
 
@@ -3577,7 +3879,7 @@ func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 		// At this point we've already sent headers; nothing graceful to do.
 		return
 	}
-	log.Printf("Backup exported (%s)", ts)
+	log.Printf("Backup exported (%s) — db: %s (%d bytes)", ts, dbName, dbBuf.Len())
 }
 
 // ImportClientsCSV accepts a multipart CSV upload and creates or updates

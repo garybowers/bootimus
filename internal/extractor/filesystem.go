@@ -31,7 +31,7 @@ func (r *ISO9660Reader) FileExists(path string) bool {
 }
 
 func (r *ISO9660Reader) ExtractFile(isoPath, destPath string) error {
-	return extractFile(r.img, isoPath, destPath)
+	return r.extract.extractNamedFile(r.img, isoPath, destPath)
 }
 
 func (r *ISO9660Reader) ExtractAll(destDir string) error {
@@ -71,7 +71,7 @@ func (r *UDFReader) FileExists(path string) bool {
 }
 
 func (r *UDFReader) ExtractFile(isoPath, destPath string) error {
-	return extractFileUDF(r.reader, isoPath, destPath)
+	return r.extract.extractNamedFileUDF(r.reader, isoPath, destPath)
 }
 
 func (r *UDFReader) ExtractAll(destDir string) error {

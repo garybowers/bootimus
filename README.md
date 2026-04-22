@@ -287,6 +287,47 @@ docker run --cap-add NET_BIND_SERVICE ...
 ./bootimus serve --tftp-port 6969
 ```
 
+### Windows Unattended Install (`--windows-smb`)
+
+Off by default. When enabled, bootimus starts an isolated `smbd` child process that exposes each extracted Windows ISO as a read-only guest SMB share, and patches the WinPE `boot.wim` so `setup.exe` auto-mounts that share and runs — no manual `net use` from the WinPE prompt.
+
+Requirements:
+- `smbd` on PATH (`apt install samba` / `pacman -S samba`). The Docker image ships it. If missing, the feature self-disables with a clear log line — bootimus still starts.
+- `wimlib-imagex` (already required for Windows driver injection).
+- Port 445 reachable from clients. Windows' `net use` ignores non-445 SMB ports, so `--windows-smb-port` is for testing only.
+- If you're running standalone with `setcap` instead of root, grant `smbd` the same capability so the forked child can bind 445:
+
+  ```bash
+  sudo setcap 'cap_net_bind_service=+eip' /usr/sbin/smbd
+  ```
+
+  (Docker users skip this — the image runs as root.)
+
+Enable it:
+
+```bash
+# Standalone
+./bootimus serve --windows-smb
+
+# Config file (bootimus.yaml)
+windows_smb:
+  enabled: true
+  port: 445
+```
+
+Docker Compose — uncomment both the env var and the port mapping in [docker-compose.yml](docker-compose.yml):
+
+```yaml
+services:
+  bootimus:
+    environment:
+      BOOTIMUS_WINDOWS_SMB_ENABLED: "true"
+    ports:
+      - "445:445/tcp"
+```
+
+Per-image state is shown with an **SMB** chip in the image list. The image-properties panel gains a **Patch SMB** button for re-running the patch on an already-extracted image (useful after enabling the flag, or if the first patch failed).
+
 ### Client Not Booting / No PXE Offer
 
 Most common first-time PXE failures:

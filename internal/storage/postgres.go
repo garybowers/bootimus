@@ -2,8 +2,11 @@ package storage
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +27,8 @@ type Config struct {
 }
 
 type PostgresStore struct {
-	db *gorm.DB
+	db  *gorm.DB
+	cfg Config
 }
 
 func NewPostgresStore(cfg *Config) (*PostgresStore, error) {
@@ -40,7 +44,40 @@ func NewPostgresStore(cfg *Config) (*PostgresStore, error) {
 		return nil, fmt.Errorf("failed to connect to PostgreSQL: %w", err)
 	}
 
-	return &PostgresStore{db: db}, nil
+	return &PostgresStore{db: db, cfg: *cfg}, nil
+}
+
+// Snapshot streams a pg_dump of the database to w in plain SQL format.
+// Requires `pg_dump` to be on PATH (it's part of postgresql-client). The
+// password is passed via PGPASSWORD env var so it never hits argv / ps.
+func (s *PostgresStore) Snapshot(w io.Writer) (string, error) {
+	if _, err := exec.LookPath("pg_dump"); err != nil {
+		return "", fmt.Errorf("pg_dump not found on PATH: %w (install postgresql-client in your image)", err)
+	}
+
+	cmd := exec.Command("pg_dump",
+		"--host="+s.cfg.Host,
+		"--port="+strconv.Itoa(s.cfg.Port),
+		"--username="+s.cfg.User,
+		"--dbname="+s.cfg.DBName,
+		"--no-owner",
+		"--no-privileges",
+		"--clean",
+		"--if-exists",
+		"--format=plain",
+	)
+	cmd.Env = append(cmd.Environ(),
+		"PGPASSWORD="+s.cfg.Password,
+		"PGSSLMODE="+s.cfg.SSLMode,
+	)
+	cmd.Stdout = w
+	stderr := &strings.Builder{}
+	cmd.Stderr = stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("pg_dump failed: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
+	}
+	return "bootimus.sql", nil
 }
 
 func (s *PostgresStore) AutoMigrate() error {
