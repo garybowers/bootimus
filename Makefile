@@ -113,7 +113,7 @@ docker-down:
 
 PLATFORMS ?= linux/amd64,linux/arm64
 
-release: clean binaries appliance
+release: sync-profiles clean binaries appliance
 	@echo ""
 	@echo "Release v$(VERSION) artefacts built:"
 	@ls -lh bootimus-* appliance/build/bootimus-appliance-$(VERSION)-*.img 2>/dev/null

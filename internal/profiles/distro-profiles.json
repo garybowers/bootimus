@@ -1,5 +1,5 @@
 {
-  "version": "0.1.26",
+  "version": "0.1.55",
   "profiles": [
     {
       "id": "ubuntu",
@@ -252,10 +252,22 @@
       "auto_install_type": ""
     },
     {
+      "id": "windows7",
+      "display_name": "Windows 7",
+      "family": "windows",
+      "filename_patterns": ["windows_7", "win7", "windows7"],
+      "kernel_paths": ["/sources/boot.wim"],
+      "initrd_paths": [],
+      "squashfs_paths": [],
+      "default_boot_params": "rawbcd",
+      "auto_install_type": "autounattend",
+      "boot_method": "wimboot"
+    },
+    {
       "id": "windows",
       "display_name": "Windows",
       "family": "windows",
-      "filename_patterns": ["windows", "win10", "win11", "win7", "win8", "server2022", "server2019", "server2016"],
+      "filename_patterns": ["windows", "win10", "win11", "win8", "server2022", "server2019", "server2016"],
       "kernel_paths": ["/sources/boot.wim"],
       "initrd_paths": [],
       "squashfs_paths": [],
@@ -280,9 +292,9 @@
       "family": "arch",
       "filename_patterns": ["systemrescue", "sysresccd", "sysrescue"],
       "kernel_paths": ["/sysresccd/boot/x86_64/vmlinuz"],
-      "initrd_paths": ["/sysresccd/boot/intel_ucode.img"],
+      "initrd_paths": ["/sysresccd/boot/x86_64/sysresccd.img"],
       "squashfs_paths": ["/sysresccd/x86_64/airootfs.sfs"],
-      "default_boot_params": "archisobasedir=sysresccd archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ checksum ip=:::::eth0:dhcp",
+      "default_boot_params": "initrd=initrd archisobasedir=sysresccd archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ checksum ip=dhcp",
       "auto_install_type": ""
     }
   ]
