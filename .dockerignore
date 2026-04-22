@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.astro
+.git
+.DS_Store
+**/.env
+**/.env.*
+!**/.env.example
+**/npm-debug.log*
+**/yarn-error.log*
+
+# App-specific runtime artefacts (not needed inside any image)
+data/
+bootimus-linux-amd64
+bootimus-linux-arm64
+appliance/build/

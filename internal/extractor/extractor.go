@@ -113,7 +113,7 @@ func (e *Extractor) extractViaBsdtar(isoPath string) (*BootFiles, error) {
 
 	filename := filepath.Base(isoPath)
 	isoBase := relativeISOBase(e.dataDir, isoPath)
-	extractDir := filepath.Join(e.dataDir, "isos", isoBase, "iso")
+	extractDir := filepath.Join(e.dataDir, isoBase, "iso")
 
 	if err := os.MkdirAll(extractDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create extraction dir: %w", err)
@@ -138,7 +138,7 @@ func (e *Extractor) extractViaBsdtar(isoPath string) (*BootFiles, error) {
 		{"boot/x86_64/loader/linux", "boot/x86_64/loader/initrd", ""},
 	}
 
-	baseDir := filepath.Join(e.dataDir, "isos", isoBase)
+	baseDir := filepath.Join(e.dataDir, isoBase)
 	for _, bp := range bootPaths {
 		kPath := filepath.Join(extractDir, bp.kernel)
 		iPath := filepath.Join(extractDir, bp.initrd)

@@ -1,10 +1,19 @@
-.PHONY: help build run clean docker-build docker-up docker-down docker-push release binaries bootloaders sync-profiles appliance appliance-amd64 appliance-arm64 test-appliance
+.PHONY: help build run clean docker-build docker-up docker-down docker-push release binaries bootloaders sync-profiles appliance appliance-amd64 appliance-arm64 test-appliance build-website push-website
 
-VERSION    ?= $(shell cat VERSION)
+VERSION     ?= $(shell cat VERSION)
 DOCKER_USER ?= garybowers
-IMAGE      := $(DOCKER_USER)/bootimus
-LDFLAGS    := -w -s -X bootimus/internal/server.Version=$(VERSION)
-BINARY     := bootimus
+IMAGE       := $(DOCKER_USER)/bootimus
+LDFLAGS     := -w -s -X bootimus/internal/server.Version=$(VERSION)
+BINARY      := bootimus
+
+# --- Website (marketing site) publish to Google Artifact Registry ------------
+# Versioned independently of the app — defaults to short git SHA for rollback.
+# Override with:  WEBSITE_VERSION=v1.2 make push-website
+GCP_PROJECT      ?= b1-services-230040
+GCP_REGION       ?= europe-west2
+GCP_REPO         ?= bootimus
+WEBSITE_VERSION  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo latest)
+WEBSITE_IMAGE    := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT)/$(GCP_REPO)/website
 
 ## Help -----------------------------------------------------------------------
 
@@ -34,6 +43,10 @@ help:
 	@echo "  make binaries         - Build multi-arch binaries via docker buildx"
 	@echo "  make release          - Build binaries and show upload instructions"
 	@echo "  make docker-push      - Build and push multi-arch images to Docker Hub"
+	@echo ""
+	@echo "Website (marketing site -> Google Artifact Registry):"
+	@echo "  make build-website    - Build amd64 image from repo root into GCP AR"
+	@echo "  make push-website     - Build + push to $(GCP_REGION)-docker.pkg.dev"
 	@echo ""
 	@echo "Override version:  VERSION=1.0.0 make build"
 
@@ -130,3 +143,23 @@ docker-push:
 		-t $(IMAGE):$(VERSION) \
 		-t $(IMAGE):latest \
 		--push .
+
+## Website (marketing site) --------------------------------------------------
+
+# Build context MUST be the repo root so docs/ is included (see website/Dockerfile).
+# Cloud Run only needs amd64.
+
+build-website:
+	@echo "Building website image ($(WEBSITE_IMAGE):$(WEBSITE_VERSION))…"
+	docker build --platform=linux/amd64 \
+		-f website/Dockerfile \
+		-t $(WEBSITE_IMAGE):$(WEBSITE_VERSION) \
+		-t $(WEBSITE_IMAGE):latest .
+
+push-website: build-website
+	@echo "Pushing website image to $(GCP_REGION) Artifact Registry…"
+	docker push $(WEBSITE_IMAGE):$(WEBSITE_VERSION)
+	docker push $(WEBSITE_IMAGE):latest
+	@echo ""
+	@echo "Cloud Run image URL:"
+	@echo "  $(WEBSITE_IMAGE):latest"
