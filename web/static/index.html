@@ -384,8 +384,11 @@
             max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;
             box-shadow: var(--shadow-lg); border: none;
         }
-        .modal-header { margin-bottom: 20px; }
-        .modal-header h2 { color: var(--text-primary); font-size: 16px; font-weight: 600; }
+        .modal-header {
+            margin-bottom: 20px;
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        }
+        .modal-header h2 { color: var(--text-primary); font-size: 16px; font-weight: 600; margin: 0; }
 
         /* Forms */
         .form-group { margin-bottom: 16px; }
@@ -671,6 +674,7 @@
                     <span class="nav-group-label">Management</span>
                     <button class="nav-item" data-tab="images"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg> Images</button>
                     <button class="nav-item" data-tab="public-files"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Public Files</button>
+                    <button class="nav-item" data-tab="autoinstall"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Auto-Install</button>
                 </div>
                 <div class="nav-group">
                     <span class="nav-group-label">Boot</span>
@@ -979,6 +983,104 @@
             </div>
         </div>
 
+        <!-- Auto-Install Files Tab -->
+        <div id="autoinstall-tab" class="tab-content">
+            <div class="card">
+                <h2>Auto-Install Files</h2>
+                <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                    Install operating systems without manual prompts. Windows uses autounattend.xml; Ubuntu uses cloud-init; Red Hat and its family use kickstart; Debian uses preseed. Attach a file to an image for a default config, or override it per client for machine-specific setups.
+                </p>
+                <div class="toolbar">
+                    <button class="btn" type="button" onclick="showAutoInstallFileEditor(null)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        New File
+                    </button>
+                    <button class="btn" type="button" onclick="document.getElementById('autoinstall-upload-trigger').click()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Upload File
+                    </button>
+                    <input type="file" id="autoinstall-upload-trigger" style="display: none;" onchange="handleAutoInstallUpload(this)">
+                    <input type="search" class="toolbar-filter" placeholder="Filter files…" oninput="applyTableFilter('autoinstall', this.value, renderAutoInstallFilesTable)">
+                </div>
+                <div id="autoinstall-table" class="loading">
+                    <div class="spinner"></div>
+                    Loading files...
+                </div>
+            </div>
+        </div>
+
+        <!-- Auto-Install Upload Modal -->
+        <div id="autoinstall-upload-modal" class="modal">
+            <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-header"><h2>Upload Auto-Install File</h2></div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>File</label>
+                        <div id="autoinstall-upload-filename" style="color: var(--text-secondary); font-size: 13px;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Distro Profile</label>
+                        <select id="autoinstall-upload-distro" class="form-control">
+                            <option value="">Select a distro…</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Save as (optional)</label>
+                        <input type="text" id="autoinstall-upload-rename" class="form-control" placeholder="Leave empty to keep original filename">
+                    </div>
+                </div>
+                <div style="margin: 0 20px 20px; display: flex; gap: 8px; align-items: center;">
+                    <div style="flex: 1;"></div>
+                    <button class="btn" onclick="closeModal('autoinstall-upload-modal')">Cancel</button>
+                    <button class="btn btn-primary" onclick="confirmAutoInstallUpload()">Upload</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auto-Install File Editor Modal -->
+        <div id="autoinstall-editor-modal" class="modal slide-panel">
+            <div class="modal-content slide-panel-content" style="max-width: 900px;">
+                <div class="modal-header">
+                    <h2 id="autoinstall-editor-title">New Auto-Install File</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Distro Profile</label>
+                            <select id="autoinstall-editor-distro" class="form-control">
+                                <option value="">Select a distro…</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Filename</label>
+                            <input type="text" id="autoinstall-editor-filename" class="form-control" placeholder="e.g. kiosk.xml, server.cfg">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Content</label>
+                        <textarea id="autoinstall-editor-content" rows="22" style="font-family: monospace; width: 100%; padding: 8px; border: 1px solid var(--text-muted); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"></textarea>
+                        <small style="color: var(--text-secondary); display: block; margin-top: 6px;">
+                            Placeholders substituted per-client at serve time:
+                            <code>{{MAC}}</code>
+                            <code>{{CLIENT_NAME}}</code>
+                            <code>{{HOSTNAME}}</code>
+                            <code>{{IP}}</code>
+                            <code>{{SERVER_ADDR}}</code>
+                            <code>{{IMAGE_NAME}}</code>
+                            <code>{{IMAGE_FILENAME}}</code>
+                        </small>
+                    </div>
+                </div>
+                <div style="margin: 0 20px 20px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center;">
+                    <button id="autoinstall-editor-delete-btn" class="btn btn-danger" onclick="deleteAutoInstallFileFromEditor()" style="display: none;">Delete</button>
+                    <button id="autoinstall-editor-download-btn" class="btn" onclick="downloadAutoInstallFileFromEditor()" style="display: none;">Download</button>
+                    <div style="flex: 1;"></div>
+                    <button class="btn" onclick="closeModal('autoinstall-editor-modal')">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveAutoInstallFile()">Save</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Bootloaders Tab -->
         <div id="bootloaders-tab" class="tab-content">
             <div class="card">
@@ -1247,6 +1349,13 @@
                         <option value="">(none)</option>
                     </select>
                     <small style="color: var(--text-secondary);">Group overlay: inherits allowed images and participates in bulk actions.</small>
+                </div>
+                <div class="form-group">
+                    <label>Auto-Install File</label>
+                    <select name="auto_install_file" id="edit-client-autoinstall-select">
+                        <option value="">(inherit from group or image)</option>
+                    </select>
+                    <small style="color: var(--text-secondary);">Override the installation config for this machine specifically. Leave blank to inherit from the client group, or fall back to the image's default.</small>
                 </div>
 
                 <details style="margin-bottom: 12px;">
@@ -1805,10 +1914,10 @@
             </div>
             <input type="hidden" id="image-props-filename">
 
-            <div class="tabs" style="margin-bottom: 20px;">
-                <button class="tab active" data-tab="props-general" onclick="switchPropsTab('props-general')">General</button>
-                <button class="tab" data-tab="props-autoinstall" onclick="switchPropsTab('props-autoinstall')">Auto-Install</button>
-                <button class="tab" data-tab="props-files" onclick="switchPropsTab('props-files')">File Browser</button>
+            <div class="subtabs" style="margin: 0 0 20px;">
+                <button type="button" class="subtab active" data-props-tab="general" onclick="switchPropsTab('general')">Properties</button>
+                <button type="button" class="subtab" data-props-tab="autoinstall" onclick="switchPropsTab('autoinstall')">Auto-Install</button>
+                <button type="button" class="subtab" data-props-tab="files" onclick="switchPropsTab('files')">Files</button>
             </div>
 
             <div id="props-general-content" class="props-tab-content">
@@ -1874,60 +1983,24 @@
 
             <div id="props-autoinstall-content" class="props-tab-content" style="display: none;">
                 <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" id="image-props-autoinstall-enabled" style="margin: 0; cursor: pointer;">
-                        <span>Enable Auto-Install</span>
-                    </label>
-                    <small style="color: var(--text-secondary); display: block; margin-top: 4px;">
-                        When enabled, boot parameters will be automatically injected to use this script
-                    </small>
-                </div>
-
-                <div class="form-group">
-                    <label>Script Type</label>
-                    <select id="image-props-autoinstall-type" class="form-control">
-                        <option value="preseed">Preseed (Debian/Ubuntu)</option>
-                        <option value="kickstart">Kickstart (RHEL/CentOS/Fedora/Rocky)</option>
-                        <option value="autoinstall">Autoinstall (Ubuntu cloud-init)</option>
-                        <option value="autounattend">Autounattend (Windows)</option>
+                    <label>Default Auto-Install File</label>
+                    <select id="image-props-autoinstall-file" class="form-control">
+                        <option value="">(None — manual install)</option>
                     </select>
-                    <small style="color: var(--text-secondary);">Select the installation script format</small>
+                    <small style="color: var(--text-secondary);">Only files matching this image's distro are shown. Manage files in the <strong>Auto-Install</strong> section.</small>
                 </div>
-
-                <div class="form-group">
-                    <label>Auto-Install Script</label>
-                    <textarea id="image-props-autoinstall-script" rows="20" style="font-family: monospace; width: 100%; padding: 8px; border: 1px solid var(--text-muted); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);" placeholder="Enter your auto-install script content here..."></textarea>
-                    <small style="color: var(--text-secondary); display: block; margin-top: 4px;">
-                        Served at: http://server:port/autoinstall/<span id="image-props-autoinstall-url"></span>
-                    </small>
-                    <small style="color: var(--text-secondary); display: block; margin-top: 4px;">
-                        Placeholders (replaced per-client at serve time):
-                        <code>{{MAC}}</code>
-                        <code>{{HOSTNAME}}</code>
-                        <code>{{CLIENT_NAME}}</code>
-                        <code>{{IP}}</code>
-                        <code>{{SERVER_ADDR}}</code>
-                        <code>{{IMAGE_NAME}}</code>
-                        <code>{{IMAGE_FILENAME}}</code>
-                    </small>
-                </div>
+                <input type="hidden" id="image-props-autoinstall-enabled">
+                <input type="hidden" id="image-props-autoinstall-type">
+                <input type="hidden" id="image-props-autoinstall-script">
+                <input type="hidden" id="image-props-autoinstall-url">
             </div>
 
             <div id="props-files-content" class="props-tab-content" style="display: none;">
-                <!-- File Upload Section -->
-                <div style="background: var(--bg-tertiary); padding: 15px; border-radius: var(--radius-sm); margin-bottom: 15px;">
-                    <h3 style="margin: 0 0 10px 0; font-size: 16px; color: var(--accent);">Upload File</h3>
-                    <form id="props-file-upload-form" onsubmit="event.preventDefault(); uploadPropsImageFile();">
-                        <div class="form-group" style="margin: 0 0 10px 0;">
-                            <label style="font-size: 13px;">File</label>
-                            <input type="file" id="props-file-input" class="form-control" required style="padding: 6px;">
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-sm">Upload</button>
-                    </form>
-                    <small style="color: var(--text-secondary); display: block; margin-top: 8px;">Max file size: 500MB. Files will be uploaded to the autoinstall folder.</small>
-                </div>
+                <form id="props-file-upload-form" onsubmit="event.preventDefault(); uploadPropsImageFile();" style="display: flex; gap: 8px; align-items: center; margin-bottom: 16px;">
+                    <input type="file" id="props-file-input" class="form-control" required style="flex: 1; padding: 6px;">
+                    <button type="submit" class="btn btn-sm" style="white-space: nowrap;">Upload</button>
+                </form>
 
-                <!-- File Browser -->
                 <div id="image-props-files-list" style="max-height: 600px; overflow-y: auto; margin-right: -8px; padding-right: 16px;">
                     <div class="loading">
                         <div class="spinner"></div>
@@ -2116,6 +2189,13 @@
                     <select name="bootloader_set" id="cg-bootloader-select">
                         <option value="">Default (global setting)</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label>Auto-Install File</label>
+                    <select name="auto_install_file" id="cg-autoinstall-select">
+                        <option value="">(inherit from image)</option>
+                    </select>
+                    <small style="color: var(--text-secondary);">Default installation config for every machine in this group. Individual clients can still override.</small>
                 </div>
                 <div class="form-group">
                     <label>Overlay Allowed Images</label>

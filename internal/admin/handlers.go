@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"bootimus/bootloaders"
+	"bootimus/internal/autoinstall"
 	"bootimus/internal/extractor"
 	"bootimus/internal/models"
 	"bootimus/internal/profiles"
@@ -56,6 +57,7 @@ type Handler struct {
 	smbPort            int
 	smbManager         *smb.Manager
 	smbRequested       bool
+	autoInstallLib     *autoinstall.Library
 	extractionMu       sync.RWMutex
 	extractionStates   map[string]*extractionState
 	// SchedulerReload is called after any CRUD change on ScheduledTask so
@@ -71,7 +73,7 @@ type extractionState struct {
 	errMsg   string
 }
 
-func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir string, version string, blSelector BootloaderSelector, tm *tools.Manager, wolBroadcastAddr string, pm *profiles.Manager, proxyDHCPEnabled bool, httpPort int, serverAddr string, smbPort int, smbManager *smb.Manager, smbRequested bool) *Handler {
+func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir string, version string, blSelector BootloaderSelector, tm *tools.Manager, wolBroadcastAddr string, pm *profiles.Manager, proxyDHCPEnabled bool, httpPort int, serverAddr string, smbPort int, smbManager *smb.Manager, smbRequested bool, autoInstallLib *autoinstall.Library) *Handler {
 	return &Handler{
 		storage:            store,
 		dataDir:            dataDir,
@@ -88,6 +90,7 @@ func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir st
 		smbPort:            smbPort,
 		smbManager:         smbManager,
 		smbRequested:       smbRequested,
+		autoInstallLib:     autoInstallLib,
 		extractionStates:   make(map[string]*extractionState),
 	}
 }
@@ -126,7 +129,20 @@ func (h *Handler) patchWindowsBootWim(isoFilename string) bool {
 	}
 
 	shareName := smb.SanitizeShareName(isoBase)
-	if err := wimMgr.PatchStartnetCmd(bootWimPath, buildStartnetScript(h.serverAddr, shareName, h.smbPort)); err != nil {
+	autoInstall := false
+	if img, err := h.storage.GetImage(isoFilename); err == nil && img != nil && img.AutoInstallEnabled {
+		if content := h.resolveImageAutoInstallContent(img); content != "" {
+			xmlPath := filepath.Join(sharePath, "AutoUnattend.xml")
+			if err := os.WriteFile(xmlPath, []byte(content), 0644); err != nil {
+				log.Printf("Windows SMB: failed to stage autounattend.xml on share: %v", err)
+			} else {
+				autoInstall = true
+				log.Printf("Windows SMB: staged autounattend.xml on share for %s (%d bytes)", isoFilename, len(content))
+			}
+		}
+	}
+	script := buildStartnetScript(h.serverAddr, shareName, h.smbPort, h.httpPort, isoFilename, autoInstall)
+	if err := wimMgr.PatchStartnetCmd(bootWimPath, script); err != nil {
 		log.Printf("Windows SMB: failed to patch boot.wim for %s: %v", isoFilename, err)
 		return false
 	}
@@ -137,6 +153,18 @@ func (h *Handler) patchWindowsBootWim(isoFilename string) bool {
 	}
 	log.Printf("Windows SMB: boot.wim patched for %s (share: %s)", isoFilename, shareName)
 	return true
+}
+
+// resolveImageAutoInstallContent returns the autounattend content for an
+// image: file-library entry if set, else the legacy inline script. Empty
+// string means no content (caller skips staging).
+func (h *Handler) resolveImageAutoInstallContent(img *models.Image) string {
+	if h.autoInstallLib != nil && img.AutoInstallFile != "" {
+		if c, err := h.autoInstallLib.ReadPath(img.AutoInstallFile); err == nil {
+			return c
+		}
+	}
+	return img.AutoInstallScript
 }
 
 // findExtractedBootWim returns the path to sources/boot.wim (or the uppercase
@@ -151,11 +179,15 @@ func findExtractedBootWim(extractedISODir string) string {
 	return ""
 }
 
-func buildStartnetScript(serverAddr, shareName string, smbPort int) string {
+func buildStartnetScript(serverAddr, shareName string, smbPort, httpPort int, isoFilename string, autoInstall bool) string {
 	if smbPort == 0 {
 		smbPort = 445
 	}
-	return fmt.Sprintf(`@echo off
+	if httpPort == 0 {
+		httpPort = 8080
+	}
+
+	base := fmt.Sprintf(`@echo off
 wpeinit
 echo Acquiring DHCP lease...
 ipconfig /renew >nul 2>&1
@@ -178,9 +210,11 @@ exit /b 1
 :netready
 
 echo Connecting to bootimus installation source...
+rem Kick the SMB client stack — net use otherwise triggers lazy init and races wpeinit.
+net start Workstation >nul 2>&1
 set /a TRIES=0
 :mapshare
-net use Z: \\%s\%s /persistent:no >nul 2>&1
+net use Z: \\%s\%s /persistent:no >nul
 if not errorlevel 1 goto mapped
 set /a TRIES+=1
 if %%TRIES%% geq 30 goto mapfail
@@ -203,9 +237,22 @@ if not exist Z:\setup.exe (
 	cmd.exe
 	exit /b 1
 )
-echo Starting Windows Setup...
-Z:\setup.exe
 `, serverAddr, serverAddr, serverAddr, serverAddr, shareName, serverAddr, shareName, smbPort, serverAddr, shareName)
+
+	launch := "echo Starting Windows Setup...\r\nZ:\\setup.exe\r\n"
+	if autoInstall {
+		launch = `copy /Y Z:\AutoUnattend.xml X:\AutoUnattend.xml >nul
+if not exist X:\AutoUnattend.xml (
+	echo WARNING: AutoUnattend.xml not on share, running interactive setup.
+	Z:\setup.exe
+	exit /b 0
+)
+echo Starting Windows Setup (unattended)...
+Z:\setup.exe /unattend:X:\AutoUnattend.xml
+`
+	}
+
+	return base + launch
 }
 
 func isRunningInDocker() bool {
@@ -359,6 +406,7 @@ func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 	client.Enabled = updates.Enabled
 	client.ShowPublicImages = updates.ShowPublicImages
 	client.BootloaderSet = updates.BootloaderSet
+	client.AutoInstallFile = updates.AutoInstallFile
 
 	if err := h.storage.UpdateClient(mac, client); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
@@ -758,6 +806,10 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 	}
 	if bootParams, ok := updates["boot_params"].(string); ok {
 		image.BootParams = bootParams
+	}
+	if aiFile, ok := updates["auto_install_file"].(string); ok {
+		image.AutoInstallFile = aiFile
+		image.AutoInstallEnabled = aiFile != "" || image.AutoInstallScript != ""
 	}
 
 	if err := h.storage.UpdateImage(filename, image); err != nil {
@@ -2774,6 +2826,181 @@ func (h *Handler) UpdateAutoInstallScript(w http.ResponseWriter, r *http.Request
 		Message: "Auto-install script updated",
 		Data:    image,
 	})
+}
+
+// ListAutoInstallFiles returns every file under {dataDir}/autoinstall/,
+// grouped implicitly by distro subdirectory.
+func (h *Handler) ListAutoInstallFiles(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	if h.autoInstallLib == nil {
+		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Auto-install manager unavailable"})
+		return
+	}
+	files, err := h.autoInstallLib.List()
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: files})
+}
+
+// GetAutoInstallFile returns the content of a single file identified by
+// ?distro=<d>&filename=<f>.
+func (h *Handler) GetAutoInstallFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	if h.autoInstallLib == nil {
+		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Auto-install manager unavailable"})
+		return
+	}
+	distro := r.URL.Query().Get("distro")
+	filename := r.URL.Query().Get("filename")
+	content, err := h.autoInstallLib.Read(distro, filename)
+	if err != nil {
+		if err == autoinstall.ErrNotFound {
+			h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "File not found"})
+			return
+		}
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})
+		return
+	}
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: map[string]string{
+		"distro":   distro,
+		"filename": filename,
+		"content":  content,
+	}})
+}
+
+// SaveAutoInstallFile creates or overwrites a file.
+// Body: { "distro": "...", "filename": "...", "content": "..." }.
+// Distro must match a distro profile ID; validated against profileManager.
+func (h *Handler) SaveAutoInstallFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	if h.autoInstallLib == nil {
+		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Auto-install manager unavailable"})
+		return
+	}
+	var req struct {
+		Distro   string `json:"distro"`
+		Filename string `json:"filename"`
+		Content  string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid body"})
+		return
+	}
+	if h.profileManager != nil {
+		if _, err := h.storage.GetDistroProfile(req.Distro); err != nil {
+			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: fmt.Sprintf("Unknown distro profile: %s", req.Distro)})
+			return
+		}
+	}
+	if err := h.autoInstallLib.Write(req.Distro, req.Filename, req.Content); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})
+		return
+	}
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Saved"})
+}
+
+// UploadAutoInstallFile accepts a multipart upload and stores the file
+// under {dataDir}/autoinstall/{distro}/{filename}. Distro is a form field;
+// filename is taken from the uploaded file's name unless overridden via
+// the "filename" form field.
+func (h *Handler) UploadAutoInstallFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	if h.autoInstallLib == nil {
+		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Auto-install manager unavailable"})
+		return
+	}
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid multipart body"})
+		return
+	}
+	distro := r.FormValue("distro")
+	if _, err := h.storage.GetDistroProfile(distro); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: fmt.Sprintf("Unknown distro profile: %s", distro)})
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing file"})
+		return
+	}
+	defer file.Close()
+	filename := r.FormValue("filename")
+	if filename == "" {
+		filename = header.Filename
+	}
+	buf, err := io.ReadAll(file)
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Read failed"})
+		return
+	}
+	if err := h.autoInstallLib.Write(distro, filename, string(buf)); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})
+		return
+	}
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Uploaded", Data: map[string]string{
+		"distro":   distro,
+		"filename": filename,
+	}})
+}
+
+// DownloadAutoInstallFile returns the raw file content for a direct
+// download (sets Content-Disposition: attachment).
+func (h *Handler) DownloadAutoInstallFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	if h.autoInstallLib == nil {
+		http.Error(w, "Auto-install manager unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	distro := r.URL.Query().Get("distro")
+	filename := r.URL.Query().Get("filename")
+	content, err := h.autoInstallLib.Read(distro, filename)
+	if err != nil {
+		if err == autoinstall.ErrNotFound {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+	w.Write([]byte(content))
+}
+
+func (h *Handler) DeleteAutoInstallFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	if h.autoInstallLib == nil {
+		h.sendJSON(w, http.StatusServiceUnavailable, Response{Success: false, Error: "Auto-install manager unavailable"})
+		return
+	}
+	distro := r.URL.Query().Get("distro")
+	filename := r.URL.Query().Get("filename")
+	if err := h.autoInstallLib.Delete(distro, filename); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})
+		return
+	}
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Deleted"})
 }
 
 func (h *Handler) ListCustomFiles(w http.ResponseWriter, r *http.Request) {

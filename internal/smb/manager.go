@@ -181,6 +181,18 @@ func (m *Manager) writeConfig() error {
    guest account = nobody
    load printers = no
    disable spoolss = yes
+   # Install clients (WinPE) reboot mid-session and reconnect with the same
+   # IP. Without these, smbd hangs onto the prior tree connect/oplocks and
+   # the next net use fails. Locks aren't meaningful for a read-only share.
+   oplocks = no
+   kernel oplocks = no
+   level2 oplocks = no
+   strict locking = no
+   deadtime = 1
+   # Windows sends VC=0 on session setup after a reboot. Without this, smbd
+   # keeps the prior session from the same client IP alive and refuses the
+   # new one. This is the specific fix for "net use fails after VM reboot".
+   reset on zero vc = yes
    lock directory = %s/locks
    state directory = %s/state
    cache directory = %s/cache

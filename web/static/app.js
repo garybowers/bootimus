@@ -176,6 +176,24 @@ function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
 }
 
+function injectModalCloseButtons() {
+    const svg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    document.querySelectorAll('.modal > .modal-content > .modal-header').forEach(header => {
+        if (header.querySelector('.modal-close')) return;
+        const modal = header.closest('.modal');
+        if (!modal || !modal.id) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-icon modal-close';
+        btn.setAttribute('aria-label', 'Close');
+        btn.title = 'Close';
+        btn.innerHTML = svg;
+        btn.addEventListener('click', () => closeModal(modal.id));
+        header.appendChild(btn);
+    });
+}
+document.addEventListener('DOMContentLoaded', injectModalCloseButtons);
+
 function toggleUserProfile() {
     const dropdown = document.getElementById('user-profile-dropdown');
     dropdown.classList.toggle('show');
@@ -335,6 +353,7 @@ function setupTabs() {
             if (item.dataset.tab === 'tools') loadTools();
             if (item.dataset.tab === 'bootloaders') loadBootloaders();
             if (item.dataset.tab === 'profiles') loadProfiles();
+            if (item.dataset.tab === 'autoinstall') loadAutoInstallFiles();
             if (item.dataset.tab === 'settings') { loadTheme(); loadUSBImages(); loadWebhookConfig(); }
         });
     });
@@ -1034,6 +1053,8 @@ async function editClient(mac) {
             } catch (err) {
                 console.error('Failed to load client groups:', err);
             }
+
+            await populateAutoInstallFileDropdown('edit-client-autoinstall-select', currentClient.auto_install_file);
 
             // Populate images select using allowed_images (persisted filename list)
             const select = document.getElementById('edit-images-select');
@@ -2066,6 +2087,7 @@ function setupForms() {
             ipmi_username: formData.get('ipmi_username') || '',
             ipmi_password: formData.get('ipmi_password') || '',
             ipmi_insecure: formData.get('ipmi_insecure') === 'on',
+            auto_install_file: formData.get('auto_install_file') || '',
         };
         console.log('Updating client:', mac, updates);
 
@@ -3957,22 +3979,19 @@ async function deleteGroup(groupId, groupName) {
 }
 
 function switchPropsTab(tabName) {
-    document.querySelectorAll('#image-properties-modal .tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.props-tab-content').forEach(c => c.style.display = 'none');
+    const short = tabName.startsWith('props-') ? tabName.slice('props-'.length) : tabName;
+    document.querySelectorAll('#image-properties-modal .subtab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.propsTab === short);
+    });
+    document.querySelectorAll('#image-properties-modal .props-tab-content').forEach(el => {
+        el.style.display = 'none';
+    });
+    const active = document.getElementById(`props-${short}-content`);
+    if (active) active.style.display = '';
 
-    const clickedTab = document.querySelector(`#image-properties-modal .tab[data-tab="${tabName}"]`);
-    if (clickedTab) clickedTab.classList.add('active');
-
-    if (tabName === 'props-general') {
-        document.getElementById('props-general-content').style.display = 'block';
-    } else if (tabName === 'props-autoinstall') {
-        document.getElementById('props-autoinstall-content').style.display = 'block';
-    } else if (tabName === 'props-files') {
-        document.getElementById('props-files-content').style.display = 'block';
+    if (short === 'files') {
         const filename = document.getElementById('image-props-filename').value;
-        if (filename) {
-            loadPropsImageFiles();
-        }
+        if (filename) loadPropsImageFiles();
     }
 }
 
@@ -4036,10 +4055,11 @@ async function showImagePropertiesModal(filename) {
     distroSelect.onchange = () => applyBootParamsWindowsLock(distroSelect.value);
 
     // Auto-install fields
-    document.getElementById('image-props-autoinstall-enabled').checked = img.autoinstall_enabled || false;
-    document.getElementById('image-props-autoinstall-type').value = img.autoinstall_script_type || 'preseed';
-    document.getElementById('image-props-autoinstall-script').value = img.autoinstall_script || '';
+    document.getElementById('image-props-autoinstall-enabled').checked = img.auto_install_enabled || false;
+    document.getElementById('image-props-autoinstall-type').value = img.auto_install_script_type || 'preseed';
+    document.getElementById('image-props-autoinstall-script').value = img.auto_install_script || '';
     document.getElementById('image-props-autoinstall-url').textContent = img.filename;
+    await populateImageAutoInstallFileDropdown(img);
 
     const groupSelect = document.getElementById('image-props-group');
     groupSelect.innerHTML = '<option value="">Unassigned</option>';
@@ -4076,8 +4096,8 @@ async function showImagePropertiesModal(filename) {
     patchSmbBtn.style.display = smbEligible ? 'inline-block' : 'none';
     patchSmbBtn.textContent = img.smb_install_enabled ? 'Re-patch SMB' : 'Patch SMB';
 
-    switchPropsTab('props-general');
     openModal('image-properties-modal');
+    switchPropsTab('general');
     updateImagePropsProgress(filename);
 }
 
@@ -4315,10 +4335,13 @@ async function saveImageProperties() {
     const enabled = document.getElementById('image-props-enabled').checked;
     const isPublic = document.getElementById('image-props-public').checked;
 
-    // Get auto-install settings
-    const autoInstallEnabled = document.getElementById('image-props-autoinstall-enabled').checked;
-    const autoInstallType = document.getElementById('image-props-autoinstall-type').value;
-    const autoInstallScript = document.getElementById('image-props-autoinstall-script').value;
+    // Auto-install: presence of a selected file = enabled. No separate
+    // checkbox / script type / inline script from the image panel — those
+    // are managed in the Auto-Install section.
+    const autoInstallFile = document.getElementById('image-props-autoinstall-file').value;
+    const autoInstallEnabled = autoInstallFile !== '';
+    const autoInstallType = '';
+    const autoInstallScript = '';
 
     const updates = {
         name: displayName,
@@ -4329,7 +4352,8 @@ async function saveImageProperties() {
         distro: distro,
         boot_params: bootParams,
         enabled: enabled,
-        public: isPublic
+        public: isPublic,
+        auto_install_file: autoInstallFile,
     };
 
     try {
@@ -4347,27 +4371,10 @@ async function saveImageProperties() {
             return;
         }
 
-        // Update auto-install script
-        const autoInstallRes = await authFetch(`${API_BASE}/images/autoinstall?filename=${encodeURIComponent(filename)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                enabled: autoInstallEnabled,
-                script_type: autoInstallType,
-                script: autoInstallScript
-            })
-        });
-
-        const autoInstallData = await autoInstallRes.json();
-
-        if (autoInstallData.success) {
-            showNotification('Image properties and auto-install updated successfully', 'success');
-            closeModal('image-properties-modal');
-            loadImages();
-            loadStats();
-        } else {
-            showNotification('Image updated but auto-install failed: ' + (autoInstallData.error || 'Unknown error'), 'error');
-        }
+        showNotification('Image properties updated', 'success');
+        closeModal('image-properties-modal');
+        loadImages();
+        loadStats();
     } catch (err) {
         showNotification('Failed to update image properties', 'error');
         console.error(err);
@@ -4400,55 +4407,37 @@ async function loadPropsImageFiles() {
         // Everything else that's not in autoinstall is considered extracted ISO contents
         const isoContents = allFiles.filter(f => !f.path.startsWith('autoinstall/'));
 
+        const sectionHeader = (label, action) => `
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border);">
+                <h4 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em;">${label}</h4>
+                ${action || ''}
+            </div>`;
+        const emptyRow = text => `<div style="color: var(--text-secondary); font-size: 12px; padding: 6px 8px;">${text}</div>`;
+
         let html = '';
 
-        // 1. Uploaded Files Section (at top)
-        html += '<div style="margin-bottom: 15px;">';
-        html += '<h4 style="margin: 0 0 8px 0; font-size: 14px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 4px;">Uploaded Files</h4>';
+        html += '<div style="margin-bottom: 20px;">';
+        html += sectionHeader('Uploaded');
         if (autoinstallFiles.length > 0) {
             const tree = buildFSTree(autoinstallFiles, 'autoinstall/');
             html += renderFSTree(tree, filename, 0, true);
         } else {
-            html += '<div style="color: var(--text-secondary); font-size: 12px; padding: 6px 8px;">No uploaded files - use the form above to upload</div>';
+            html += emptyRow('No uploaded files — use the form above to upload.');
         }
         html += '</div>';
 
-        // 2. ISO File Section
-        html += '<div style="margin-bottom: 15px;">';
-        html += '<h4 style="margin: 0 0 8px 0; font-size: 14px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 4px;">ISO File</h4>';
-        const sizeStr = formatBytes(image.size);
-        const isoDownloadUrl = `/isos/${encodeURIComponent(filename)}`;
-        html += `
-            <div style="padding: 8px; margin: 2px 0; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; background: var(--bg-secondary);">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="color: #cbd5e1;">💿</span>
-                    <span style="color: var(--text-primary);">${escapeHtml(filename)}</span>
-                    <span style="color: var(--text-secondary); font-size: 12px;">(${sizeStr})</span>
-                </div>
-                <a href="${isoDownloadUrl}" class="btn btn-primary btn-sm" download style="padding: 4px 12px; font-size: 12px; white-space: nowrap; text-decoration: none;">Download</a>
-            </div>
-        `;
-        html += '</div>';
-
-        // 2.5. Extracted Contents Delete Button (only if image is extracted)
-        if (image.extracted && isoContents.length > 0) {
-            html += '<div style="background: var(--bg-secondary); padding: 15px; border-radius: 6px; margin-bottom: 15px; border: 1px solid var(--border);">';
-            html += '<h4 style="margin: 0 0 10px 0; font-size: 14px; color: var(--accent);">Extracted Contents Management</h4>';
-            html += '<button class="btn btn-danger btn-sm" onclick="deleteExtractedContents()">Delete Extracted Boot Files</button>';
-            html += '<div style="color: var(--text-secondary); display: block; margin-top: 8px; font-size: 12px;">This will delete all extracted boot files and reset the image to sanboot mode. The autoinstall folder will be preserved. You can re-extract the ISO afterwards.</div>';
-            html += '</div>';
-        }
-
-        // 3. Extracted Files Section
         html += '<div>';
-        html += '<h4 style="margin: 0 0 8px 0; font-size: 14px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 4px;">Extracted Files</h4>';
+        const resetAction = (image.extracted && isoContents.length > 0)
+            ? `<button class="btn btn-sm" onclick="deleteExtractedContents()" title="Delete all extracted boot files and reset to sanboot mode. The autoinstall folder is preserved." style="color: var(--danger); border-color: var(--danger);">Reset Extraction</button>`
+            : '';
+        html += sectionHeader('Extracted', resetAction);
         if (isoContents.length > 0) {
             const tree = buildFSTree(isoContents, '');
             html += renderFSTree(tree, filename, 0, false);
         } else if (image.extracted) {
-            html += '<div style="color: var(--text-secondary); font-size: 12px; padding: 6px 8px;">Extracted but no files found</div>';
+            html += emptyRow('Extracted but no files found.');
         } else {
-            html += '<div style="color: var(--text-secondary); font-size: 12px; padding: 6px 8px;">Not extracted - click "Extract" button to enable kernel boot</div>';
+            html += emptyRow('Not extracted — use the Extract button below to enable kernel boot.');
         }
         html += '</div>';
 
@@ -4935,6 +4924,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ipmi_username: fd.get('ipmi_username') || '',
                 ipmi_password: fd.get('ipmi_password') || '',
                 ipmi_insecure: fd.get('ipmi_insecure') === 'on',
+                auto_install_file: fd.get('auto_install_file') || '',
             };
             try {
                 const res = await authFetch(`${API_BASE}/client-groups/update?id=${id}`, {
@@ -5019,6 +5009,8 @@ async function showEditClientGroupModal(id) {
                 }
             }
         } catch (err) {}
+
+        await populateAutoInstallFileDropdown('cg-autoinstall-select', g.auto_install_file);
 
         if (!images || images.length === 0) await loadImages();
         const allowedSel = document.getElementById('cg-allowed-images');
@@ -5107,4 +5099,283 @@ async function bulkClearNextBootClientGroup() {
         const data = await res.json();
         showAlert(data.message || (data.success ? 'Cleared' : 'Failed'), data.success ? 'success' : 'error');
     } catch (err) { showAlert('Failed to clear bulk next boot', 'error'); }
+}
+
+let cachedAutoInstallFiles = [];
+
+async function loadAutoInstallFiles() {
+    const container = document.getElementById('autoinstall-table');
+    if (container) {
+        container.classList.add('loading');
+        container.innerHTML = '<div class="spinner"></div> Loading files...';
+    }
+    try {
+        const res = await authFetch(`${API_BASE}/autoinstall-files`);
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Load failed');
+        cachedAutoInstallFiles = data.data || [];
+        renderAutoInstallFilesTable();
+    } catch (err) {
+        if (container) container.innerHTML = `<p class="alert alert-error">Failed to load auto-install files: ${escapeHtml(err.message)}</p>`;
+    }
+}
+
+function renderAutoInstallFilesTable() {
+    const container = document.getElementById('autoinstall-table');
+    if (!container) return;
+    container.classList.remove('loading');
+
+    const files = (cachedAutoInstallFiles || []).filter(f => rowMatchesFilter('autoinstall', [
+        f.filename, f.distro, f.type,
+    ]));
+
+    if (!files.length) {
+        container.innerHTML = '<p style="color: var(--text-secondary); padding: 20px;">No auto-install files yet. Click <strong>New File</strong> or <strong>Upload File</strong> to add one.</p>';
+        return;
+    }
+
+    const byDistro = {};
+    for (const f of files) (byDistro[f.distro] = byDistro[f.distro] || []).push(f);
+    const distros = Object.keys(byDistro).sort();
+
+    const colspan = 4;
+    let body = '';
+    for (const d of distros) {
+        const group = byDistro[d];
+        body += `<tr class="tr-group"><td colspan="${colspan}" style="background: var(--bg-tertiary); user-select: none;"><strong style="color: var(--text-primary);">${escapeHtml(d)}</strong><span style="color: var(--text-muted); font-weight: 400; margin-left: 8px; font-size: 12px;">${group.length} ${group.length === 1 ? 'file' : 'files'}</span></td></tr>`;
+        for (const f of group) {
+            const distroAttr = escapeHtml(f.distro);
+            const filenameAttr = escapeHtml(f.filename);
+            body += `<tr class="row-clickable" onclick="showAutoInstallFileEditor({distro:'${distroAttr}',filename:'${filenameAttr}'})">`;
+            body += `<td><code>${filenameAttr}</code></td>`;
+            body += `<td><span class="badge badge-info">${escapeHtml(f.type)}</span></td>`;
+            body += `<td>${formatBytes(f.size)}</td>`;
+            body += `<td onclick="event.stopPropagation()"><button class="btn btn-sm" onclick="downloadAutoInstallFile('${distroAttr}','${filenameAttr}')" title="Download">⬇ Download</button></td>`;
+            body += `</tr>`;
+        }
+    }
+
+    container.innerHTML = `
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Filename</th>
+                        <th>Type</th>
+                        <th>Size</th>
+                        <th>Operations</th>
+                    </tr>
+                </thead>
+                <tbody>${body}</tbody>
+            </table>
+        </div>`;
+}
+
+function downloadAutoInstallFile(distro, filename) {
+    const url = `${API_BASE}/autoinstall-files/download?distro=${encodeURIComponent(distro)}&filename=${encodeURIComponent(filename)}`;
+    const token = localStorage.getItem('bootimus_token');
+    fetch(url, { headers: token ? { 'Authorization': 'Bearer ' + token } : {} })
+        .then(r => r.blob())
+        .then(blob => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        })
+        .catch(err => showNotification('Download failed: ' + err.message, 'error'));
+}
+
+function downloadAutoInstallFileFromEditor() {
+    const distro = document.getElementById('autoinstall-editor-distro').value;
+    const filename = document.getElementById('autoinstall-editor-filename').value;
+    if (distro && filename) downloadAutoInstallFile(distro, filename);
+}
+
+let pendingUploadFile = null;
+
+function handleAutoInstallUpload(input) {
+    if (!input.files || !input.files[0]) return;
+    pendingUploadFile = input.files[0];
+    input.value = '';
+    document.getElementById('autoinstall-upload-filename').textContent = pendingUploadFile.name + ' (' + formatBytes(pendingUploadFile.size) + ')';
+    document.getElementById('autoinstall-upload-rename').value = '';
+    const distroSel = document.getElementById('autoinstall-upload-distro');
+    distroSel.innerHTML = '<option value="">Select a distro…</option>';
+    authFetch(`${API_BASE}/profiles`).then(r => r.json()).then(data => {
+        if (data.success && data.data) {
+            for (const p of data.data) {
+                distroSel.innerHTML += `<option value="${escapeHtml(p.profile_id)}">${escapeHtml(p.display_name)}</option>`;
+            }
+        }
+    }).catch(() => {});
+    openModal('autoinstall-upload-modal');
+}
+
+async function confirmAutoInstallUpload() {
+    const distro = document.getElementById('autoinstall-upload-distro').value;
+    const rename = document.getElementById('autoinstall-upload-rename').value.trim();
+    if (!distro) {
+        showNotification('Please select a distro', 'error');
+        return;
+    }
+    if (!pendingUploadFile) {
+        showNotification('No file selected', 'error');
+        return;
+    }
+    const fd = new FormData();
+    fd.append('distro', distro);
+    fd.append('file', pendingUploadFile);
+    if (rename) fd.append('filename', rename);
+    try {
+        const token = localStorage.getItem('bootimus_token');
+        const res = await fetch(`${API_BASE}/autoinstall-files/upload`, {
+            method: 'POST',
+            headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+            body: fd,
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Upload failed');
+        showNotification('Uploaded', 'success');
+        closeModal('autoinstall-upload-modal');
+        pendingUploadFile = null;
+        loadAutoInstallFiles();
+    } catch (err) {
+        showNotification('Upload failed: ' + err.message, 'error');
+    }
+}
+
+async function populateAutoInstallFileDropdown(selectId, currentValue, distroFilter) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">(inherit from group or image)</option>';
+    try {
+        const res = await authFetch(`${API_BASE}/autoinstall-files`);
+        const data = await res.json();
+        if (!data.success) return;
+        let files = data.data || [];
+        if (distroFilter) files = files.filter(f => f.distro === distroFilter);
+        const byDistro = {};
+        for (const f of files) (byDistro[f.distro] = byDistro[f.distro] || []).push(f);
+        for (const d of Object.keys(byDistro).sort()) {
+            const og = document.createElement('optgroup');
+            og.label = d;
+            for (const f of byDistro[d]) {
+                const opt = document.createElement('option');
+                opt.value = f.path;
+                opt.textContent = f.filename;
+                if (currentValue === f.path) opt.selected = true;
+                og.appendChild(opt);
+            }
+            sel.appendChild(og);
+        }
+    } catch (e) {}
+}
+
+async function populateImageAutoInstallFileDropdown(img) {
+    const sel = document.getElementById('image-props-autoinstall-file');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">(None — use inline script below)</option>';
+    try {
+        const res = await authFetch(`${API_BASE}/autoinstall-files`);
+        const data = await res.json();
+        if (!data.success) return;
+        const all = data.data || [];
+        const matching = img.distro ? all.filter(f => f.distro === img.distro) : all;
+        for (const f of matching) {
+            const sel_attr = (img.auto_install_file === f.path) ? 'selected' : '';
+            sel.innerHTML += `<option value="${escapeHtml(f.path)}" ${sel_attr}>${escapeHtml(f.filename)}</option>`;
+        }
+    } catch (e) {}
+}
+
+async function showAutoInstallFileEditor(file) {
+    const distroSel = document.getElementById('autoinstall-editor-distro');
+    distroSel.innerHTML = '<option value="">Select a distro…</option>';
+    try {
+        const res = await authFetch(`${API_BASE}/profiles`);
+        const data = await res.json();
+        if (data.success && data.data) {
+            for (const p of data.data) {
+                distroSel.innerHTML += `<option value="${escapeHtml(p.profile_id)}">${escapeHtml(p.display_name)}</option>`;
+            }
+        }
+    } catch (e) {}
+
+    const title = document.getElementById('autoinstall-editor-title');
+    const filenameInput = document.getElementById('autoinstall-editor-filename');
+    const contentArea = document.getElementById('autoinstall-editor-content');
+    const delBtn = document.getElementById('autoinstall-editor-delete-btn');
+
+    const dlBtn = document.getElementById('autoinstall-editor-download-btn');
+    if (file) {
+        title.textContent = `Edit ${file.distro}/${file.filename}`;
+        distroSel.value = file.distro;
+        distroSel.disabled = true;
+        filenameInput.value = file.filename;
+        filenameInput.disabled = true;
+        delBtn.style.display = 'inline-block';
+        dlBtn.style.display = 'inline-block';
+        contentArea.value = 'Loading…';
+        try {
+            const res = await authFetch(`${API_BASE}/autoinstall-files/get?distro=${encodeURIComponent(file.distro)}&filename=${encodeURIComponent(file.filename)}`);
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Load failed');
+            contentArea.value = data.data.content || '';
+        } catch (err) {
+            contentArea.value = '';
+            showNotification('Failed to load file: ' + err.message, 'error');
+        }
+    } else {
+        title.textContent = 'New Auto-Install File';
+        distroSel.value = '';
+        distroSel.disabled = false;
+        filenameInput.value = '';
+        filenameInput.disabled = false;
+        contentArea.value = '';
+        delBtn.style.display = 'none';
+        dlBtn.style.display = 'none';
+    }
+
+    openModal('autoinstall-editor-modal');
+}
+
+async function saveAutoInstallFile() {
+    const distro = document.getElementById('autoinstall-editor-distro').value.trim();
+    const filename = document.getElementById('autoinstall-editor-filename').value.trim();
+    const content = document.getElementById('autoinstall-editor-content').value;
+    if (!distro || !filename) {
+        showNotification('Distro and filename are required', 'error');
+        return;
+    }
+    try {
+        const res = await authFetch(`${API_BASE}/autoinstall-files/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ distro, filename, content }),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Save failed');
+        showNotification('Saved', 'success');
+        closeModal('autoinstall-editor-modal');
+        loadAutoInstallFiles();
+    } catch (err) {
+        showNotification('Save failed: ' + err.message, 'error');
+    }
+}
+
+async function deleteAutoInstallFileFromEditor() {
+    const distro = document.getElementById('autoinstall-editor-distro').value;
+    const filename = document.getElementById('autoinstall-editor-filename').value;
+    if (!confirm(`Delete ${distro}/${filename}?`)) return;
+    try {
+        const res = await authFetch(`${API_BASE}/autoinstall-files/delete?distro=${encodeURIComponent(distro)}&filename=${encodeURIComponent(filename)}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Delete failed');
+        showNotification('Deleted', 'success');
+        closeModal('autoinstall-editor-modal');
+        loadAutoInstallFiles();
+    } catch (err) {
+        showNotification('Delete failed: ' + err.message, 'error');
+    }
 }

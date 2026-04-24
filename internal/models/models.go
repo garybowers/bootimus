@@ -89,6 +89,11 @@ type Client struct {
 	IPMIUsername string `json:"ipmi_username,omitempty"`
 	IPMIPassword string `json:"ipmi_password,omitempty"`
 	IPMIInsecure bool   `gorm:"default:false" json:"ipmi_insecure,omitempty"`
+
+	// AutoInstallFile is a relative path under {dataDir}/autoinstall/, e.g.
+	// "windows/kiosk.xml". Empty = inherit from group, then booted image's
+	// default, then image's inline script.
+	AutoInstallFile string `json:"auto_install_file,omitempty"`
 }
 
 // ScheduledTask is a recurring action bootimus runs on a cron schedule
@@ -151,6 +156,8 @@ type ClientGroup struct {
 	IPMIUsername string `json:"ipmi_username,omitempty"`
 	IPMIPassword string `json:"ipmi_password,omitempty"`
 	IPMIInsecure bool   `gorm:"default:false" json:"ipmi_insecure,omitempty"`
+
+	AutoInstallFile string `json:"auto_install_file,omitempty"`
 }
 
 type SyncFile struct {
@@ -209,6 +216,8 @@ type Image struct {
 	AutoInstallScriptType string `json:"auto_install_script_type,omitempty"`
 	InstallWimPath        string `json:"install_wim_path,omitempty"`
 	SMBInstallEnabled     bool   `gorm:"default:false" json:"smb_install_enabled"`
+
+	AutoInstallFile string `json:"auto_install_file,omitempty"`
 }
 
 type BootLog struct {

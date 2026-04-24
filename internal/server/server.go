@@ -30,6 +30,7 @@ import (
 	"bootimus/internal/profiles"
 	"bootimus/internal/proxydhcp"
 	"bootimus/internal/redfish"
+	"bootimus/internal/autoinstall"
 	"bootimus/internal/scheduler"
 	"bootimus/internal/smb"
 	"bootimus/internal/storage"
@@ -119,6 +120,7 @@ type Server struct {
 	activeBootloaderSetMu sync.RWMutex
 	toolsManager          *tools.Manager
 	smbManager            *smb.Manager
+	autoInstallLib        *autoinstall.Library
 }
 
 type ActiveSession struct {
@@ -434,6 +436,13 @@ func (s *Server) Start() error {
 	log.Printf("HTTP Port: %d", s.config.HTTPPort)
 	log.Printf("Admin Port: %d", s.config.AdminPort)
 	log.Printf("Server Address: %s", s.config.ServerAddr)
+
+	if mgr, err := autoinstall.New(s.config.DataDir); err != nil {
+		log.Printf("Warning: could not initialise autoinstall manager: %v", err)
+	} else {
+		s.autoInstallLib = mgr
+		log.Printf("Auto-install files directory: %s", mgr.Root())
+	}
 
 	isos, err := s.scanISOs()
 	if err != nil {
@@ -1033,7 +1042,7 @@ func (s *Server) startAdminServer() error {
 func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	log.Println("Setting up admin interface")
 
-	adminHandler := admin.NewHandler(s.config.Storage, s.config.DataDir, s.config.ISODir, s.config.BootDir, Version, s, s.toolsManager, s.config.WOLBroadcastAddr, s.config.ProfileManager, s.config.ProxyDHCPEnabled, s.config.HTTPPort, s.config.ServerAddr, s.config.WindowsSMBPort, s.smbManager, s.config.WindowsSMBEnabled)
+	adminHandler := admin.NewHandler(s.config.Storage, s.config.DataDir, s.config.ISODir, s.config.BootDir, Version, s, s.toolsManager, s.config.WOLBroadcastAddr, s.config.ProfileManager, s.config.ProxyDHCPEnabled, s.config.HTTPPort, s.config.ServerAddr, s.config.WindowsSMBPort, s.smbManager, s.config.WindowsSMBEnabled, s.autoInstallLib)
 	if s.scheduler != nil {
 		adminHandler.SchedulerReload = s.scheduler.Reload
 		adminHandler.SchedulerRunNow = s.scheduler.RunNow
@@ -1154,6 +1163,12 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/images/extract-progress", authWrap(adminHandler.ExtractProgress))
 	mux.HandleFunc("/api/images/redetect", authWrap(adminHandler.RedetectImage))
 	mux.HandleFunc("/api/images/patch-smb", authWrap(adminHandler.PatchImageSMB))
+	mux.HandleFunc("/api/autoinstall-files", authWrap(adminHandler.ListAutoInstallFiles))
+	mux.HandleFunc("/api/autoinstall-files/get", authWrap(adminHandler.GetAutoInstallFile))
+	mux.HandleFunc("/api/autoinstall-files/save", authWrap(adminHandler.SaveAutoInstallFile))
+	mux.HandleFunc("/api/autoinstall-files/upload", authWrap(adminHandler.UploadAutoInstallFile))
+	mux.HandleFunc("/api/autoinstall-files/download", authWrap(adminHandler.DownloadAutoInstallFile))
+	mux.HandleFunc("/api/autoinstall-files/delete", authWrap(adminHandler.DeleteAutoInstallFile))
 
 	mux.HandleFunc("/api/profiles", authWrap(adminHandler.ListDistroProfiles))
 	mux.HandleFunc("/api/profiles/save", authWrap(adminHandler.SaveDistroProfile))
@@ -2016,42 +2031,34 @@ func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Missing image filename in path", http.StatusBadRequest)
 		return
 	}
-
-	var image *models.Image
-	var err error
-
-	if s.config.Storage != nil {
-		image, err = s.config.Storage.GetImage(path)
-		if err != nil || image == nil {
-			http.Error(w, "Image not found", http.StatusNotFound)
-			return
-		}
-	} else {
+	if s.config.Storage == nil {
 		http.Error(w, "Auto-install requires database", http.StatusInternalServerError)
 		return
 	}
 
-	if !image.AutoInstallEnabled || image.AutoInstallScript == "" {
-		http.Error(w, "Auto-install not configured for this image", http.StatusNotFound)
+	image, err := s.config.Storage.GetImage(path)
+	if err != nil || image == nil {
+		http.Error(w, "Image not found", http.StatusNotFound)
 		return
 	}
 
-	var customFiles []*models.CustomFile
-	if s.config.Storage != nil {
-		customFiles, _ = s.config.Storage.ListCustomFilesByImage(image.ID)
+	mac := strings.ToLower(strings.ReplaceAll(r.URL.Query().Get("mac"), "-", ":"))
+	var client *models.Client
+	if mac != "" {
+		if c, err := s.config.Storage.GetClient(mac); err == nil {
+			client = c
+		}
 	}
 
-	script := image.AutoInstallScript
+	script, scriptType, source, err := s.resolveAutoInstallScript(image, client)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
 
-	// Template substitution: {{MAC}}, {{CLIENT_NAME}}, {{HOSTNAME}}, {{IP}},
-	// {{SERVER_ADDR}}, {{IMAGE_NAME}}, {{IMAGE_FILENAME}}. Values are resolved
-	// per-client when the installer fetches the script.
-	mac := strings.ToLower(strings.ReplaceAll(r.URL.Query().Get("mac"), "-", ":"))
 	clientName := ""
-	if mac != "" && s.config.Storage != nil {
-		if c, err := s.config.Storage.GetClient(mac); err == nil {
-			clientName = c.Name
-		}
+	if client != nil {
+		clientName = client.Name
 	}
 	clientIP := r.RemoteAddr
 	if i := strings.LastIndex(clientIP, ":"); i > 0 {
@@ -2070,16 +2077,14 @@ func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request)
 		script = strings.ReplaceAll(script, k, v)
 	}
 
-	if len(customFiles) > 0 && image.Distro == "arch" {
-		script = s.injectArchFileDownloads(script, customFiles)
+	if image.Distro == "arch" {
+		if files, _ := s.config.Storage.ListCustomFilesByImage(image.ID); len(files) > 0 {
+			script = s.injectArchFileDownloads(script, files)
+		}
 	}
 
-	contentType := "text/plain"
-	switch image.AutoInstallScriptType {
-	case "preseed":
-		contentType = "text/plain; charset=utf-8"
-	case "kickstart":
-		contentType = "text/plain; charset=utf-8"
+	contentType := "text/plain; charset=utf-8"
+	switch scriptType {
 	case "autounattend":
 		contentType = "application/xml; charset=utf-8"
 	case "autoinstall":
@@ -2091,8 +2096,66 @@ func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(script))
 
-	log.Printf("Served auto-install script for %s (type: %s, size: %d bytes, files: %d)",
-		image.Filename, image.AutoInstallScriptType, len(script), len(customFiles))
+	log.Printf("Served auto-install script for %s (source: %s, type: %s, size: %d bytes)",
+		image.Filename, source, scriptType, len(script))
+}
+
+// resolveAutoInstallScript walks the hierarchy: per-client file > group file >
+// image file > image inline legacy. Returns the script body, type, and a tag
+// for logging.
+func (s *Server) resolveAutoInstallScript(image *models.Image, client *models.Client) (string, string, string, error) {
+	if s.autoInstallLib != nil {
+		tryFile := func(rel, src string) (string, string, string, error) {
+			content, err := s.autoInstallLib.ReadPath(rel)
+			if err != nil {
+				return "", "", "", err
+			}
+			return content, scriptTypeForPath(rel), src, nil
+		}
+
+		if client != nil && client.AutoInstallFile != "" {
+			if c, t, src, err := tryFile(client.AutoInstallFile, "client:"+client.MACAddress); err == nil {
+				return c, t, src, nil
+			}
+		}
+		if client != nil && client.ClientGroupID != nil {
+			if g, err := s.config.Storage.GetClientGroup(*client.ClientGroupID); err == nil && g.AutoInstallFile != "" {
+				if c, t, src, err := tryFile(g.AutoInstallFile, "group:"+g.Name); err == nil {
+					return c, t, src, nil
+				}
+			}
+		}
+		if image.AutoInstallFile != "" {
+			if c, t, src, err := tryFile(image.AutoInstallFile, "image:"+image.Filename); err == nil {
+				return c, t, src, nil
+			}
+		}
+	}
+
+	if image.AutoInstallEnabled && image.AutoInstallScript != "" {
+		t := image.AutoInstallScriptType
+		if t == "" {
+			t = "generic"
+		}
+		return image.AutoInstallScript, t, "inline:" + image.Filename, nil
+	}
+
+	return "", "", "", fmt.Errorf("no auto-install configuration for this image/client")
+}
+
+func scriptTypeForPath(rel string) string {
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".xml":
+		return "autounattend"
+	case ".cfg":
+		return "preseed"
+	case ".ks":
+		return "kickstart"
+	case ".yaml", ".yml":
+		return "autoinstall"
+	default:
+		return "generic"
+	}
 }
 
 func (s *Server) injectArchFileDownloads(script string, files []*models.CustomFile) string {
