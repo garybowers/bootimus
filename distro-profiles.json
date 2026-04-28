@@ -1,5 +1,5 @@
 {
-  "version": "0.1.62",
+  "version": "0.1.63",
   "profiles": [
     {
       "id": "ubuntu",
@@ -279,7 +279,7 @@
       "squashfs_paths": [],
       "default_boot_params": "rawbcd",
       "auto_install_type": "autounattend",
-      "boot_method": "wimboot"
+      "boot_method": "kernel"
     },
     {
       "id": "windows",
@@ -291,7 +291,7 @@
       "squashfs_paths": [],
       "default_boot_params": "",
       "auto_install_type": "autounattend",
-      "boot_method": "wimboot"
+      "boot_method": "kernel"
     },
     {
       "id": "clearlinux",
