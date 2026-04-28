@@ -357,7 +357,11 @@ func (mb *MenuBuilder) buildFooter() string {
 
 		switch t.BootMethod {
 		case "chain":
-			sb.WriteString(fmt.Sprintf("chain %s || goto failed\n\n", t.KernelURL))
+			if t.KernelURLBIOS != "" {
+				sb.WriteString(fmt.Sprintf("iseq ${platform} efi && chain %s || chain %s || goto failed\n\n", t.KernelURL, t.KernelURLBIOS))
+			} else {
+				sb.WriteString(fmt.Sprintf("chain %s || goto failed\n\n", t.KernelURL))
+			}
 		case "memdisk":
 			sb.WriteString(fmt.Sprintf("initrd %s\n", t.KernelURL))
 			sb.WriteString("chain memdisk raw || goto failed\n\n")

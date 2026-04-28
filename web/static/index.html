@@ -5,643 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bootimus Admin Panel</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <style>
-        :root {
-            --bg-primary: #f5f5f5;
-            --bg-secondary: #ffffff;
-            --bg-tertiary: #f0f0f0;
-            --bg-input: #f5f5f5;
-            --text-primary: #111111;
-            --text-secondary: #666666;
-            --text-muted: #999999;
-            --accent: #111111;
-            --accent-hover: #333333;
-            --accent-light: rgba(0, 0, 0, 0.05);
-            --border: #e0e0e0;
-            --shadow: 0 1px 3px rgba(0,0,0,0.05);
-            --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-            --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
-            --radius: 10px;
-            --radius-sm: 6px;
-            --success: #10b981;
-            --success-hover: #059669;
-            --danger: #ef4444;
-            --danger-hover: #dc2626;
-            --info: #555555;
-            --info-hover: #333333;
-            --warning: #f59e0b;
-            --warning-hover: #d97706;
-            --teal: #10b981;
-            --alert-success-bg: #ecfdf5;
-            --alert-error-bg: #fef2f2;
-            --alert-info-bg: #f5f5f5;
-            --modal-overlay: rgba(0, 0, 0, 0.3);
-        }
-
-        [data-theme="dark"] {
-            --bg-primary: #0a0a0a;
-            --bg-secondary: #141414;
-            --bg-tertiary: #1e1e1e;
-            --bg-input: #141414;
-            --text-primary: #f0f0f0;
-            --text-secondary: #888888;
-            --text-muted: #555555;
-            --accent: #f0f0f0;
-            --accent-hover: #cccccc;
-            --accent-light: rgba(255, 255, 255, 0.06);
-            --border: #2a2a2a;
-            --shadow: 0 1px 3px rgba(0,0,0,0.4);
-            --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
-            --shadow-lg: 0 8px 24px rgba(0,0,0,0.6);
-            --success: #10b981;
-            --success-hover: #059669;
-            --danger: #ef4444;
-            --danger-hover: #dc2626;
-            --info: #aaaaaa;
-            --info-hover: #888888;
-            --warning: #f59e0b;
-            --warning-hover: #d97706;
-            --teal: #10b981;
-            --alert-success-bg: #052e16;
-            --alert-error-bg: #450a0a;
-            --alert-info-bg: #1e1e1e;
-            --modal-overlay: rgba(0, 0, 0, 0.7);
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        html, body { height: 100%; margin: 0; overflow: hidden; }
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            line-height: 1.6;
-            font-size: 15px;
-            -webkit-font-smoothing: antialiased;
-            display: flex; flex-direction: column;
-        }
-
-        .container { max-width: 100%; margin: 0 auto; padding: 0; }
-
-        /* Header - full-width bar, no radius, no gaps */
-        header {
-            background: var(--bg-secondary);
-            padding: 16px 32px;
-            margin-bottom: 0;
-            border-radius: 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid var(--border);
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-            z-index: 50; flex-shrink: 0;
-        }
-        .header-content { flex: 1; }
-        .header-content h1 { color: var(--text-primary); font-size: 22px; font-weight: 700; margin-bottom: 1px; letter-spacing: -0.3px; }
-        .header-content p { color: var(--text-secondary); font-size: 14px; font-weight: 400; }
-
-        /* Theme switch — iOS-style track + thumb. Sun on left, moon on right.
-           Thumb slides to indicate the CURRENT mode (light = thumb left, dark = thumb right).
-           The opposite-side icon stays visible as the "switch to" hint. */
-        .theme-switch {
-            position: relative;
-            width: 56px;
-            height: 28px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 100px;
-            cursor: pointer;
-            padding: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: space-between;
-            box-sizing: border-box;
-            transition: background 0.2s, border-color 0.2s;
-        }
-        .theme-switch:hover { border-color: var(--text-secondary); }
-        .theme-switch-icon {
-            position: relative;
-            z-index: 1;
-            width: 14px;
-            height: 14px;
-            margin: 0 7px;
-            color: var(--text-secondary);
-            pointer-events: none;
-            transition: color 0.2s;
-        }
-        .theme-switch-icon-sun { color: #d97706; }
-        [data-theme="dark"] .theme-switch-icon-sun { color: var(--text-secondary); }
-        [data-theme="dark"] .theme-switch-icon-moon { color: #93c5fd; }
-        .theme-switch-thumb {
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 22px;
-            height: 22px;
-            background: var(--bg-secondary);
-            border-radius: 50%;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-            transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s;
-        }
-        [data-theme="dark"] .theme-switch-thumb {
-            transform: translateX(28px);
-            background: var(--bg-tertiary);
-        }
-
-        /* User profile button — keep round chip style next to the theme switch. */
-        .user-profile-button {
-            background: var(--bg-tertiary);
-            border: none;
-            border-radius: 50%;
-            width: 36px; height: 36px;
-            cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 14px;
-            transition: all 0.2s;
-            color: var(--text-secondary);
-        }
-        .user-profile-button:hover {
-            background: var(--accent-light);
-            color: var(--accent);
-        }
-        .user-profile-button { color: var(--text-secondary); }
-        .user-profile { position: relative; }
-        .user-profile-dropdown {
-            display: none; position: absolute; top: 50px; right: 0;
-            background: var(--bg-secondary);
-            border-radius: var(--radius); padding: 8px; min-width: 200px;
-            box-shadow: var(--shadow-lg); z-index: 1000; border: 1px solid var(--border);
-        }
-        .user-profile-dropdown.show { display: block; }
-        .user-profile-info { padding: 10px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
-        .user-profile-info .username { font-weight: 600; color: var(--text-primary); font-size: 14px; }
-        .user-profile-info .role { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-        .user-profile-dropdown button {
-            width: 100%; padding: 8px 10px; background: none; border: none;
-            border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer; font-size: 13px;
-            transition: background 0.15s; display: flex; align-items: center; gap: 8px;
-        }
-        .user-profile-dropdown button:hover { background: var(--bg-tertiary); }
-
-        /* App layout - sidebar + main */
-        .app-layout { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-
-        /* Sidebar */
-        .sidebar {
-            width: 190px; flex-shrink: 0;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border);
-            display: flex; flex-direction: column;
-            overflow: hidden;
-        }
-        .sidebar-nav { flex: 1; padding: 16px 0; }
-        .nav-group { margin-bottom: 12px; }
-        .nav-group-label {
-            display: block; padding: 8px 16px 6px; font-size: 11px; font-weight: 600;
-            color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;
-        }
-        .nav-item {
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 16px; margin: 1px 8px; border-radius: var(--radius-sm);
-            color: var(--text-secondary); font-size: 14px; font-weight: 500;
-            cursor: pointer; transition: all 0.15s; text-decoration: none; border: none; background: none; width: calc(100% - 16px);
-            text-align: left;
-        }
-        .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-        .nav-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
-
-        /* Main content area */
-        .main-content { flex: 1; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-
-        .content-area { padding: 16px; flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
-        .content-area > .stats { flex-shrink: 0; }
-        .tab-content.active { display: flex; flex-direction: column; flex: 1; overflow-y: auto; min-height: 0; }
-        .tab-content.active > .card { display: flex; flex-direction: column; flex-shrink: 0; }
-        .card-body { flex-shrink: 0; }
-        .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 0 12px 12px; flex-shrink: 0; }
-        .toolbar-filter {
-            margin-left: auto; min-width: 200px; max-width: 280px;
-            padding: 6px 10px; font-size: 13px;
-            background: var(--bg-input, var(--bg-primary)); color: var(--text-primary);
-            border: 1px solid var(--border); border-radius: var(--radius-sm);
-        }
-        .toolbar-filter:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
-
-        /* Stats row */
-        .stats { display: flex; gap: 10px; margin-bottom: 12px; }
-        .stat-card {
-            background: var(--bg-secondary);
-            padding: 12px 16px;
-            border-radius: var(--radius-sm);
-            box-shadow: var(--shadow);
-            flex: 1;
-            display: flex; flex-direction: column; gap: 2px;
-            border: none;
-        }
-        .stat-card::before { display: none; }
-        .stat-value { font-size: 24px; font-weight: 700; color: var(--accent); line-height: 1.1; }
-        .stat-label { color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
-
-        /* Hide old tabs - navigation is in sidebar now */
-        .tabs { display: none; }
-        .tab-content { display: none; }
-
-        /* In-page subtabs (e.g., Image Groups / Client Groups) */
-        .subtabs {
-            display: flex; gap: 4px;
-            border-bottom: 1px solid var(--border);
-            margin: 4px 12px 16px;
-        }
-        .subtab {
-            padding: 10px 16px; background: none; border: none;
-            color: var(--text-secondary); cursor: pointer;
-            font-size: 14px; font-weight: 500;
-            border-bottom: 2px solid transparent; margin-bottom: -1px;
-            transition: color 0.15s, border-color 0.15s;
-        }
-        .subtab:hover { color: var(--text-primary); }
-        .subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-        /* Cards - white, subtle shadow, NO border */
-        .card {
-            background: var(--bg-secondary);
-            border-radius: var(--radius);
-            margin-bottom: 12px;
-            box-shadow: var(--shadow);
-            border: none;
-            padding: 0;
-        }
-        .card h2 { color: var(--text-primary); margin-bottom: 8px; font-size: 16px; font-weight: 600; padding: 12px 12px 0; }
-        .card-body { padding: 12px; padding-top: 0; }
-        .card > h2:first-child { padding-top: 12px; }
-        .card > .loading { padding: 12px; }
-        .card > button, .card > p, .card > form { margin: 0 12px 8px; }
-
-        /* Tables */
-        table { border-collapse: collapse; font-size: 13px; width: 100%; }
-        .table-scroll table { min-width: 100%; width: max-content; }
-        th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
-        .table-scroll tbody tr:nth-child(odd) { background: rgba(0, 0, 0, 0.02); }
-        [data-theme="dark"] .table-scroll tbody tr:nth-child(odd) { background: rgba(255, 255, 255, 0.025); }
-        .table-scroll tbody tr.row-clickable { cursor: pointer; }
-        .table-scroll tbody tr.row-clickable:hover { background: var(--accent-light); }
-
-        /* Traffic-light status dots — compact alternative to text badges */
-        .status-dot {
-            display: inline-block; width: 10px; height: 10px; border-radius: 50%;
-            vertical-align: middle;
-        }
-        .status-dot.on  { background: #22c55e; box-shadow: 0 0 6px rgba(34, 197, 94, 0.45); }
-        .status-dot.off { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.35); }
-        .col-dot { text-align: center; width: 1%; }
-        th {
-            background: var(--bg-tertiary); color: var(--text-secondary);
-            font-weight: 600; font-size: 11px; text-transform: uppercase;
-            letter-spacing: 0.5px; user-select: none;
-            position: sticky; top: 0; z-index: 10;
-        }
-        th:first-child { border-radius: var(--radius-sm) 0 0 0; }
-        th:last-child { border-radius: 0 var(--radius-sm) 0 0; }
-        th[onclick] { cursor: pointer; transition: background 0.15s; }
-        th[onclick]:hover { background: var(--border); }
-        tr:hover { background: var(--bg-tertiary); }
-        td:last-child { white-space: nowrap; }
-
-        /* Buttons — design system
-           ────────────────────────
-           .btn         = base outlined (transparent bg, neutral border) — secondary actions
-           .btn-primary = solid amber — the ONE main action per toolbar
-           .btn-danger  = solid red — destructive (delete, reset) only
-           .btn-toggle  = outlined + amber-tinted when [aria-pressed="true"] — view/mode toggles
-           .btn-icon    = 32×32 square modifier for icon-only buttons
-           .btn-sm      = small variant for inline/row actions
-           .btn-success / .btn-info / .btn-warning kept for backward compat — avoid in new code,
-           reserve those colours for badges/dots where they actually carry meaning. */
-        .btn {
-            height: 34px; padding: 0 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-            background: transparent; color: var(--text-primary);
-            cursor: pointer; font-size: 13px; font-weight: 500; box-sizing: border-box;
-            transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
-            line-height: 1; user-select: none; vertical-align: middle;
-        }
-        .btn:hover { background: var(--bg-tertiary); border-color: var(--text-secondary); }
-        .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--bg-primary); }
-        .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--bg-primary); }
-        .btn-danger { background: var(--danger); border-color: var(--danger); color: white; }
-        .btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
-        .btn-success { background: var(--success); border-color: var(--success); color: white; }
-        .btn-success:hover { background: var(--success-hover); border-color: var(--success-hover); }
-        .btn-info { background: var(--info); border-color: var(--info); color: white; }
-        .btn-info:hover { background: var(--info-hover); border-color: var(--info-hover); }
-        .btn-warning { background: var(--warning); border-color: var(--warning); color: white; }
-        .btn-warning:hover { background: var(--warning-hover); border-color: var(--warning-hover); }
-        .btn-sm { height: 26px; padding: 0 10px; font-size: 12px; margin: 0 2px; }
-        .btn svg { flex-shrink: 0; }
-
-        /* Toggle button — identical to .btn when unpressed; amber-tinted when [aria-pressed=true].
-           NO base overrides here, so off-state is byte-for-byte the same as a regular .btn. */
-        .btn-toggle[aria-pressed="true"] {
-            background: var(--accent-light);
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-        .btn-toggle[aria-pressed="true"]:hover {
-            background: var(--accent-light);
-            border-color: var(--accent-hover);
-            color: var(--accent);
-        }
-        /* Icon-only button (no text) — square, same height as .btn. */
-        .btn-icon {
-            width: 34px;
-            padding: 0;
-            justify-content: center;
-        }
-        .btn-icon.btn-sm { width: 26px; }
-        .btn-icon svg { display: block; }
-
-        /* Modals */
-        .modal {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: var(--modal-overlay); z-index: 1000; overflow-y: auto;
-            backdrop-filter: blur(6px);
-        }
-        .modal.active { display: flex; align-items: center; justify-content: center; }
-
-        /* Slide-in side panel variant — anchors to the right edge, full height,
-           transforms in from off-screen. Apply alongside .modal. */
-        .modal.slide-panel.active { justify-content: flex-end; align-items: stretch; }
-        .modal.slide-panel .modal-content {
-            max-width: 560px; width: 100%; max-height: 100vh; height: 100vh;
-            border-radius: 0; margin: 0;
-            transform: translateX(100%);
-            transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
-        }
-        .modal.slide-panel.active .modal-content { transform: translateX(0); }
-
-        .modal-content {
-            background: var(--bg-secondary); padding: 28px; border-radius: var(--radius);
-            max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;
-            box-shadow: var(--shadow-lg); border: none;
-        }
-        .modal-header {
-            margin-bottom: 20px;
-            display: flex; align-items: center; justify-content: space-between; gap: 12px;
-        }
-        .modal-header h2 { color: var(--text-primary); font-size: 16px; font-weight: 600; margin: 0; }
-
-        /* Forms */
-        .form-group { margin-bottom: 16px; }
-        label { display: block; margin-bottom: 6px; color: var(--text-secondary); font-weight: 500; font-size: 13px; }
-        input, textarea, select {
-            width: 100%; padding: 10px 14px; background: var(--bg-input);
-            border: 1px solid var(--border); border-radius: var(--radius-sm);
-            color: var(--text-primary); font-size: 14px; transition: all 0.2s;
-        }
-        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
-        .checkbox-group { display: flex; align-items: center; gap: 10px; }
-        .checkbox-group input[type="checkbox"] { width: auto; accent-color: var(--accent); }
-
-        /* Badges */
-        .badge {
-            display: inline-block; padding: 4px 10px; border-radius: 20px;
-            font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
-        }
-        .badge-success { background: rgba(46, 204, 113, 0.10); color: var(--success); }
-        .badge-danger { background: rgba(231, 76, 60, 0.10); color: var(--danger); }
-        .badge-info { background: rgba(52, 152, 219, 0.10); color: var(--info); }
-        .badge-admin { background: var(--accent-light); color: var(--accent); }
-        .badge-user { background: var(--bg-tertiary); color: var(--text-secondary); }
-        .badge-enabled { background: rgba(46, 204, 113, 0.10); color: var(--success); }
-        .badge-disabled { background: var(--bg-tertiary); color: var(--text-muted); }
-
-        /* Upload */
-        .upload-area {
-            border: 2px dashed var(--border); border-radius: var(--radius);
-            padding: 40px; text-align: center; cursor: pointer; transition: all 0.2s;
-            color: var(--text-secondary);
-        }
-        .upload-area:hover { border-color: var(--accent); background: var(--accent-light); }
-        .upload-area.dragging { border-color: var(--success); background: rgba(46, 204, 113, 0.06); }
-
-        /* Alerts */
-        .alert { padding: 14px 18px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 15px; border: 1px solid var(--border); }
-        .alert-success { background: var(--alert-success-bg); }
-        .alert-error { background: var(--alert-error-bg); }
-        .alert-info { background: var(--alert-info-bg); }
-
-        /* Loading */
-        .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
-        .spinner {
-            border: 3px solid var(--border); border-top: 3px solid var(--accent);
-            border-radius: 50%; width: 28px; height: 28px;
-            animation: spin 0.8s linear infinite; margin: 0 auto 10px;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        /* Server info layout */
-        .si-section { margin-bottom: 28px; }
-        .si-section:last-child { margin-bottom: 0; }
-        .si-heading {
-            font-size: 18px; font-weight: 600; color: var(--text-primary);
-            margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
-        }
-        .si-heading::before {
-            content: '';
-            display: inline-block;
-            width: 8px; height: 8px;
-            border-radius: 50%;
-            background: var(--accent);
-            flex-shrink: 0;
-        }
-        .si-heading.si-heading-teal::before { background: var(--teal); }
-        .si-heading.si-heading-info::before { background: var(--info); }
-        .si-heading.si-heading-success::before { background: var(--success); }
-
-        /* Running status grid - clean cells in a white card */
-        .rs-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            background: var(--bg-secondary); border-radius: var(--radius); overflow: hidden;
-            box-shadow: var(--shadow);
-        }
-        .rs-metric {
-            padding: 20px 22px;
-            display: flex; flex-direction: column; gap: 6px;
-            border-right: 1px solid var(--border);
-            border-bottom: 1px solid var(--border);
-        }
-        .rs-metric:last-child { border-right: none; }
-        .rs-label { font-size: 14px; color: var(--text-secondary); font-weight: 500; }
-        .rs-value { font-size: 18px; font-weight: 600; color: var(--text-primary); }
-
-        /* Resource cards - ring-gauge style */
-        .res-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;
-        }
-        .res-card {
-            background: var(--bg-secondary); padding: 24px 20px 22px; border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            display: flex; flex-direction: column; align-items: center; gap: 14px;
-            border: none;
-            transition: box-shadow 0.2s, transform 0.2s;
-        }
-        .res-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
-        .res-label { font-size: 14px; color: var(--text-secondary); font-weight: 500; text-align: center; letter-spacing: 0.2px; text-transform: uppercase; }
-        .res-gauge { position: relative; width: 128px; height: 128px; }
-        .res-gauge svg { width: 100%; height: 100%; display: block; overflow: visible; }
-        .res-gauge-track { stroke: var(--border); }
-        .res-gauge-fill { transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1); filter: drop-shadow(0 0 6px currentColor); }
-        .res-gauge-text {
-            position: absolute; inset: 0;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 24px; font-weight: 700; letter-spacing: -0.5px;
-        }
-        .res-detail { font-size: 13px; color: var(--text-secondary); text-align: center; line-height: 1.4; }
-
-        /* Info sections - side by side at bottom */
-        .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-        .info-section {
-            background: var(--bg-secondary); padding: 24px; border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            border: none;
-        }
-        .info-section h3 {
-            color: var(--text-primary); font-size: 16px; font-weight: 600;
-            margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
-        }
-        .info-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
-        .info-item:last-child { border-bottom: none; }
-        .info-label { color: var(--text-secondary); font-size: 15px; }
-        .info-value { color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 15px; text-align: right; font-weight: 500; }
-
-        /* Sessions */
-        .session-item {
-            background: var(--bg-tertiary); padding: 14px; border-radius: var(--radius);
-            margin-bottom: 8px; border: none; border-left: 3px solid var(--success);
-        }
-        .session-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
-        .session-ip { color: var(--accent); font-weight: 600; font-size: 14px; }
-        .session-filename { color: var(--text-secondary); font-size: 13px; }
-        .session-activity { color: var(--success); font-size: 11px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
-
-        /* Progress bars */
-        .progress-bar { width: 100%; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
-        .progress-fill { height: 100%; background: var(--teal); transition: width 0.4s ease; border-radius: 2px; }
-        .progress-text { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
-
-        /* Taller variant for modals */
-        .progress-bar.progress-bar-lg { height: 8px; border-radius: 4px; }
-        .progress-bar.progress-bar-lg .progress-fill { background: var(--accent); border-radius: 4px; }
-
-        /* Stats grid (used elsewhere) */
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 16px; }
-        .stat-card-header { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-        .stat-card-title { font-weight: 500; color: var(--text-secondary); font-size: 12px; }
-        .stat-card-value { font-size: 28px; font-weight: 700; line-height: 1; letter-spacing: -0.5px; }
-        .stat-card-info { color: var(--text-secondary); font-size: 12px; margin-top: 8px; }
-
-        /* Notifications */
-        .notification-container {
-            position: fixed; top: 20px; right: 20px; z-index: 10000;
-            display: flex; flex-direction: column; gap: 8px; max-width: 360px;
-        }
-        .notification {
-            padding: 14px 18px; border-radius: var(--radius);
-            box-shadow: var(--shadow-lg);
-            color: white; font-size: 13px; font-weight: 500; cursor: pointer;
-            transform: translateX(400px); transition: transform 0.3s ease, opacity 0.3s ease; opacity: 0;
-        }
-        .notification.show { transform: translateX(0); opacity: 1; }
-        .notification-success { background: var(--success); }
-        .notification-error { background: var(--danger); }
-        .notification-info { background: var(--accent); }
-        .notification-warning { background: var(--warning); }
-        .notification:hover { opacity: 0.9; }
-
-        /* Operations */
-        .operations-cell { min-width: 200px; }
-        .progress-container { width: 100%; }
-
-        /* Table scroll containers */
-        .table-scroll {
-            overflow: auto;
-            flex: 1;
-            min-height: 0;
-            scrollbar-width: thin;
-        }
-        .table-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
-        .table-scroll::-webkit-scrollbar-track { background: var(--bg-tertiary); }
-        .table-scroll::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 6px; }
-        .table-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
-
-        /* Pin both scrollbars inside the viewport when a tab's main content
-           is a wide table. Without this, a tall table pushes its horizontal
-           scrollbar off-screen because the whole tab scrolls vertically. */
-        .tab-content.active:has(.table-scroll):not(#settings-tab) { overflow: hidden; }
-        .tab-content.active:has(.table-scroll):not(#settings-tab) > .card { flex: 1; min-height: 0; }
-        /* Every wrapper between .card and .table-scroll must be a flex column
-           so heights propagate. This catches render-target divs (#images-table)
-           and subtab wrappers (#images-subtab, #clients-subtab) transparently. */
-        .card :has(.table-scroll) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-
-        @media (max-width: 1200px) {
-            .stat-card { gap: 2px; }
-            .btn { padding: 6px 12px; font-size: 12px; }
-            .btn-sm { padding: 4px 8px; font-size: 11px; }
-            .rs-metric { padding: 16px 18px; }
-        }
-
-        @media (max-width: 768px) {
-            .sidebar { display: none; }
-            .tabs { display: flex !important; }
-            th, td { padding: 8px; font-size: 12px; }
-            .content-area { padding: 16px; }
-            .card { padding: 18px; }
-            .tab { padding: 7px 14px; font-size: 13px; white-space: nowrap; }
-            .card h2 { font-size: 14px; }
-            .res-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
-            .info-grid { grid-template-columns: 1fr; }
-            .rs-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <!-- Login Screen -->
     <div id="login-screen" style="display: none; position: fixed; inset: 0; z-index: 9999; background: var(--bg-primary); align-items: center; justify-content: center;">
+        <select id="login-lang-select" data-i18n-aria-label="lang.label" class="lang-select" title="Language" style="position: absolute; top: 20px; right: 20px;"></select>
         <div style="width: 100%; max-width: 380px; padding: 24px;">
             <div style="text-align: center; margin-bottom: 32px;">
                 <h1 style="font-size: 28px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">🚀 Bootimus</h1>
-                <p style="color: var(--text-secondary); font-size: 14px;">PXE/HTTP Boot Server</p>
+                <p data-i18n="app.product_subtitle" style="color: var(--text-secondary); font-size: 14px;">PXE/HTTP Boot Server</p>
             </div>
             <form id="login-form" style="background: var(--bg-secondary); padding: 28px; border-radius: var(--radius); box-shadow: var(--shadow);">
                 <div id="login-auth-selector" style="display: none; margin-bottom: 16px;">
-                    <label style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary);">Authentication</label>
+                    <label data-i18n="login.auth_method" style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary);">Authentication</label>
                     <select id="login-auth-method" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 14px;">
                     </select>
                 </div>
                 <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary);">Username</label>
+                    <label data-i18n="login.username" style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary);">Username</label>
                     <input type="text" name="username" id="login-username" required autocomplete="username" autofocus
                         style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 14px;">
                 </div>
                 <div class="form-group" style="margin-bottom: 20px;">
-                    <label style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary);">Password</label>
+                    <label data-i18n="login.password" style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary);">Password</label>
                     <input type="password" name="password" id="login-password" required autocomplete="current-password"
                         style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 14px;">
                 </div>
                 <div id="login-error" style="display: none; color: var(--danger); font-size: 13px; margin-bottom: 12px;"></div>
-                <button type="submit" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 14px; font-weight: 600;">Sign In</button>
+                <button type="submit" data-i18n="login.signin" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 14px; font-weight: 600;">Sign In</button>
             </form>
         </div>
     </div>
 
     <header id="main-header" style="display: none;">
         <div class="header-content">
-            <h1>🚀 Bootimus Admin Panel</h1>
-            <p>PXE/HTTP Boot Server Management Interface</p>
+            <h1>🚀 <span data-i18n="app.title">Bootimus Admin Panel</span></h1>
+            <p data-i18n="app.subtitle">PXE/HTTP Boot Server Management Interface</p>
         </div>
         <div style="display: flex; align-items: center; gap: 10px;">
-            <button id="theme-toggle-btn" class="theme-switch" type="button" role="switch" aria-checked="false" aria-label="Toggle dark mode" title="Toggle dark mode" onclick="toggleTheme()">
+            <select id="lang-select" data-i18n-aria-label="lang.label" class="lang-select" title="Language"></select>
+            <button id="theme-toggle-btn" class="theme-switch" type="button" role="switch" aria-checked="false" data-i18n-aria-label="ui.toggle_dark_mode" data-i18n-title="ui.toggle_dark_mode" aria-label="Toggle dark mode" title="Toggle dark mode" onclick="toggleTheme()">
                 <svg class="theme-switch-icon theme-switch-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
                 <svg class="theme-switch-icon theme-switch-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                 <span class="theme-switch-thumb" aria-hidden="true"></span>
@@ -655,7 +59,7 @@
                     </div>
                     <button onclick="logout()">
                         <span>🚪</span>
-                        <span>Logout</span>
+                        <span data-i18n="user.logout">Logout</span>
                     </button>
                 </div>
             </div>
@@ -667,30 +71,30 @@
         <aside class="sidebar">
             <nav class="sidebar-nav">
                 <div class="nav-group">
-                    <span class="nav-group-label">Overview</span>
-                    <button class="nav-item active" data-tab="server"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Server Info</button>
+                    <span class="nav-group-label" data-i18n="nav.group.overview">Overview</span>
+                    <button class="nav-item active" data-tab="server" data-i18n="nav.server"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg> Server Info</button>
                 </div>
                 <div class="nav-group">
-                    <span class="nav-group-label">Management</span>
-                    <button class="nav-item" data-tab="images"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg> Images</button>
-                    <button class="nav-item" data-tab="public-files"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Public Files</button>
-                    <button class="nav-item" data-tab="autoinstall"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Auto-Install</button>
+                    <span class="nav-group-label" data-i18n="nav.group.management">Management</span>
+                    <button class="nav-item" data-tab="images" data-i18n="nav.images"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg> Images</button>
+                    <button class="nav-item" data-tab="public-files" data-i18n="nav.public_files"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Public Files</button>
+                    <button class="nav-item" data-tab="autoinstall" data-i18n="nav.autoinstall"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Auto-Install</button>
                 </div>
                 <div class="nav-group">
-                    <span class="nav-group-label">Boot</span>
-                    <button class="nav-item" data-tab="bootloaders"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> Bootloaders</button>
-                    <button class="nav-item" data-tab="tools"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Tools</button>
-                    <button class="nav-item" data-tab="profiles"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> Distro Profiles</button>
+                    <span class="nav-group-label" data-i18n="nav.group.boot">Boot</span>
+                    <button class="nav-item" data-tab="bootloaders" data-i18n="nav.bootloaders"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> Bootloaders</button>
+                    <button class="nav-item" data-tab="tools" data-i18n="nav.tools"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Tools</button>
+                    <button class="nav-item" data-tab="profiles" data-i18n="nav.profiles"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> Distro Profiles</button>
                 </div>
                 <div class="nav-group">
-                    <span class="nav-group-label">Access</span>
-                    <button class="nav-item" data-tab="clients"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg> Clients</button>
-                    <button class="nav-item" data-tab="users"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Users</button>
+                    <span class="nav-group-label" data-i18n="nav.group.access">Access</span>
+                    <button class="nav-item" data-tab="clients" data-i18n="nav.clients"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg> Clients</button>
+                    <button class="nav-item" data-tab="users" data-i18n="nav.users"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Users</button>
                 </div>
                 <div class="nav-group">
-                    <span class="nav-group-label">System</span>
-                    <button class="nav-item" data-tab="settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
-                    <button class="nav-item" data-tab="logs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Logs</button>
+                    <span class="nav-group-label" data-i18n="nav.group.system">System</span>
+                    <button class="nav-item" data-tab="settings" data-i18n="nav.settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
+                    <button class="nav-item" data-tab="logs" data-i18n="nav.logs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Logs</button>
                 </div>
             </nav>
             <div style="padding: 12px 16px; border-top: 1px solid var(--border); flex-shrink: 0;">
@@ -707,29 +111,29 @@
                 <div id="stats-container" class="stats">
                     <div class="stat-card">
                         <div class="stat-value" id="stat-clients">-</div>
-                        <div class="stat-label">Total Clients</div>
+                        <div class="stat-label" data-i18n="stats.total_clients">Total Clients</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="stat-active-clients">-</div>
-                        <div class="stat-label">Active Clients</div>
+                        <div class="stat-label" data-i18n="stats.active_clients">Active Clients</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="stat-images">-</div>
-                        <div class="stat-label">Total Images</div>
+                        <div class="stat-label" data-i18n="stats.total_images">Total Images</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="stat-enabled-images">-</div>
-                        <div class="stat-label">Enabled Images</div>
+                        <div class="stat-label" data-i18n="stats.enabled_images">Enabled Images</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-value" id="stat-boots">-</div>
-                        <div class="stat-label">Total Boots</div>
+                        <div class="stat-label" data-i18n="stats.total_boots">Total Boots</div>
                     </div>
                 </div>
 
                 <!-- Active Sessions Panel -->
                 <div id="active-sessions-panel" class="card" style="display: none;">
-                    <h2>Active Sessions</h2>
+                    <h2 data-i18n="sessions.title">Active Sessions</h2>
                     <div id="active-sessions-content"></div>
                 </div>
 
@@ -749,10 +153,10 @@
         <!-- Server Info Tab -->
         <div id="server-tab" class="tab-content active">
             <div class="card">
-                <h2>Server Information</h2>
+                <h2 data-i18n="server.info.title">Server Information</h2>
                 <div id="server-info" class="loading">
                     <div class="spinner"></div>
-                    Loading server info...
+                    <span data-i18n="server.info.loading">Loading server info...</span>
                 </div>
             </div>
         </div>
@@ -766,8 +170,8 @@
                 </div>
 
                 <div id="clients-subtab">
-                    <h2>Client Management</h2>
-                    <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                    <h2 data-i18n="page.clients.title">Client Management</h2>
+                    <p data-i18n="page.clients.intro" style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
                         Manage PXE boot clients. Discovered clients appear automatically when they connect.
                     </p>
                     <div class="toolbar">
@@ -800,8 +204,8 @@
                 </div>
 
                 <div id="client-groups-subtab" style="display: none;">
-                    <h2>Client Groups</h2>
-                    <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                    <h2 data-i18n="page.client_groups.title">Client Groups</h2>
+                    <p data-i18n="page.client_groups.intro" style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
                         Group clients by location, role, or fleet. Bulk wake all members, set a next-boot image on all, and overlay assigned images.
                     </p>
                     <div class="toolbar">
@@ -828,8 +232,8 @@
                 </div>
 
                 <div id="images-subtab">
-                    <h2>Image Management</h2>
-                    <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                    <h2 data-i18n="page.images.title">Image Management</h2>
+                    <p data-i18n="page.images.intro" style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
                         Upload, download, and manage OS images available for PXE booting.
                     </p>
                     <div class="toolbar">
@@ -897,8 +301,8 @@
         <!-- Public Files Tab -->
         <div id="public-files-tab" class="tab-content">
             <div class="card">
-                <h2>Public Files</h2>
-                <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                <h2 data-i18n="page.public_files.title">Public Files</h2>
+                <p data-i18n="page.public_files.intro" style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
                     Files available to all clients. For image-specific files, manage them from the Images tab.
                 </p>
                 <div class="toolbar">
@@ -917,8 +321,8 @@
         <!-- Users Tab -->
         <div id="users-tab" class="tab-content">
             <div class="card">
-                <h2>User Management</h2>
-                <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                <h2 data-i18n="page.users.title">User Management</h2>
+                <p data-i18n="page.users.intro" style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
                     Manage admin panel user accounts and permissions.
                 </p>
                 <div class="toolbar">
@@ -938,8 +342,8 @@
         <!-- Tools Tab -->
         <div id="tools-tab" class="tab-content">
             <div class="card">
-                <h2>Boot Tools</h2>
-                <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                <h2 data-i18n="page.tools.title">Boot Tools</h2>
+                <p data-i18n="page.tools.intro" style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
                     Download a tool to make it available, then enable it to show in the boot menu.
                 </p>
                 <div class="toolbar">
@@ -962,8 +366,8 @@
         <!-- Distro Profiles Tab -->
         <div id="profiles-tab" class="tab-content">
             <div class="card">
-                <h2>Distro Profiles</h2>
-                <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                <h2 data-i18n="page.profiles.title">Distro Profiles</h2>
+                <p data-i18n="page.profiles.intro" style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
                     Distro profiles define how ISOs are detected and booted. Built-in profiles are updated from the central repository. Custom profiles take priority.
                 </p>
                 <div class="toolbar">
@@ -986,8 +390,8 @@
         <!-- Auto-Install Files Tab -->
         <div id="autoinstall-tab" class="tab-content">
             <div class="card">
-                <h2>Auto-Install Files</h2>
-                <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                <h2 data-i18n="page.autoinstall.title">Auto-Install Files</h2>
+                <p data-i18n="page.autoinstall.intro" style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
                     Install operating systems without manual prompts. Windows uses autounattend.xml; Ubuntu uses cloud-init; Red Hat and its family use kickstart; Debian uses preseed. Attach a file to an image for a default config, or override it per client for machine-specific setups.
                 </p>
                 <div class="toolbar">
@@ -1084,8 +488,8 @@
         <!-- Bootloaders Tab -->
         <div id="bootloaders-tab" class="tab-content">
             <div class="card">
-                <h2>Bootloader Management</h2>
-                <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                <h2 data-i18n="page.bootloaders.title">Bootloader Management</h2>
+                <p data-i18n="page.bootloaders.intro" style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
                     Manage iPXE bootloader sets served to PXE clients. Create custom sets with your own bootloader files.
                 </p>
                 <div class="toolbar">
@@ -1204,8 +608,8 @@
         <!-- Logs Tab -->
         <div id="logs-tab" class="tab-content">
             <div class="card">
-                <h2>Server Logs</h2>
-                <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                <h2 data-i18n="page.logs.title">Server Logs</h2>
+                <p data-i18n="page.logs.intro" style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
                     Live server log output for TFTP, HTTP, and PXE boot activity.
                 </p>
                 <div class="toolbar">
@@ -1588,22 +992,22 @@
             <div style="margin-bottom: 20px;">
                 <div style="font-size: 48px; margin-bottom: 8px;">🚀</div>
                 <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 4px; padding: 0;">Bootimus</h2>
-                <p style="color: var(--text-secondary); font-size: 13px; margin: 0;">PXE/HTTP Boot Server</p>
+                <p data-i18n="app.product_subtitle" style="color: var(--text-secondary); font-size: 13px; margin: 0;">PXE/HTTP Boot Server</p>
                 <p id="about-version" style="color: var(--text-muted); font-size: 12px; margin: 6px 0 0;"></p>
             </div>
             <div style="text-align: left; font-size: 13px; color: var(--text-secondary); line-height: 1.8; border-top: 1px solid var(--border); padding-top: 16px;">
-                <p><strong style="color: var(--text-primary);">Website</strong><br>
+                <p><strong data-i18n="about.website" style="color: var(--text-primary);">Website</strong><br>
                 <a href="https://bootimus.com" target="_blank" style="color: var(--teal);">bootimus.com</a></p>
-                <p style="margin-top: 12px;"><strong style="color: var(--text-primary);">GitHub</strong><br>
+                <p style="margin-top: 12px;"><strong data-i18n="about.github" style="color: var(--text-primary);">GitHub</strong><br>
                 <a href="https://github.com/garybowers/bootimus" target="_blank" style="color: var(--teal);">github.com/garybowers/bootimus</a></p>
-                <p style="margin-top: 12px;"><strong style="color: var(--text-primary);">Report Issues</strong><br>
+                <p style="margin-top: 12px;"><strong data-i18n="about.report_issues" style="color: var(--text-primary);">Report Issues</strong><br>
                 <a href="https://github.com/garybowers/bootimus/issues" target="_blank" style="color: var(--teal);">github.com/garybowers/bootimus/issues</a></p>
-                <p style="margin-top: 12px;"><strong style="color: var(--text-primary);">Docker Hub</strong><br>
+                <p style="margin-top: 12px;"><strong data-i18n="about.docker_hub" style="color: var(--text-primary);">Docker Hub</strong><br>
                 <a href="https://hub.docker.com/r/garybowers/bootimus" target="_blank" style="color: var(--teal);">hub.docker.com/r/garybowers/bootimus</a></p>
-                <p style="margin-top: 12px;"><strong style="color: var(--text-primary);">Licence</strong><br>
+                <p style="margin-top: 12px;"><strong data-i18n="about.licence" style="color: var(--text-primary);">Licence</strong><br>
                 Apache License 2.0</p>
             </div>
-            <button type="button" class="btn" onclick="closeModal('about-modal')" style="margin-top: 16px;">Close</button>
+            <button type="button" data-i18n="common.close" class="btn" onclick="closeModal('about-modal')" style="margin-top: 16px;">Close</button>
         </div>
     </div>
 
@@ -1910,84 +1314,104 @@
     <div id="image-properties-modal" class="modal slide-panel">
         <div class="modal-content" style="max-width: 1000px;">
             <div class="modal-header">
-                <h2>Image Properties: <span id="image-props-name"></span></h2>
+                <h2><span data-i18n="props.modal.title">Image Properties</span>: <span id="image-props-name"></span></h2>
             </div>
             <input type="hidden" id="image-props-filename">
 
+            <div id="image-props-warn-extract" class="guide-warning" style="display:none;">
+                <span class="gw-text" data-i18n="props.warn.not_extracted">Not extracted yet. This OS likely won't boot reliably without extraction — kernel and initrd need to be served directly.</span>
+                <button type="button" class="btn btn-sm btn-warning" onclick="extractFromProperties()" data-i18n="props.action.extract_now">Extract now</button>
+            </div>
+            <div id="image-props-warn-netboot" class="guide-warning" style="display:none;">
+                <span class="gw-text" data-i18n="props.warn.netboot_required">Netboot files required. This Debian/Ubuntu DVD ISO ships an installer that needs a separate kernel/initrd bundle from the distro mirror — it can't boot directly from the ISO contents.</span>
+                <button type="button" class="btn btn-sm btn-warning" onclick="downloadNetbootFromProperties()" data-i18n="props.action.download_netboot">Download netboot files</button>
+            </div>
+            <div id="image-props-warn-smb-server" class="guide-warning" style="display:none;">
+                <span class="gw-text" data-i18n="props.warn.smb_disabled">Server SMB share is disabled. Windows installs need it. Enable Windows SMB in Settings.</span>
+                <button type="button" class="btn btn-sm btn-warning" onclick="navigateToSettings()" data-i18n="props.action.open_settings">Open Settings</button>
+            </div>
+            <div id="image-props-warn-wimlib" class="guide-warning" style="display:none;">
+                <span class="gw-text" data-i18n="props.warn.wimlib_missing">wimlib-imagex is not installed on the server. boot.wim cannot be patched without it. Install wimtools (or wimlib-imagex) on the host running bootimus, then restart.</span>
+            </div>
+
             <div class="subtabs" style="margin: 0 0 20px;">
-                <button type="button" class="subtab active" data-props-tab="general" onclick="switchPropsTab('general')">Properties</button>
-                <button type="button" class="subtab" data-props-tab="autoinstall" onclick="switchPropsTab('autoinstall')">Auto-Install</button>
-                <button type="button" class="subtab" data-props-tab="files" onclick="switchPropsTab('files')">Files</button>
+                <button type="button" class="subtab active" data-props-tab="general" onclick="switchPropsTab('general')" data-i18n="props.tab.properties">Properties</button>
+                <button type="button" class="subtab" data-props-tab="autoinstall" onclick="switchPropsTab('autoinstall')" data-i18n="props.tab.autoinstall">Auto-Install</button>
+                <button type="button" class="subtab" data-props-tab="files" onclick="switchPropsTab('files')" data-i18n="props.tab.files">Files</button>
             </div>
 
             <div id="props-general-content" class="props-tab-content">
                 <div class="form-group">
-                    <label>Display Name</label>
+                    <label data-i18n="props.field.display_name">Display Name</label>
                     <input type="text" id="image-props-display-name" class="form-control">
                 </div>
 
                 <div class="form-group">
-                    <label>Description</label>
+                    <label data-i18n="props.field.description">Description</label>
                     <textarea id="image-props-description" class="form-control" rows="3"></textarea>
                 </div>
 
                 <div class="form-group">
-                    <label>Group Assignment</label>
+                    <label data-i18n="props.field.group">Group Assignment</label>
                     <select id="image-props-group" class="form-control">
-                        <option value="">Unassigned</option>
+                        <option value="" data-i18n="props.field.group_unassigned">Unassigned</option>
                     </select>
                 </div>
 
                 <div class="form-group">
-                    <label>Order</label>
+                    <label data-i18n="props.field.order">Order</label>
                     <input type="number" id="image-props-order" class="form-control" min="0" value="0">
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div class="form-group">
-                        <label>Boot Method</label>
+                        <label data-i18n="props.field.boot_method">Boot Method</label>
                         <select id="image-props-boot-method" class="form-control">
-                            <option value="sanboot">SAN Boot</option>
-                            <option value="kernel">Kernel/Initrd</option>
-                            <option value="nbd">NBD Mount</option>
+                            <option value="sanboot" data-i18n="props.boot_method.sanboot">SAN Boot</option>
+                            <option value="kernel" data-i18n="props.boot_method.kernel">Kernel/Initrd</option>
+                            <option value="nbd" data-i18n="props.boot_method.nbd">NBD Mount</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Distro Profile</label>
+                        <label data-i18n="props.field.distro">Distro Profile</label>
                         <select id="image-props-distro" class="form-control">
-                            <option value="">Auto-detect</option>
+                            <option value="" data-i18n="props.field.distro_auto">Auto-detect</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label>Boot Parameters</label>
+                    <label data-i18n="props.field.boot_params">Boot Parameters</label>
                     <div style="display: flex; gap: 8px;">
-                        <input type="text" id="image-props-boot-params" class="form-control" placeholder="Optional kernel parameters" style="flex: 1;">
-                        <button type="button" class="btn btn-sm" id="image-props-redetect-btn" onclick="redetectFromProperties()" style="white-space: nowrap; display: none;">Re-detect</button>
+                        <input type="text" id="image-props-boot-params" class="form-control" data-i18n-placeholder="props.field.boot_params_placeholder" placeholder="Optional kernel parameters" style="flex: 1;">
+                        <button type="button" class="btn btn-sm" id="image-props-redetect-btn" onclick="redetectFromProperties()" style="white-space: nowrap; display: none;" data-i18n="props.action.redetect">Re-detect</button>
                     </div>
-                    <small style="color: var(--text-muted);">Leave empty for distro defaults. Placeholders: <code>{{BASE_URL}}</code> <code>{{CACHE_DIR}}</code> <code>{{FILENAME}}</code> <code>{{SQUASHFS}}</code></small>
+                    <small style="color: var(--text-muted);"><span data-i18n="props.field.boot_params_hint">Leave empty for distro defaults.</span> <span data-i18n="props.field.placeholders_label">Placeholders:</span> <code>{{BASE_URL}}</code> <code>{{CACHE_DIR}}</code> <code>{{FILENAME}}</code> <code>{{SQUASHFS}}</code></small>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     <div class="form-group checkbox-group">
                         <input type="checkbox" id="image-props-enabled">
-                        <label>Enabled</label>
+                        <label data-i18n="common.enabled">Enabled</label>
                     </div>
                     <div class="form-group checkbox-group">
                         <input type="checkbox" id="image-props-public">
-                        <label>Public (available to all clients)</label>
+                        <label data-i18n="props.field.public">Public (available to all clients)</label>
                     </div>
                 </div>
             </div>
 
             <div id="props-autoinstall-content" class="props-tab-content" style="display: none;">
+                <div id="image-props-warn-repatch" class="guide-warning" style="display:none;">
+                    <span class="gw-text" data-i18n="props.warn.repatch">Re-patch needed. Auto-install changed since boot.wim was last embedded — save and re-patch SMB so the change takes effect.</span>
+                    <button type="button" class="btn btn-sm btn-warning" onclick="saveAndRepatchFromProperties()" data-i18n="props.action.save_and_repatch">Save &amp; Re-patch</button>
+                </div>
                 <div class="form-group">
-                    <label>Default Auto-Install File</label>
+                    <label data-i18n="props.field.default_autoinstall">Default Auto-Install File</label>
                     <select id="image-props-autoinstall-file" class="form-control">
-                        <option value="">(None — manual install)</option>
+                        <option value="" data-i18n="props.field.autoinstall_none">(None — manual install)</option>
                     </select>
-                    <small style="color: var(--text-secondary);">Only files matching this image's distro are shown. Manage files in the <strong>Auto-Install</strong> section.</small>
+                    <small style="color: var(--text-secondary);" data-i18n="props.field.autoinstall_hint">Only files matching this image's distro are shown. Manage files in the Auto-Install section.</small>
                 </div>
                 <input type="hidden" id="image-props-autoinstall-enabled">
                 <input type="hidden" id="image-props-autoinstall-type">
@@ -1998,7 +1422,8 @@
             <div id="props-files-content" class="props-tab-content" style="display: none;">
                 <form id="props-file-upload-form" onsubmit="event.preventDefault(); uploadPropsImageFile();" style="display: flex; gap: 8px; align-items: center; margin-bottom: 16px;">
                     <input type="file" id="props-file-input" class="form-control" required style="flex: 1; padding: 6px;">
-                    <button type="submit" class="btn btn-sm" style="white-space: nowrap;">Upload</button>
+                    <button type="submit" class="btn btn-sm" style="white-space: nowrap;" data-i18n="common.upload">Upload</button>
+                    <button type="button" class="btn btn-sm" style="white-space: nowrap;" onclick="loadPropsImageFiles()" data-i18n-title="common.refresh_tooltip" title="Reload file list" data-i18n="common.refresh">Refresh</button>
                 </form>
 
                 <div id="image-props-files-list" style="max-height: 600px; overflow-y: auto; margin-right: -8px; padding-right: 16px;">
@@ -2022,12 +1447,12 @@
             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 <button id="image-props-extract-btn" class="btn" style="display: none;" onclick="extractFromProperties()">Extract</button>
                 <button id="image-props-patch-smb-btn" class="btn" style="display: none;" onclick="patchSmbFromProperties()" title="Rewrite boot.wim so WinPE auto-mounts the SMB share and launches setup.exe">Patch SMB</button>
-                <button id="image-props-netboot-btn" class="btn" style="display: none;" onclick="downloadNetbootFromProperties()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Netboot</button>
-                <button id="image-props-download-btn" class="btn" onclick="downloadISOFromProperties()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download ISO</button>
+                <button id="image-props-netboot-btn" class="btn" style="display: none;" onclick="downloadNetbootFromProperties()" data-i18n-title="props.action.download_netboot_tooltip" data-i18n="props.action.download_netboot" title="Download the kernel/initrd netboot bundle from the distro mirror"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download netboot files</button>
+                <button id="image-props-download-btn" class="btn" onclick="downloadISOFromProperties()" data-i18n="props.action.download_iso"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download ISO</button>
                 <button id="image-props-delete-btn" class="btn btn-danger" onclick="deleteFromProperties()">Delete</button>
                 <div style="flex: 1;"></div>
                 <button class="btn" onclick="closeModal('image-properties-modal')">Cancel</button>
-                <button class="btn btn-primary" onclick="saveImageProperties()">Save Properties</button>
+                <button class="btn btn-primary" onclick="saveImageProperties()" data-i18n="props.action.save_properties">Save Properties</button>
             </div>
         </div>
     </div>
@@ -2316,6 +1741,7 @@
         </div>
     </div>
 
+    <script src="i18n.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

@@ -702,6 +702,39 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
+// tftpRemoteAddrer matches *sender / *receiver in pin/tftp v3, used to
+// surface the client address in logs without modifying the library.
+type tftpRemoteAddrer interface {
+	RemoteAddr() net.UDPAddr
+}
+
+// tftpDebugHook logs every transfer's outcome. Visibility into whether
+// a missing final ACK is keeping a sender goroutine alive is the whole
+// point — DatagramsSent vs DatagramsAcked exposes that directly.
+type tftpDebugHook struct{}
+
+func (tftpDebugHook) OnSuccess(stats tftp.TransferStats) {
+	log.Printf("TFTP DEBUG: ✓ %s %s sent=%d acked=%d duration=%s mode=%s",
+		stats.RemoteAddr, stats.Filename,
+		stats.DatagramsSent, stats.DatagramsAcked,
+		stats.Duration, stats.Mode)
+}
+
+func (tftpDebugHook) OnFailure(stats tftp.TransferStats, err error) {
+	log.Printf("TFTP DEBUG: ✗ %s %s sent=%d acked=%d duration=%s err=%v",
+		stats.RemoteAddr, stats.Filename,
+		stats.DatagramsSent, stats.DatagramsAcked,
+		stats.Duration, err)
+}
+
+func tftpRemote(rf io.ReaderFrom) string {
+	if ra, ok := rf.(tftpRemoteAddrer); ok {
+		addr := ra.RemoteAddr()
+		return addr.String()
+	}
+	return "?"
+}
+
 func (s *Server) startTFTPServer() error {
 	log.Printf("Starting TFTP server on port %d...", s.config.TFTPPort)
 
@@ -712,6 +745,12 @@ func (s *Server) startTFTPServer() error {
 				cleanPath = filepath.Base(cleanPath)
 			}
 
+			remote := tftpRemote(rf)
+			start := time.Now()
+			defer func() {
+				log.Printf("TFTP DEBUG: handler exit %s file=%s elapsed=%s", remote, filename, time.Since(start))
+			}()
+			log.Printf("TFTP DEBUG: handler entry %s file=%s", remote, filename)
 			log.Printf("TFTP: Client requesting file: %s", filename)
 			metrics.TFTPRequests.WithLabelValues(cleanPath).Inc()
 
@@ -803,6 +842,7 @@ goto dhcp
 	)
 
 	server.SetTimeout(5 * time.Second)
+	server.SetHook(tftpDebugHook{})
 	if s.config.TFTPSinglePort {
 		log.Print("Enabling single port mode for TFTP server")
 		server.EnableSinglePort()

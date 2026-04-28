@@ -35,6 +35,11 @@ type ToolDefinition struct {
 	BootParams  string `json:"boot_params"`
 	BootMethod  string `json:"boot_method,omitempty"`
 	ArchiveType string `json:"archive_type,omitempty"`
+	// Optional BIOS variant: when set, a second download is fetched and the
+	// menu dispatches to it on legacy/BIOS clients (iPXE ${platform} != efi).
+	// Only meaningful for chain-mode tools today (e.g. netboot.xyz).
+	DownloadURLBIOS string `json:"download_url_bios,omitempty"`
+	KernelPathBIOS  string `json:"kernel_path_bios,omitempty"`
 }
 
 type toolsManifest struct {
@@ -255,6 +260,7 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 
 	// Build effective definition from built-in or custom tool DB fields
 	var displayName, downloadURL, kernelPath, archiveType string
+	var downloadURLBIOS, kernelPathBIOS string
 
 	if def := GetDefinition(name); def != nil {
 		displayName = def.DisplayName
@@ -264,11 +270,15 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 		}
 		kernelPath = def.KernelPath
 		archiveType = def.ArchiveType
+		downloadURLBIOS = def.DownloadURLBIOS
+		kernelPathBIOS = def.KernelPathBIOS
 	} else if tool.Custom {
 		displayName = tool.DisplayName
 		downloadURL = tool.DownloadURL
 		kernelPath = tool.KernelPath
 		archiveType = tool.ArchiveType
+		downloadURLBIOS = tool.DownloadURLBIOS
+		kernelPathBIOS = tool.KernelPathBIOS
 	} else {
 		return fmt.Errorf("unknown tool: %s", name)
 	}
@@ -377,6 +387,21 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 		return fmt.Errorf("unknown archive type: %s", archiveType)
 	}
 
+	// Fetch the BIOS variant alongside the main (EFI) download if defined.
+	// Always treated as a single binary placed at toolDir/<kernelPathBIOS>.
+	if downloadURLBIOS != "" && kernelPathBIOS != "" {
+		biosDest := filepath.Join(toolDir, kernelPathBIOS)
+		if err := os.MkdirAll(filepath.Dir(biosDest), 0755); err != nil {
+			m.setProgress(name, &DownloadProgress{Status: "error", Error: err.Error()})
+			return fmt.Errorf("failed to create BIOS directory: %w", err)
+		}
+		log.Printf("Tools: Downloading BIOS variant for %s from %s", displayName, downloadURLBIOS)
+		if err := m.fetchToFile(downloadURLBIOS, biosDest); err != nil {
+			m.setProgress(name, &DownloadProgress{Status: "error", Error: err.Error()})
+			return fmt.Errorf("failed to download BIOS variant: %w", err)
+		}
+	}
+
 	// Update database
 	tool, err = m.store.GetBootTool(name)
 	if err != nil {
@@ -390,6 +415,34 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 	log.Printf("Tools: %s ready at %s", displayName, toolDir)
 	m.setProgress(name, &DownloadProgress{Status: "done", Percent: 100, Downloaded: written, Total: totalSize})
 
+	return nil
+}
+
+// fetchToFile downloads a single URL straight to disk. Used for fetching
+// the optional BIOS variant of a chain tool alongside the primary EFI one.
+func (m *Manager) fetchToFile(rawURL, destPath string) error {
+	req, err := http.NewRequest("GET", rawURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "Bootimus PXE Server")
+	client := &http.Client{Timeout: 30 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	out, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -422,18 +475,20 @@ func (m *Manager) GetEnabledTools(serverURL string) []EnabledTool {
 			continue
 		}
 
-		var kp, ip, bp, bm string
+		var kp, ip, bp, bm, kpBIOS string
 
 		if def := GetDefinition(tool.Name); def != nil {
 			kp = def.KernelPath
 			ip = def.InitrdPath
 			bp = def.BootParams
 			bm = def.BootMethod
+			kpBIOS = def.KernelPathBIOS
 		} else if tool.Custom {
 			kp = tool.KernelPath
 			ip = tool.InitrdPath
 			bp = tool.BootParams
 			bm = tool.BootMethod
+			kpBIOS = tool.KernelPathBIOS
 		} else {
 			continue
 		}
@@ -456,18 +511,22 @@ func (m *Manager) GetEnabledTools(serverURL string) []EnabledTool {
 		if ip != "" {
 			et.InitrdURL = fmt.Sprintf("%s/tools/%s/%s", serverURL, tool.Name, ip)
 		}
+		if kpBIOS != "" {
+			et.KernelURLBIOS = fmt.Sprintf("%s/tools/%s/%s", serverURL, tool.Name, kpBIOS)
+		}
 		result = append(result, et)
 	}
 	return result
 }
 
 type EnabledTool struct {
-	Name        string
-	DisplayName string
-	KernelURL   string
-	InitrdURL   string
-	BootParams  string
-	BootMethod  string // "kernel", "memdisk", "chain"
+	Name          string
+	DisplayName   string
+	KernelURL     string
+	KernelURLBIOS string // optional; populated when the tool has a BIOS variant
+	InitrdURL     string
+	BootParams    string
+	BootMethod    string // "kernel", "memdisk", "chain"
 }
 
 type progressWriter struct {

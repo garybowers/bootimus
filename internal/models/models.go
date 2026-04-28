@@ -216,6 +216,8 @@ type Image struct {
 	AutoInstallScriptType string `json:"auto_install_script_type,omitempty"`
 	InstallWimPath        string `json:"install_wim_path,omitempty"`
 	SMBInstallEnabled     bool   `gorm:"default:false" json:"smb_install_enabled"`
+	SMBPatchFingerprint   string `json:"smb_patch_fingerprint,omitempty"`
+	SMBNeedsRepatch       bool   `gorm:"-" json:"smb_needs_repatch"`
 
 	AutoInstallFile string `json:"auto_install_file,omitempty"`
 }
@@ -333,4 +335,6 @@ type BootTool struct {
 	BootParams  string `json:"boot_params,omitempty"`                   // kernel parameters ({{HTTP_URL}} replaced)
 	BootMethod  string `json:"boot_method,omitempty"`                   // "kernel", "memdisk", or "chain"
 	ArchiveType string `json:"archive_type,omitempty"`                  // "zip", "bin", or "iso"
+	DownloadURLBIOS string `json:"download_url_bios,omitempty"`         // optional BIOS variant URL (chain tools)
+	KernelPathBIOS  string `json:"kernel_path_bios,omitempty"`          // optional BIOS variant local path
 }

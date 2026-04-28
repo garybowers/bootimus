@@ -191,6 +191,16 @@ function injectModalCloseButtons() {
         btn.addEventListener('click', () => closeModal(modal.id));
         header.appendChild(btn);
     });
+    // Backdrop click closes the modal. e.target === modal means the click
+    // was on the dimmed area outside .modal-content, not bubbled up from
+    // inside the panel.
+    document.querySelectorAll('.modal').forEach(modal => {
+        if (!modal.id || modal.dataset.backdropWired) return;
+        modal.dataset.backdropWired = '1';
+        modal.addEventListener('click', e => {
+            if (e.target === modal) closeModal(modal.id);
+        });
+    });
 }
 document.addEventListener('DOMContentLoaded', injectModalCloseButtons);
 
@@ -291,6 +301,7 @@ function initApp() {
     loadCurrentUser();
     loadStats();
     loadServerInfo();
+    loadProfileCache();
     loadClients();
     loadImages();
     loadPublicFiles();
@@ -457,6 +468,8 @@ async function loadServerInfo() {
             if (data.data && data.data.configuration) {
                 const smb = data.data.configuration.windows_smb || '';
                 cachedWindowsSMBActive = smb.startsWith('Enabled');
+                const patcher = data.data.configuration.windows_smb_patcher || '';
+                cachedWindowsSMBPatcherAvailable = patcher.startsWith('Available');
             }
             renderServerInfo(data.data);
         }
@@ -473,6 +486,7 @@ let cachedHTTPPort = 8080;
 // Cached from /api/server-info so the image properties modal knows whether
 // to offer the "Patch SMB" button.
 let cachedWindowsSMBActive = false;
+let cachedWindowsSMBPatcherAvailable = true;
 
 async function powerClient(action) {
     const form = document.getElementById('edit-client-form');
@@ -800,48 +814,63 @@ function renderServerInfo(info) {
     // Build running status grid cells
     let statusCards = '';
     if (info.version) {
-        statusCards += `<div class="rs-metric"><span class="rs-label">Version</span><span class="rs-value">${info.version}</span></div>`;
+        statusCards += `<div class="rs-metric"><span class="rs-label">${t('server.field.version')}</span><span class="rs-value">${info.version}</span></div>`;
     }
     if (sysStats.uptime) {
-        statusCards += `<div class="rs-metric"><span class="rs-label">Uptime</span><span class="rs-value" style="color: var(--accent)">${sysStats.uptime}</span></div>`;
+        statusCards += `<div class="rs-metric"><span class="rs-label">${t('server.field.uptime')}</span><span class="rs-value" style="color: var(--accent)">${sysStats.uptime}</span></div>`;
     }
     if (info.configuration && info.configuration.runtime_mode) {
-        statusCards += `<div class="rs-metric"><span class="rs-label">Runtime Mode</span><span class="rs-value"><span class="badge ${info.configuration.runtime_mode === 'Docker' ? 'badge-info' : 'badge-success'}">${info.configuration.runtime_mode}</span></span></div>`;
+        statusCards += `<div class="rs-metric"><span class="rs-label">${t('server.field.runtime_mode')}</span><span class="rs-value"><span class="badge ${info.configuration.runtime_mode === 'Docker' ? 'badge-info' : 'badge-success'}">${info.configuration.runtime_mode}</span></span></div>`;
     }
     if (sysStats.host) {
         const os = sysStats.host.platform ? `${sysStats.host.platform} ${sysStats.host.platform_version || ''}`.trim() : (sysStats.host.os || '');
-        if (os) statusCards += `<div class="rs-metric"><span class="rs-label">OS</span><span class="rs-value">${os}</span></div>`;
-        if (sysStats.host.architecture) statusCards += `<div class="rs-metric"><span class="rs-label">Arch</span><span class="rs-value">${sysStats.host.architecture}</span></div>`;
+        if (os) statusCards += `<div class="rs-metric"><span class="rs-label">${t('server.field.os')}</span><span class="rs-value">${os}</span></div>`;
+        if (sysStats.host.architecture) statusCards += `<div class="rs-metric"><span class="rs-label">${t('server.field.arch')}</span><span class="rs-value">${sysStats.host.architecture}</span></div>`;
     }
 
     // Build resource cards: ring gauge per metric
     let resourceCards = '';
     if (sysStats.cpu) {
         resourceCards += resCard(
-            'CPU Usage',
+            t('server.metric.cpu'),
             sysStats.cpu.usage_percent,
-            `${sysStats.cpu.cores} core${sysStats.cpu.cores !== 1 ? 's' : ''} available`
+            t('server.metric.cores_available', { n: sysStats.cpu.cores })
         );
     }
     if (sysStats.memory) {
         resourceCards += resCard(
-            'Memory',
+            t('server.metric.memory'),
             sysStats.memory.used_percent,
-            `${formatBytes(sysStats.memory.used)} used of ${formatBytes(sysStats.memory.total)}`
+            t('server.metric.memory_detail', {
+                used: formatBytes(sysStats.memory.used),
+                total: formatBytes(sysStats.memory.total),
+            })
         );
     }
     (sysStats.disk || []).forEach(disk => {
         resourceCards += resCard(
-            `Disk ${disk.path}`,
+            `${t('server.metric.disk')} ${disk.path}`,
             disk.used_percent,
-            `${formatBytes(disk.free)} free of ${formatBytes(disk.total)}`
+            t('server.metric.disk_detail', {
+                free: formatBytes(disk.free),
+                total: formatBytes(disk.total),
+            })
         );
     });
+
+    // Translate the config row label using the dictionary if a key exists,
+    // otherwise fall back to the humanised snake_case version.
+    function configLabel(key) {
+        const dictKey = 'server.config.' + key;
+        const translated = t(dictKey);
+        if (translated !== dictKey) return translated;
+        return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
 
     // Build configuration key-value pairs
     const configItems = Object.entries(info.configuration || {}).filter(([key]) => key !== 'runtime_mode').map(([key, value]) => `
         <div class="info-item">
-            <span class="info-label">${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+            <span class="info-label">${configLabel(key)}</span>
             <span class="info-value">${value || '<em style="color:var(--text-muted)">-</em>'}</span>
         </div>
     `).join('');
@@ -850,17 +879,17 @@ function renderServerInfo(info) {
     const envEntries = Object.entries(info.environment || {}).filter(([, v]) => v);
     const envItems = envEntries.length > 0
         ? envEntries.map(([key, value]) => `<div class="info-item"><span class="info-label">${key}</span><span class="info-value">${value}</span></div>`).join('')
-        : '<p style="color: var(--text-muted); padding: 16px 0; font-size: 13px;">No environment variables set</p>';
+        : `<p style="color: var(--text-muted); padding: 16px 0; font-size: 13px;">${t('server.env.empty')}</p>`;
 
     container.innerHTML = `
         <div class="si-section">
-            <h3 class="si-heading">Running Status</h3>
+            <h3 class="si-heading">${t('server.section.running_status')}</h3>
             <div class="rs-grid">${statusCards}</div>
         </div>
 
         ${resourceCards ? `
         <div class="si-section">
-            <h3 class="si-heading si-heading-teal">System Resources</h3>
+            <h3 class="si-heading si-heading-teal">${t('server.section.system_resources')}</h3>
             <div class="res-grid">${resourceCards}</div>
         </div>
         ` : ''}
@@ -868,11 +897,11 @@ function renderServerInfo(info) {
         <div class="si-section">
             <div class="info-grid">
                 <div class="info-section">
-                    <h3>Configuration</h3>
+                    <h3>${t('server.section.configuration')}</h3>
                     ${configItems}
                 </div>
                 <div class="info-section">
-                    <h3>Environment</h3>
+                    <h3>${t('server.section.environment')}</h3>
                     ${envItems}
                 </div>
             </div>
@@ -1521,6 +1550,84 @@ function _countTreeImages(node, ownByGroup) {
     return n;
 }
 
+// Heuristics for guiding the user before extraction has run. The backend
+// only knows the distro after extraction, so we pattern-match the filename
+// to flag images that almost certainly won't boot via sanboot.
+const _filenameNeedsExtraction = [
+    'ubuntu', 'xubuntu', 'kubuntu', 'lubuntu', 'edubuntu', 'ubuntumate',
+    'ubuntustudio', 'budgie', 'noble', 'jammy',
+    'popos', 'pop-os', 'pop_os',
+    'mint', 'linuxmint',
+    'elementary', 'zorin',
+    'windows', 'win10', 'win11', 'win7',
+    'server2019', 'server2022', 'server2025'
+];
+const _filenameWindows = [
+    'windows', 'win10', 'win11', 'win7',
+    'server2019', 'server2022', 'server2025'
+];
+function filenameLikelyNeedsExtraction(filename) {
+    const f = (filename || '').toLowerCase();
+    return _filenameNeedsExtraction.some(p => f.includes(p));
+}
+function filenameLooksWindows(filename) {
+    const f = (filename || '').toLowerCase();
+    return _filenameWindows.some(p => f.includes(p));
+}
+
+// Profile cache, keyed by profile_id. Populated by loadProfileCache() at
+// startup so the images table can compare each image's boot_method against
+// the distro's preferred boot_method without a per-row fetch.
+let _profileCache = {};
+async function loadProfileCache() {
+    try {
+        const res = await authFetch(`${API_BASE}/profiles`);
+        const data = await res.json();
+        if (!data.success) return;
+        const next = {};
+        for (const p of (data.data || [])) {
+            next[p.profile_id] = p;
+        }
+        _profileCache = next;
+    } catch (e) {
+        // Non-fatal: row health check just falls back to "ok".
+    }
+}
+function getPreferredBootMethod(distro) {
+    if (!distro) return '';
+    const p = _profileCache[distro];
+    return (p && p.boot_method) || '';
+}
+
+// computeImageHealth returns 'ok' or an object {reason} when the image's
+// current state will not boot reliably with its current boot method.
+function computeImageHealth(img) {
+    const preferred = getPreferredBootMethod(img.distro);
+
+    if (img.netboot_required && !img.netboot_available) {
+        return { reason: 'Netboot files required' };
+    }
+    if ((img.boot_method === 'kernel' || img.boot_method === 'wimboot') && !img.extracted) {
+        return { reason: 'Kernel boot needs extraction' };
+    }
+    if (img.boot_method === 'nbd' && !img.extracted) {
+        return { reason: 'NBD boot needs extraction' };
+    }
+    // Distro is known and the boot method doesn't match what the profile
+    // recommends — same-distro mismatch is the strongest signal of "won't
+    // boot well", e.g. Ubuntu on sanboot.
+    if (preferred && img.boot_method && preferred !== img.boot_method) {
+        // Treat wimboot and kernel interchangeably for this check; both are
+        // "extracted, served directly" in the iPXE menu.
+        const p = preferred === 'wimboot' ? 'kernel' : preferred;
+        const m = img.boot_method === 'wimboot' ? 'kernel' : img.boot_method;
+        if (p !== m) {
+            return { reason: `${img.distro} prefers ${preferred} boot, currently ${img.boot_method}` };
+        }
+    }
+    return 'ok';
+}
+
 function imageRowHTML(img, includeGroupCell, depth = 0) {
     const groupCell = includeGroupCell ? `
                         <td>
@@ -1530,8 +1637,11 @@ function imageRowHTML(img, includeGroupCell, depth = 0) {
                             }
                         </td>` : '';
     const namePadStyle = depth > 0 ? ` style="padding-left: ${10 + depth * 20}px;"` : '';
+    const health = computeImageHealth(img);
+    const rowClass = health === 'ok' ? 'row-clickable' : 'row-clickable row-warning';
+    const rowTitle = health === 'ok' ? '' : ` title="${escapeHtml(health.reason)}"`;
     return `
-                    <tr class="row-clickable" onclick="showImagePropertiesModal('${img.filename}')">
+                    <tr class="${rowClass}"${rowTitle} onclick="showImagePropertiesModal('${img.filename}')">
                         <td${namePadStyle}>${img.name}</td>
                         <td><code>${img.filename}</code></td>
                         <td>${formatBytes(img.size)}</td>
@@ -1572,11 +1682,9 @@ function imageRowHTML(img, includeGroupCell, depth = 0) {
                                     </div>
                                     <div class="progress-text">${extractionProgress[img.filename].status}</div>
                                 </div>
-                            ` : (img.netboot_required ?
-                                (img.netboot_available ?
-                                    '<span style="color: #4caf50;">✓ Netboot Ready</span>' :
-                                    '<span style="color: #ff9800;">⚠ Netboot Required</span>') :
-                                (img.extracted ? '<span style="color: #4caf50;">✓ Ready</span>' : '<span style="color: #999;">Not extracted</span>')
+                            ` : (health !== 'ok'
+                                ? '<span style="color: var(--warning-hover); font-weight:500;">⚠ '+escapeHtml(health.reason)+'</span>'
+                                : '<span style="color: #4caf50;">✓ Ready</span>'
                             )}
                         </td>
                     </tr>`;
@@ -1846,6 +1954,15 @@ function closeImagePropsIfOpenFor(filename) {
     closeModal('image-properties-modal');
 }
 
+// Re-load the properties modal in place after an action that changed the
+// image's state, keeping the user on whichever tab they were viewing.
+function refreshImagePropsIfOpenFor(filename) {
+    const modal = document.getElementById('image-properties-modal');
+    if (!modal || !modal.classList.contains('active')) return;
+    if (document.getElementById('image-props-filename').value !== filename) return;
+    showImagePropertiesModal(filename, { preserveTab: true });
+}
+
 async function extractImage(filename, name) {
     if (!confirm(`Extract kernel and initrd from ${name}?\n\nThis will mount the ISO and extract boot files for direct kernel booting.`)) return;
 
@@ -1861,7 +1978,7 @@ async function extractImage(filename, name) {
             if (p.status === 'running' || p.status === 'done') {
                 extractionProgress[filename] = {
                     progress: Math.max(1, Math.round(p.percent || 0)),
-                    status: p.stage || 'Extracting...'
+                    status: p.stage || t('props.action.extracting')
                 };
                 syncImagesProgress(filename);
             }
@@ -1876,10 +1993,10 @@ async function extractImage(filename, name) {
         if (data.success) {
             extractionProgress[filename] = { progress: 100, status: 'Complete!' };
             syncImagesProgress(filename);
-            setTimeout(() => {
+            setTimeout(async () => {
                 delete extractionProgress[filename];
-                closeImagePropsIfOpenFor(filename);
-                loadImages();
+                await loadImages();
+                refreshImagePropsIfOpenFor(filename);
                 showAlert(data.message || 'Extraction successful', 'success');
             }, 800);
         } else {
@@ -1924,10 +2041,10 @@ async function downloadNetboot(filename, name) {
         if (data.success) {
             extractionProgress[filename] = { progress: 100, status: 'Complete!' };
             syncImagesProgress(filename);
-            setTimeout(() => {
+            setTimeout(async () => {
                 delete extractionProgress[filename];
-                closeImagePropsIfOpenFor(filename);
-                loadImages();
+                await loadImages();
+                refreshImagePropsIfOpenFor(filename);
                 showAlert(data.message || 'Netboot files downloaded successfully', 'success');
             }, 1000);
         } else {
@@ -2738,6 +2855,26 @@ async function deleteBootloaderFile(setName, fileName) {
 }
 
 // USB Images
+// Pulls the file via authFetch (Bearer token) and triggers a download.
+// Plain <a href> can't carry the auth header so direct navigation 401s.
+async function downloadUSBImage(name) {
+    try {
+        const res = await authFetch(`${API_BASE}/usb/download?name=${encodeURIComponent(name)}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        showNotification('Failed to download ' + name + ': ' + err.message, 'error');
+    }
+}
+
 async function loadUSBImages() {
     try {
         const res = await authFetch(`${API_BASE}/usb`);
@@ -2758,7 +2895,7 @@ async function loadUSBImages() {
                 <td>${escapeHtml(img.name)}</td>
                 <td>${size}</td>
                 <td>${type}</td>
-                <td><a href="${API_BASE}/usb/download?name=${encodeURIComponent(img.name)}" class="btn btn-sm btn-primary">Download</a></td>
+                <td><button type="button" class="btn btn-sm btn-primary" onclick="downloadUSBImage('${escapeHtml(img.name).replace(/'/g, "\\'")}')">Download</button></td>
             </tr>`;
         }
         html += '</tbody></table></div>';
@@ -3130,6 +3267,19 @@ function editUser(user) {
     form.elements['username'].value = user.username;
     form.elements['is_admin'].checked = user.is_admin;
     form.elements['enabled'].checked = user.enabled;
+
+    // Lock the admin/enabled toggles if this is the only active admin —
+    // demoting or disabling them would lock everyone out of the system.
+    const otherActiveAdmins = (lastLoadedUsers || []).filter(u =>
+        u.username !== user.username && u.is_admin && u.enabled
+    ).length;
+    const lockOut = user.is_admin && user.enabled && otherActiveAdmins === 0;
+    const lockTitle = lockOut ? 'This is the only active admin — at least one must remain.' : '';
+    form.elements['is_admin'].disabled = lockOut;
+    form.elements['is_admin'].title = lockTitle;
+    form.elements['enabled'].disabled = lockOut;
+    form.elements['enabled'].title = lockTitle;
+
     openModal('edit-user-modal');
 }
 
@@ -3199,13 +3349,13 @@ document.getElementById('edit-user-form').addEventListener('submit', function(e)
     e.preventDefault();
     const formData = new FormData(e.target);
 
+    const username = formData.get('username');
     const userData = {
-        username: formData.get('username'),
         is_admin: formData.get('is_admin') === 'on',
         enabled: formData.get('enabled') === 'on'
     };
 
-    authFetch('/api/users', {
+    authFetch(`/api/users?username=${encodeURIComponent(username)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData)
@@ -4017,7 +4167,8 @@ function getDefaultBootParams(img) {
     }
 }
 
-async function showImagePropertiesModal(filename) {
+async function showImagePropertiesModal(filename, opts) {
+    opts = opts || {};
     const img = images.find(i => i.filename === filename);
     if (!img) return;
 
@@ -4075,7 +4226,7 @@ async function showImagePropertiesModal(filename) {
         extractBtn.style.display = 'inline-block';
         extractBtn.disabled = true;
         extractBtn.style.opacity = '0.5';
-        extractBtn.textContent = 'Extracting...';
+        extractBtn.textContent = t('props.action.extracting');
         netbootBtn.style.display = 'none';
     } else if (img.netboot_required && !img.netboot_available) {
         extractBtn.style.display = 'none';
@@ -4085,7 +4236,7 @@ async function showImagePropertiesModal(filename) {
         extractBtn.style.display = 'inline-block';
         extractBtn.disabled = false;
         extractBtn.style.opacity = '';
-        extractBtn.textContent = img.extracted ? 'Re-Extract' : 'Extract';
+        extractBtn.textContent = img.extracted ? t('props.action.re_extract') : t('props.action.extract');
     } else {
         extractBtn.style.display = 'none';
         netbootBtn.style.display = 'none';
@@ -4094,11 +4245,70 @@ async function showImagePropertiesModal(filename) {
     const patchSmbBtn = document.getElementById('image-props-patch-smb-btn');
     const smbEligible = cachedWindowsSMBActive && img.extracted && img.distro === 'windows';
     patchSmbBtn.style.display = smbEligible ? 'inline-block' : 'none';
-    patchSmbBtn.textContent = img.smb_install_enabled ? 'Re-patch SMB' : 'Patch SMB';
+    patchSmbBtn.textContent = img.smb_install_enabled ? t('props.action.re_patch_smb') : t('props.action.patch_smb');
 
-    openModal('image-properties-modal');
-    switchPropsTab('general');
+    // Stash state used by the live warnings so onChange handlers can re-evaluate.
+    _imagePropsState = {
+        img: img,
+        initialAutoInstallFile: img.auto_install_file || '',
+    };
+    const aiSel = document.getElementById('image-props-autoinstall-file');
+    if (aiSel) aiSel.onchange = updateImagePropsWarnings;
+    updateImagePropsWarnings();
+
+    if (!opts.preserveTab) {
+        openModal('image-properties-modal');
+        switchPropsTab('general');
+    }
     updateImagePropsProgress(filename);
+}
+
+let _imagePropsState = null;
+
+function updateImagePropsWarnings() {
+    if (!_imagePropsState) return;
+    const img = _imagePropsState.img;
+    const fname = img.filename || '';
+    const looksWindows = img.distro === 'windows' || filenameLooksWindows(fname);
+
+    // 1. Not extracted but probably needs to be.
+    const needsExtract = !img.extracted && filenameLikelyNeedsExtraction(fname);
+    document.getElementById('image-props-warn-extract').style.display = needsExtract ? '' : 'none';
+
+    // 1b. Debian/Ubuntu DVD ISOs that ship an installer kernel/initrd
+    // separate from the live system — bootimus needs a netboot bundle
+    // pulled from the mirror before this image can boot.
+    const needsNetboot = img.netboot_required && !img.netboot_available;
+    document.getElementById('image-props-warn-netboot').style.display = needsNetboot ? '' : 'none';
+
+    // 2. Windows image but the server SMB share isn't enabled.
+    const smbServerOff = looksWindows && !cachedWindowsSMBActive;
+    document.getElementById('image-props-warn-smb-server').style.display = smbServerOff ? '' : 'none';
+
+    // 3. Windows image, SMB enabled, but wimlib-imagex isn't installed —
+    // patching can never succeed until the host has the tool.
+    const wimlibMissing = looksWindows && cachedWindowsSMBActive && !cachedWindowsSMBPatcherAvailable;
+    document.getElementById('image-props-warn-wimlib').style.display = wimlibMissing ? '' : 'none';
+
+    // 4. Re-patch needed: image is currently patched AND either the backend
+    // already detected drift, or the user has changed the auto-install file
+    // in this modal session.
+    const aiSel = document.getElementById('image-props-autoinstall-file');
+    const currentAI = aiSel ? aiSel.value : (img.auto_install_file || '');
+    const localChange = currentAI !== _imagePropsState.initialAutoInstallFile;
+    const needsRepatch = img.smb_install_enabled && (img.smb_needs_repatch || localChange);
+    document.getElementById('image-props-warn-repatch').style.display = needsRepatch ? '' : 'none';
+}
+
+function navigateToSettings() {
+    closeModal('image-properties-modal');
+    const item = document.querySelector('.sidebar-nav .nav-item[data-tab="settings"]');
+    if (item) item.click();
+}
+
+async function saveAndRepatchFromProperties() {
+    await saveImageProperties({ skipClose: true });
+    await patchSmbFromProperties();
 }
 
 function applyBootParamsWindowsLock(distro) {
@@ -4116,19 +4326,19 @@ async function patchSmbFromProperties() {
     const filename = document.getElementById('image-props-filename').value;
     const btn = document.getElementById('image-props-patch-smb-btn');
     btn.disabled = true;
-    btn.textContent = 'Patching...';
+    btn.textContent = t('props.action.patching');
     try {
         const res = await authFetch(`${API_BASE}/images/patch-smb?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
         const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Patch failed');
-        showNotification('boot.wim patched for SMB auto-install', 'success');
-        closeModal('image-properties-modal');
-        loadImages();
+        if (!data.success) throw new Error(data.error || t('props.notify.patch_failed'));
+        showNotification(t('props.notify.patch_success'), 'success');
+        await loadImages();
+        refreshImagePropsIfOpenFor(filename);
     } catch (err) {
-        showNotification('Patch failed: ' + err.message, 'error');
+        showNotification(t('props.notify.patch_failed') + ': ' + err.message, 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Patch SMB';
+        btn.textContent = t('props.action.patch_smb');
     }
 }
 
@@ -4323,7 +4533,8 @@ async function deleteImageFile(filename, baseDir, path, isDir, isIso) {
     }
 }
 
-async function saveImageProperties() {
+async function saveImageProperties(opts) {
+    opts = opts || {};
     const filename = document.getElementById('image-props-filename').value;
     const displayName = document.getElementById('image-props-display-name').value;
     const description = document.getElementById('image-props-description').value;
@@ -4368,16 +4579,18 @@ async function saveImageProperties() {
 
         if (!data.success) {
             showNotification('Failed to update image: ' + (data.error || 'Unknown error'), 'error');
-            return;
+            return false;
         }
 
         showNotification('Image properties updated', 'success');
-        closeModal('image-properties-modal');
-        loadImages();
+        await loadImages();
         loadStats();
+        if (!opts.skipClose) refreshImagePropsIfOpenFor(filename);
+        return true;
     } catch (err) {
         showNotification('Failed to update image properties', 'error');
         console.error(err);
+        return false;
     }
 }
 

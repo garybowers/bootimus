@@ -1,5 +1,5 @@
 {
-  "version": "0.1.59",
+  "version": "0.1.62",
   "profiles": [
     {
       "id": "ubuntu",
@@ -9,8 +9,9 @@
       "kernel_paths": ["/casper/vmlinuz", "/casper/vmlinuz.efi"],
       "initrd_paths": ["/casper/initrd", "/casper/initrd.lz", "/casper/initrd.gz"],
       "squashfs_paths": ["/casper/filesystem.squashfs"],
-      "default_boot_params": "boot=casper initrd=initrd ip=dhcp url={{BASE_URL}}/isos/{{FILENAME}}",
-      "auto_install_type": "autoinstall"
+      "default_boot_params": "boot=casper initrd=initrd ds=nocloud ip=dhcp iso-url={{BASE_URL}}/isos/{{FILENAME}}",
+      "auto_install_type": "autoinstall",
+      "boot_method": "kernel"
     },
     {
       "id": "mint",
@@ -20,9 +21,9 @@
       "kernel_paths": ["/casper/vmlinuz", "/casper/vmlinuz.efi"],
       "initrd_paths": ["/casper/initrd", "/casper/initrd.lz", "/casper/initrd.gz"],
       "squashfs_paths": ["/casper/filesystem.squashfs"],
-      "default_boot_params": "boot=casper initrd=initrd ip=dhcp url={{BASE_URL}}/isos/{{FILENAME}}",
-      "boot_params_with_squashfs": "boot=casper initrd=initrd ip=dhcp fetch={{SQUASHFS}}",
-      "auto_install_type": ""
+      "default_boot_params": "boot=casper initrd=initrd ds=nocloud ip=dhcp iso-url={{BASE_URL}}/isos/{{FILENAME}}",
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "popos",
@@ -32,9 +33,9 @@
       "kernel_paths": ["/casper/vmlinuz", "/casper/vmlinuz.efi"],
       "initrd_paths": ["/casper/initrd", "/casper/initrd.lz", "/casper/initrd.gz"],
       "squashfs_paths": ["/casper/filesystem.squashfs"],
-      "default_boot_params": "boot=casper initrd=initrd ip=dhcp url={{BASE_URL}}/isos/{{FILENAME}}",
-      "boot_params_with_squashfs": "boot=casper initrd=initrd ip=dhcp fetch={{SQUASHFS}}",
-      "auto_install_type": ""
+      "default_boot_params": "boot=casper initrd=initrd ds=nocloud ip=dhcp iso-url={{BASE_URL}}/isos/{{FILENAME}}",
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "elementary",
@@ -44,9 +45,9 @@
       "kernel_paths": ["/casper/vmlinuz", "/casper/vmlinuz.efi"],
       "initrd_paths": ["/casper/initrd", "/casper/initrd.lz", "/casper/initrd.gz"],
       "squashfs_paths": ["/casper/filesystem.squashfs"],
-      "default_boot_params": "boot=casper initrd=initrd ip=dhcp url={{BASE_URL}}/isos/{{FILENAME}}",
-      "boot_params_with_squashfs": "boot=casper initrd=initrd ip=dhcp fetch={{SQUASHFS}}",
-      "auto_install_type": ""
+      "default_boot_params": "boot=casper initrd=initrd ds=nocloud ip=dhcp iso-url={{BASE_URL}}/isos/{{FILENAME}}",
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "zorin",
@@ -56,9 +57,9 @@
       "kernel_paths": ["/casper/vmlinuz", "/casper/vmlinuz.efi"],
       "initrd_paths": ["/casper/initrd", "/casper/initrd.lz", "/casper/initrd.gz"],
       "squashfs_paths": ["/casper/filesystem.squashfs"],
-      "default_boot_params": "boot=casper initrd=initrd ip=dhcp url={{BASE_URL}}/isos/{{FILENAME}}",
-      "boot_params_with_squashfs": "boot=casper initrd=initrd ip=dhcp fetch={{SQUASHFS}}",
-      "auto_install_type": ""
+      "default_boot_params": "boot=casper initrd=initrd ds=nocloud ip=dhcp iso-url={{BASE_URL}}/isos/{{FILENAME}}",
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "debian",
@@ -70,7 +71,8 @@
       "squashfs_paths": ["/live/filesystem.squashfs"],
       "default_boot_params": "initrd=initrd boot=live priority=critical",
       "boot_params_with_squashfs": "initrd=initrd boot=live priority=critical fetch={{SQUASHFS}}",
-      "auto_install_type": "preseed"
+      "auto_install_type": "preseed",
+      "boot_method": "kernel"
     },
     {
       "id": "arch",
@@ -81,7 +83,8 @@
       "initrd_paths": ["/arch/boot/x86_64/initramfs-linux.img", "/boot/initramfs-linux.img", "/arch/boot/x86_64/archiso.img", "/boot/initramfs-linux-cachyos.img", "/boot/initramfs-linux-zen.img", "/boot/initramfs-linux-lts.img"],
       "squashfs_paths": ["/arch/x86_64/airootfs.sfs"],
       "default_boot_params": "initrd=initrd archisobasedir=arch archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ ip=:::::eth0:dhcp",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "manjaro",
@@ -92,7 +95,8 @@
       "initrd_paths": ["/boot/initramfs-x86_64.img", "/manjaro/boot/x86_64/manjaro.img"],
       "squashfs_paths": [],
       "default_boot_params": "",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "fedora",
@@ -103,7 +107,8 @@
       "initrd_paths": ["/images/pxeboot/initrd.img"],
       "squashfs_paths": ["/LiveOS/squashfs.img"],
       "default_boot_params": "root=live:{{BASE_URL}}/isos/{{FILENAME}} rd.live.image inst.repo={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ inst.stage2={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ rd.neednet=1",
-      "auto_install_type": "kickstart"
+      "auto_install_type": "kickstart",
+      "boot_method": "kernel"
     },
     {
       "id": "centos",
@@ -114,7 +119,8 @@
       "initrd_paths": ["/images/pxeboot/initrd.img"],
       "squashfs_paths": ["/LiveOS/squashfs.img"],
       "default_boot_params": "root=live:{{BASE_URL}}/isos/{{FILENAME}} rd.live.image inst.repo={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ inst.stage2={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ rd.neednet=1",
-      "auto_install_type": "kickstart"
+      "auto_install_type": "kickstart",
+      "boot_method": "kernel"
     },
     {
       "id": "nixos",
@@ -125,7 +131,8 @@
       "initrd_paths": ["/boot/initrd"],
       "squashfs_paths": ["/nix-store.squashfs"],
       "default_boot_params": "",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "opensuse",
@@ -136,7 +143,8 @@
       "initrd_paths": ["/boot/x86_64/loader/initrd"],
       "squashfs_paths": [],
       "default_boot_params": "install={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "alpine",
@@ -147,7 +155,8 @@
       "initrd_paths": ["/boot/initramfs-lts", "/boot/initramfs-virt", "/boot/initramfs-init"],
       "squashfs_paths": [],
       "default_boot_params": "modules=loop,squashfs,sd-mod,usb-storage quiet",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "gentoo",
@@ -158,7 +167,8 @@
       "initrd_paths": ["/boot/gentoo.igz", "/boot/initrd", "/isolinux/gentoo.igz", "/boot/gentoo64.igz"],
       "squashfs_paths": ["/image.squashfs"],
       "default_boot_params": "root=/dev/ram0 init=/linuxrc looptype=squashfs loop=/image.squashfs cdroot",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "void",
@@ -169,7 +179,8 @@
       "initrd_paths": ["/boot/initrd", "/live/initrd"],
       "squashfs_paths": [],
       "default_boot_params": "boot=live",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "slackware",
@@ -180,7 +191,8 @@
       "initrd_paths": ["/isolinux/initrd.img", "/boot/initrd.img"],
       "squashfs_paths": [],
       "default_boot_params": "",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "solus",
@@ -191,7 +203,8 @@
       "initrd_paths": ["/boot/initrd.current", "/boot/initrd"],
       "squashfs_paths": [],
       "default_boot_params": "root=live",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "freebsd",
@@ -202,7 +215,8 @@
       "initrd_paths": ["/boot/mfsroot.gz"],
       "squashfs_paths": [],
       "default_boot_params": "vfs.root.mountfrom=cd9660:/dev/md0 kernelname=/boot/kernel/kernel",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "tinycore",
@@ -213,7 +227,8 @@
       "initrd_paths": ["/boot/core.gz", "/boot/rootfs.gz"],
       "squashfs_paths": [],
       "default_boot_params": "",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "kali",
@@ -225,7 +240,8 @@
       "squashfs_paths": ["/live/filesystem.squashfs"],
       "default_boot_params": "initrd=initrd boot=live priority=critical",
       "boot_params_with_squashfs": "initrd=initrd boot=live priority=critical fetch={{SQUASHFS}}",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "parrot",
@@ -237,7 +253,8 @@
       "squashfs_paths": ["/live/filesystem.squashfs"],
       "default_boot_params": "initrd=initrd boot=live priority=critical",
       "boot_params_with_squashfs": "initrd=initrd boot=live priority=critical fetch={{SQUASHFS}}",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "tails",
@@ -249,7 +266,8 @@
       "squashfs_paths": ["/live/filesystem.squashfs"],
       "default_boot_params": "initrd=initrd boot=live priority=critical",
       "boot_params_with_squashfs": "initrd=initrd boot=live priority=critical fetch={{SQUASHFS}}",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "windows7",
@@ -284,7 +302,8 @@
       "initrd_paths": ["/initrd/initrd.xz", "/EFI/BOOT/initrd.xz"],
       "squashfs_paths": [],
       "default_boot_params": "",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     },
     {
       "id": "systemrescue",
@@ -295,7 +314,8 @@
       "initrd_paths": ["/sysresccd/boot/x86_64/sysresccd.img"],
       "squashfs_paths": ["/sysresccd/x86_64/airootfs.sfs"],
       "default_boot_params": "initrd=initrd archisobasedir=sysresccd archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ checksum ip=dhcp",
-      "auto_install_type": ""
+      "auto_install_type": "",
+      "boot_method": "kernel"
     }
   ]
 }

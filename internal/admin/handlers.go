@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -92,6 +94,24 @@ func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir st
 		autoInstallLib:     autoInstallLib,
 		extractionStates:   make(map[string]*extractionState),
 	}
+}
+
+// computeSMBPatchFingerprint returns a sha256 hex of the inputs that
+// determine the boot.wim patch contents. If any input changes after a
+// patch, the stored fingerprint diverges and the image is flagged for
+// re-embed in the UI.
+func (h *Handler) computeSMBPatchFingerprint(img *models.Image) string {
+	if img == nil {
+		return ""
+	}
+	autoInstallContent := ""
+	if img.AutoInstallEnabled {
+		autoInstallContent = h.resolveImageAutoInstallContent(img)
+	}
+	hasher := sha256.New()
+	fmt.Fprintf(hasher, "addr=%s\nfile=%s\nai_enabled=%v\nai_file=%s\nai_content=", h.serverAddr, img.Filename, img.AutoInstallEnabled, img.AutoInstallFile)
+	hasher.Write([]byte(autoInstallContent))
+	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 // patchWindowsBootWim rewrites the WinPE startnet.cmd inside the extracted
@@ -722,6 +742,12 @@ func (h *Handler) ListImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, img := range images {
+		if img.SMBInstallEnabled && img.SMBPatchFingerprint != "" {
+			img.SMBNeedsRepatch = h.computeSMBPatchFingerprint(img) != img.SMBPatchFingerprint
+		}
+	}
+
 	log.Printf("ListImages returning %d images", len(images))
 	for i, img := range images {
 		log.Printf("  [%d] %s (filename: %s, size: %d)", i, img.Name, img.Filename, img.Size)
@@ -745,6 +771,10 @@ func (h *Handler) GetImage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
 		return
+	}
+
+	if image.SMBInstallEnabled && image.SMBPatchFingerprint != "" {
+		image.SMBNeedsRepatch = h.computeSMBPatchFingerprint(image) != image.SMBPatchFingerprint
 	}
 
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: image})
@@ -1178,6 +1208,9 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 
 	if bootFiles.Distro == "windows" {
 		image.SMBInstallEnabled = h.patchWindowsBootWim(filename)
+		if image.SMBInstallEnabled {
+			image.SMBPatchFingerprint = h.computeSMBPatchFingerprint(image)
+		}
 	}
 
 	log.Printf("Setting boot_method to 'kernel' for image ID=%d, filename=%s", image.ID, image.Filename)
@@ -1246,6 +1279,10 @@ func (h *Handler) PatchImageSMB(w http.ResponseWriter, r *http.Request) {
 		h.sendJSON(w, http.StatusPreconditionFailed, Response{Success: false, Error: "Windows SMB is not enabled on this server"})
 		return
 	}
+	if !wim.IsAvailable() {
+		h.sendJSON(w, http.StatusPreconditionFailed, Response{Success: false, Error: "wimlib-imagex not installed on the server. Install wimtools (e.g. apt install wimtools) to enable boot.wim patching."})
+		return
+	}
 
 	image, err := h.storage.GetImage(filename)
 	if err != nil {
@@ -1263,6 +1300,9 @@ func (h *Handler) PatchImageSMB(w http.ResponseWriter, r *http.Request) {
 
 	ok := h.patchWindowsBootWim(filename)
 	image.SMBInstallEnabled = ok
+	if ok {
+		image.SMBPatchFingerprint = h.computeSMBPatchFingerprint(image)
+	}
 	if err := h.storage.UpdateImage(filename, image); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
@@ -2351,6 +2391,12 @@ func (h *Handler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
 				}
 				return fmt.Sprintf("Enabled (%d share(s) active, port %d)", h.smbManager.ShareCount(), h.smbManager.Port())
 			}(),
+			"windows_smb_patcher": func() string {
+				if wim.IsAvailable() {
+					return "Available"
+				}
+				return "Unavailable (install wimtools / wimlib-imagex to enable boot.wim patching)"
+			}(),
 			"http_port": fmt.Sprintf("%d", h.httpPort),
 		},
 		"environment": map[string]string{
@@ -2446,12 +2492,37 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if enabled, ok := updates["enabled"].(bool); ok {
-		user.Enabled = enabled
-	}
+	willBeAdmin := user.IsAdmin
 	if isAdmin, ok := updates["is_admin"].(bool); ok {
-		user.IsAdmin = isAdmin
+		willBeAdmin = isAdmin
 	}
+	willBeEnabled := user.Enabled
+	if enabled, ok := updates["enabled"].(bool); ok {
+		willBeEnabled = enabled
+	}
+
+	// Guard against locking everyone out: if this change would demote or
+	// disable an admin, make sure at least one other enabled admin remains.
+	if user.IsAdmin && user.Enabled && (!willBeAdmin || !willBeEnabled) {
+		all, err := h.storage.ListUsers()
+		if err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+			return
+		}
+		others := 0
+		for _, u := range all {
+			if u.Username != username && u.IsAdmin && u.Enabled {
+				others++
+			}
+		}
+		if others == 0 {
+			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Cannot remove admin rights or disable the only active admin user"})
+			return
+		}
+	}
+
+	user.IsAdmin = willBeAdmin
+	user.Enabled = willBeEnabled
 
 	if err := h.storage.UpdateUser(username, user); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
