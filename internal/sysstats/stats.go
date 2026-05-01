@@ -150,3 +150,4 @@ func GetMonitoredPaths(dataDir string) []string {
 
 	return paths
 }
+
