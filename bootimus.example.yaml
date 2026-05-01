@@ -29,3 +29,10 @@ db:
   name: bootimus
   sslmode: disable
   disable: false  # Set to true for SQLite mode (embedded database)
+  
+# Proxy_DHCP configuration example
+#proxy_dhcp:
+#  enabled: true
+#  bootfile_bios: "undionly.kpxe"
+#  bootfile_uefi: "bootimus.efi"
+#  bootfile_arm64: "ipxe-arm64.efi"
