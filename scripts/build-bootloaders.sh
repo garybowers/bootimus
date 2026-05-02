@@ -1,7 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-BOOTLOADERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../bootloaders" && pwd)"
+BOOTLOADERS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../bootloaders" && pwd)"
+BOOTLOADERS_DIR="$BOOTLOADERS_ROOT/default"
+mkdir -p "$BOOTLOADERS_DIR"
 # iPXE v1.21.1 — pinned to avoid the keyboard-input regression in v2.0.0 menus.
 IPXE_COMMIT="988d2c13cdf0f0b4140685af35ced70ac5b3283c"
 
@@ -14,6 +16,11 @@ RUN git clone https://github.com/ipxe/ipxe.git /build/ipxe && \
     cd /build/ipxe && git checkout ${IPXE_COMMIT}
 COPY embed.ipxe /build/ipxe/src/embed.ipxe
 WORKDIR /build/ipxe/src
+# http_format_range prints size_t fields with %zd (signed), causing 32-bit
+# builds (undionly.kpxe) to emit negative byte ranges for offsets past 2GB.
+# See bootimus issue #56. Fix is a one-character change pending upstream.
+RUN sed -i 's/"bytes=%zd-%zd"/"bytes=%zu-%zu"/' net/tcp/httpcore.c && \
+    grep -q '"bytes=%zu-%zu"' net/tcp/httpcore.c
 # NO_WERROR=1 silences array-bounds -Werror hits from newer GCC (bookworm) on
 # older iPXE sources. Safe: they're warnings, not correctness bugs.
 RUN make NO_WERROR=1 bin/undionly.kpxe EMBED=embed.ipxe

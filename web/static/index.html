@@ -4,19 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bootimus Admin Panel</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <!-- Login Screen -->
     <div id="login-screen" style="display: none; position: fixed; inset: 0; z-index: 9999; background: var(--bg-primary); align-items: center; justify-content: center;">
-        <select id="login-lang-select" data-i18n-aria-label="lang.label" class="lang-select" title="Language" style="position: absolute; top: 20px; right: 20px;"></select>
+        <div style="position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 10px;">
+            <select id="login-lang-select" data-i18n-aria-label="lang.label" class="lang-select" title="Language"></select>
+            <button id="login-theme-toggle" class="theme-switch" type="button" role="switch" aria-checked="false" data-i18n-aria-label="ui.toggle_dark_mode" data-i18n-title="ui.toggle_dark_mode" aria-label="Toggle dark mode" title="Toggle dark mode" onclick="toggleTheme()">
+                <svg class="theme-switch-icon theme-switch-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                <svg class="theme-switch-icon theme-switch-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <span class="theme-switch-thumb" aria-hidden="true"></span>
+            </button>
+        </div>
         <div style="width: 100%; max-width: 380px; padding: 24px;">
             <div style="text-align: center; margin-bottom: 32px;">
-                <h1 style="font-size: 28px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">🚀 Bootimus</h1>
+                <svg viewBox="0 0 108 36" width="220" style="display: block; margin: 0 auto 8px; max-width: 80%; height: auto; color: var(--text-primary);" role="img" aria-label="Bootimus">
+                    <text font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="700" letter-spacing="-0.3" y="23" x="10"><tspan fill="#ffb000">[</tspan><tspan fill="currentColor">bootimus</tspan><tspan fill="#ffb000">]</tspan></text>
+                </svg>
                 <p data-i18n="app.product_subtitle" style="color: var(--text-secondary); font-size: 14px;">PXE/HTTP Boot Server</p>
             </div>
-            <form id="login-form" style="background: var(--bg-secondary); padding: 28px; border-radius: var(--radius); box-shadow: var(--shadow);">
+            <form id="login-form">
                 <div id="login-auth-selector" style="display: none; margin-bottom: 16px;">
                     <label data-i18n="login.auth_method" style="display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary);">Authentication</label>
                     <select id="login-auth-method" style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 14px;">
@@ -33,15 +42,21 @@
                         style="width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 14px;">
                 </div>
                 <div id="login-error" style="display: none; color: var(--danger); font-size: 13px; margin-bottom: 12px;"></div>
-                <button type="submit" data-i18n="login.signin" class="btn btn-primary" style="width: 100%; padding: 10px; font-size: 14px; font-weight: 600;">Sign In</button>
+                <button type="submit" data-i18n="login.signin" id="login-submit">Sign In</button>
             </form>
         </div>
     </div>
 
     <header id="main-header" style="display: none;">
-        <div class="header-content">
-            <h1>🚀 <span data-i18n="app.title">Bootimus Admin Panel</span></h1>
-            <p data-i18n="app.subtitle">PXE/HTTP Boot Server Management Interface</p>
+        <div class="header-content" style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <h1 style="margin: 0;">
+                <svg viewBox="0 0 108 36" width="160" style="display: block; height: auto; color: var(--text-primary);" role="img" aria-label="Bootimus">
+                    <text font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15" font-weight="700" letter-spacing="-0.3" y="23" x="10"><tspan fill="#ffb000">[</tspan><tspan fill="currentColor">bootimus</tspan><tspan fill="#ffb000">]</tspan></text>
+                </svg>
+            </h1>
+            <p style="margin: 0; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; color: var(--text-secondary); letter-spacing: 0.4px;">
+                <span style="color: #ffb000;">&gt;</span> <span data-i18n="app.subtitle">PXE/HTTP Boot Server Management Interface</span>
+            </p>
         </div>
         <div style="display: flex; align-items: center; gap: 10px;">
             <select id="lang-select" data-i18n-aria-label="lang.label" class="lang-select" title="Language"></select>
@@ -79,12 +94,13 @@
                     <button class="nav-item" data-tab="images" data-i18n="nav.images"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg> Images</button>
                     <button class="nav-item" data-tab="public-files" data-i18n="nav.public_files"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Public Files</button>
                     <button class="nav-item" data-tab="autoinstall" data-i18n="nav.autoinstall"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Auto-Install</button>
+                    <button class="nav-item" data-tab="profiles" data-i18n="nav.profiles"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> Distro Profiles</button>
                 </div>
                 <div class="nav-group">
                     <span class="nav-group-label" data-i18n="nav.group.boot">Boot</span>
+                    <button class="nav-item" data-tab="boot-menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg> Boot Menu</button>
                     <button class="nav-item" data-tab="bootloaders" data-i18n="nav.bootloaders"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> Bootloaders</button>
                     <button class="nav-item" data-tab="tools" data-i18n="nav.tools"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Tools</button>
-                    <button class="nav-item" data-tab="profiles" data-i18n="nav.profiles"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> Distro Profiles</button>
                 </div>
                 <div class="nav-group">
                     <span class="nav-group-label" data-i18n="nav.group.access">Access</span>
@@ -94,6 +110,7 @@
                 <div class="nav-group">
                     <span class="nav-group-label" data-i18n="nav.group.system">System</span>
                     <button class="nav-item" data-tab="settings" data-i18n="nav.settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Settings</button>
+                    <button class="nav-item" data-tab="api-reference"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> API Reference</button>
                     <button class="nav-item" data-tab="logs" data-i18n="nav.logs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Logs</button>
                 </div>
             </nav>
@@ -183,6 +200,15 @@
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                             Refresh
                         </button>
+                        <button id="clients-group-toggle" class="btn btn-toggle" type="button" onclick="toggleClientGrouping()" aria-pressed="false" title="Group clients by their assigned client group">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/>
+                                <path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/>
+                                <path d="M3 5a2 2 0 0 0 2 2h3"/>
+                                <path d="M3 3v13a2 2 0 0 0 2 2h3"/>
+                            </svg>
+                            Group
+                        </button>
                         <button class="btn btn-toggle" type="button" id="clients-autorefresh-btn" onclick="toggleClientsAutoRefresh()" aria-pressed="false" title="Auto-refresh client list every 5 seconds">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                             Auto-refresh
@@ -196,6 +222,45 @@
                             Import CSV
                         </button>
                         <input type="search" class="toolbar-filter" placeholder="Filter clients…" oninput="applyTableFilter('clients', this.value, renderClientsTable)">
+                    </div>
+                    <div id="clients-bulk-actions" class="toolbar bulk-toolbar" style="display: none;">
+                        <span id="clients-bulk-count" style="color: var(--text-secondary); font-size: 13px;"></span>
+                        <button class="btn" type="button" onclick="bulkSetClientsEnabled(true)" title="Enable selected clients">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            Enable
+                        </button>
+                        <button class="btn" type="button" onclick="bulkSetClientsEnabled(false)" title="Disable selected clients">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+                            </svg>
+                            Disable
+                        </button>
+                        <button class="btn" type="button" onclick="bulkWakeClients()" title="Send Wake-on-LAN to selected clients">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
+                            </svg>
+                            Wake
+                        </button>
+                        <button class="btn" type="button" onclick="openBulkAssignClientGroupModal()" title="Assign selected clients to a group">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                            </svg>
+                            Assign to Group
+                        </button>
+                        <button class="btn" type="button" onclick="bulkDeleteClients()" title="Delete selected clients">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                            Delete
+                        </button>
+                        <button class="btn" type="button" onclick="clearClientSelection()" title="Clear selection">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                            Clear
+                        </button>
                     </div>
                     <div id="clients-table" class="loading">
                         <div class="spinner"></div>
@@ -253,6 +318,14 @@
                             </svg>
                             Download ISO
                         </button>
+                        <button class="btn" type="button" onclick="showGetImagesModal()">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="2" y1="12" x2="22" y2="12"/>
+                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                            </svg>
+                            Get Images
+                        </button>
                         <button class="btn" type="button" onclick="scanImages()">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <polyline points="23 4 23 10 17 10"/>
@@ -271,6 +344,39 @@
                             Group
                         </button>
                         <input type="search" class="toolbar-filter" placeholder="Filter images…" oninput="applyTableFilter('images', this.value, renderImagesTable)">
+                    </div>
+                    <div id="images-bulk-actions" class="toolbar bulk-toolbar" style="display: none;">
+                        <span id="images-bulk-count" style="color: var(--text-secondary); font-size: 13px;"></span>
+                        <button class="btn" type="button" onclick="bulkSetImagesEnabled(true)" title="Enable selected images">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            Enable
+                        </button>
+                        <button class="btn" type="button" onclick="bulkSetImagesEnabled(false)" title="Disable selected images">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+                            </svg>
+                            Disable
+                        </button>
+                        <button class="btn" type="button" onclick="openBulkAssignGroupModal()" title="Assign selected images to a group">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                            </svg>
+                            Assign to Group
+                        </button>
+                        <button class="btn" type="button" onclick="bulkDeleteImages()" title="Delete selected images">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                            Delete
+                        </button>
+                        <button class="btn" type="button" onclick="clearImageSelection()" title="Clear selection">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                            Clear
+                        </button>
                     </div>
                     <div id="images-table" class="loading">
                         <div class="spinner"></div>
@@ -505,12 +611,12 @@
             </div>
         </div>
 
-        <!-- Settings Tab -->
-        <div id="settings-tab" class="tab-content">
+        <!-- Boot Menu Tab -->
+        <div id="boot-menu-tab" class="tab-content">
             <div class="card">
-                <h2>Boot Menu Theme</h2>
+                <h2>Boot Menu</h2>
                 <p style="color: var(--text-secondary); margin-bottom: 20px;">
-                    Customise the appearance of the PXE boot menu seen by clients.
+                    Configure the PXE boot menu seen by clients — title, timeout, and default fallback action.
                     Console resolution may not be supported by all iPXE firmware builds.
                 </p>
                 <form id="theme-form">
@@ -523,15 +629,29 @@
                         <input type="number" id="theme-timeout" min="0" value="30" placeholder="30">
                         <small style="color: var(--text-secondary);">Time before auto-booting the default entry. Set to 0 to disable (wait forever).</small>
                     </div>
+                    <div class="form-group">
+                        <label>Default Menu Item</label>
+                        <select id="theme-default-item" class="form-control">
+                            <option value="local">Boot from Local Disk</option>
+                            <option value="shell">Drop to iPXE shell</option>
+                            <option value="reboot">Reboot</option>
+                            <option value="">Auto (next-boot, then first image)</option>
+                        </select>
+                        <small style="color: var(--text-secondary);">Action when the timeout fires. Set to <strong>Boot from Local Disk</strong> to leave clients PXE-booting and have them fall through to local boot. A pending next-boot image always takes priority.</small>
+                    </div>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <button type="submit" class="btn">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                            Save Theme
+                            Save
                         </button>
                     </div>
                 </form>
             </div>
-            <div class="card" style="margin-top: 20px;">
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settings-tab" class="tab-content">
+            <div class="card">
                 <h2>Webhook</h2>
                 <p style="color: var(--text-secondary); margin: 0 12px 16px; font-size: 13px;">
                     POST a JSON payload to a URL when PXE events happen. Fire-and-forget, 10s timeout, no retries.
@@ -602,6 +722,36 @@
                         Loading...
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- API Reference Tab -->
+        <div id="api-reference-tab" class="tab-content">
+            <div class="card">
+                <h2>API Reference</h2>
+                <p style="color: var(--text-secondary); margin: 0 12px 8px; font-size: 13px;">
+                    All endpoints require authentication except where marked <span class="api-method public">PUBLIC</span>. Responses are JSON of the form <code>{success, data, error}</code>. Placeholders are shown as <code>{name}</code>.
+                </p>
+                <div class="toolbar">
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary);">
+                        Server:
+                        <input type="text" id="api-ref-server" style="height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 13px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; width: 220px;" placeholder="https://host:port" oninput="onAPIRefServerChange()">
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary);">
+                        Image:
+                        <select id="api-ref-image" style="height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 13px;" onchange="onAPIRefSelectChange()">
+                            <option value="">(none)</option>
+                        </select>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary);">
+                        Client:
+                        <select id="api-ref-mac" style="height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 13px;" onchange="onAPIRefSelectChange()">
+                            <option value="">(none)</option>
+                        </select>
+                    </label>
+                    <input type="search" class="toolbar-filter" id="api-ref-filter" placeholder="Filter endpoints…" oninput="renderAPIReference(this.value)">
+                </div>
+                <div id="api-reference-content" style="padding: 0 12px 12px;"></div>
             </div>
         </div>
 
@@ -1314,7 +1464,7 @@
     <div id="image-properties-modal" class="modal slide-panel">
         <div class="modal-content" style="max-width: 1000px;">
             <div class="modal-header">
-                <h2><span data-i18n="props.modal.title">Image Properties</span>: <span id="image-props-name"></span></h2>
+                <h2><img id="image-props-logo" class="distro-logo-modal" src="" alt=""><span data-i18n="props.modal.title">Image Properties</span>: <span id="image-props-name"></span></h2>
             </div>
             <input type="hidden" id="image-props-filename">
 
@@ -1454,6 +1604,63 @@
                 <button class="btn" onclick="closeModal('image-properties-modal')">Cancel</button>
                 <button class="btn btn-primary" onclick="saveImageProperties()" data-i18n="props.action.save_properties">Save Properties</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Get Images Modal -->
+    <div id="get-images-modal" class="modal">
+        <div class="modal-content" style="max-width: 1100px;">
+            <div class="modal-header">
+                <h2>Get Images <span style="display: inline-block; margin-left: 8px; padding: 3px 8px; background: rgba(255, 176, 0, 0.15); color: #ffb000; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.6px; border-radius: 3px; vertical-align: middle;">EXPERIMENTAL</span></h2>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 13px; margin: 0 0 12px;">
+                Download popular Linux distributions directly from official mirrors. Switch the mirror per row, edit the URL freely if you need to point somewhere else, then hit Download. <strong>Mirror URLs and release versions can drift</strong> — please report issues so the catalog can be kept up to date.
+            </p>
+            <input type="search" class="toolbar-filter" id="get-iso-filter" placeholder="Filter…" oninput="renderGetImagesList(this.value)" style="margin-bottom: 12px;">
+            <div id="get-images-list" style="max-height: 65vh; overflow-y: auto; padding-right: 4px;"></div>
+            <div style="margin-top: 12px;">
+                <button type="button" class="btn" onclick="closeModal('get-images-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Assign Clients to Group Modal -->
+    <div id="bulk-assign-client-group-modal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2>Assign to Client Group</h2>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 13px; margin: 0 0 16px;">
+                <span id="bulk-assign-client-group-count">0 clients</span> will be moved to the selected group.
+            </p>
+            <div class="form-group">
+                <label>Client Group</label>
+                <select id="bulk-assign-client-group-select" class="form-control">
+                    <option value="">(none)</option>
+                </select>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="confirmBulkAssignClientGroup()">Assign</button>
+            <button type="button" class="btn" onclick="closeModal('bulk-assign-client-group-modal')">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Bulk Assign to Group Modal -->
+    <div id="bulk-assign-group-modal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">
+                <h2>Assign to Group</h2>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 13px; margin: 0 0 16px;">
+                <span id="bulk-assign-group-count">0 images</span> will be moved to the selected group.
+            </p>
+            <div class="form-group">
+                <label>Group</label>
+                <select id="bulk-assign-group-select" class="form-control">
+                    <option value="">Unassigned</option>
+                </select>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="confirmBulkAssignGroup()">Assign</button>
+            <button type="button" class="btn" onclick="closeModal('bulk-assign-group-modal')">Cancel</button>
         </div>
     </div>
 

@@ -1,0 +1,9 @@
+{
+  "name": "default",
+  "description": "Default Bootimus bootloaders. Stock iPXE, no Secure Boot support.",
+  "bootfiles": {
+    "bios": "undionly.kpxe",
+    "uefi": "bootimus.efi",
+    "arm64": "bootimus-arm64.efi"
+  }
+}

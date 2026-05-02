@@ -47,9 +47,6 @@ func NewPostgresStore(cfg *Config) (*PostgresStore, error) {
 	return &PostgresStore{db: db, cfg: *cfg}, nil
 }
 
-// Snapshot streams a pg_dump of the database to w in plain SQL format.
-// Requires `pg_dump` to be on PATH (it's part of postgresql-client). The
-// password is passed via PGPASSWORD env var so it never hits argv / ps.
 func (s *PostgresStore) Snapshot(w io.Writer) (string, error) {
 	if _, err := exec.LookPath("pg_dump"); err != nil {
 		return "", fmt.Errorf("pg_dump not found on PATH: %w (install postgresql-client in your image)", err)
@@ -106,7 +103,6 @@ func (s *PostgresStore) AutoMigrate() error {
 		log.Printf("Warning: CustomFile index migration failed (may already be migrated): %v", err)
 	}
 
-	// Clean up soft-deleted custom files
 	if err := s.cleanupSoftDeletedFiles(); err != nil {
 		log.Printf("Warning: Failed to cleanup soft-deleted files: %v", err)
 	}
@@ -464,14 +460,12 @@ func (s *PostgresStore) GetImagesForClient(macAddress string) ([]models.Image, e
 		}
 	}
 
-	// Unknown client — show all public images
 	var images []models.Image
 	if err := s.db.Where("enabled = ? AND public = ?", true, true).Find(&images).Error; err != nil {
 		return nil, err
 	}
 	return images, nil
 }
-
 
 func (s *PostgresStore) EnsureAdminUser() (username, password string, created bool, err error) {
 	var admin models.User
@@ -575,18 +569,14 @@ func (s *PostgresStore) GetCustomFileByID(id uint) (*models.CustomFile, error) {
 func (s *PostgresStore) GetCustomFileByFilenameAndImage(filename string, imageID *uint, public bool) (*models.CustomFile, error) {
 	var files []models.CustomFile
 
-	// Find ALL records with this filename, regardless of public/imageID/deleted status
-	// This ensures we catch any record that would violate the unique constraint
 	if err := s.db.Unscoped().Where("filename = ?", filename).Find(&files).Error; err != nil {
 		return nil, err
 	}
 
-	// Delete all found records to avoid conflicts
 	if len(files) > 0 {
 		for _, f := range files {
 			s.db.Unscoped().Delete(&models.CustomFile{}, f.ID)
 		}
-		// Return the first one so the caller knows a file existed
 		return &files[0], nil
 	}
 
@@ -682,7 +672,6 @@ func (s *PostgresStore) GetImageGroupByName(name string) (*models.ImageGroup, er
 }
 
 func (s *PostgresStore) CreateImageGroup(group *models.ImageGroup) error {
-	// Check for a soft-deleted group with the same name and parent — undelete it
 	var existing models.ImageGroup
 	q := s.db.Unscoped().Where("name = ?", group.Name)
 	if group.ParentID != nil {
@@ -793,7 +782,6 @@ func (s *PostgresStore) SaveHardwareInventory(inv *models.HardwareInventory) err
 		if err := s.db.Where("mac_address = ?", inv.MACAddress).First(&client).Error; err == nil {
 			inv.ClientID = &client.ID
 		} else {
-			// Check for soft-deleted client and restore it
 			var deleted models.Client
 			if err := s.db.Unscoped().Where("mac_address = ? AND deleted_at IS NOT NULL", inv.MACAddress).First(&deleted).Error; err == nil {
 				deleted.DeletedAt = gorm.DeletedAt{}
@@ -804,7 +792,6 @@ func (s *PostgresStore) SaveHardwareInventory(inv *models.HardwareInventory) err
 				inv.ClientID = &deleted.ID
 				log.Printf("Storage: Restored soft-deleted client for MAC %s", inv.MACAddress)
 			} else {
-				// Auto-create a dynamic (discovered) client
 				client = models.Client{
 					MACAddress:       inv.MACAddress,
 					Enabled:          true,

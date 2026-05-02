@@ -38,7 +38,6 @@ func (s *SQLiteStore) AutoMigrate() error {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	// Clean up soft-deleted custom files
 	if err := s.cleanupSoftDeletedFiles(); err != nil {
 		return fmt.Errorf("failed to cleanup soft-deleted files: %w", err)
 	}
@@ -159,7 +158,6 @@ func (s *SQLiteStore) SaveHardwareInventory(inv *models.HardwareInventory) error
 		if err := s.db.Where("mac_address = ?", inv.MACAddress).First(&client).Error; err == nil {
 			inv.ClientID = &client.ID
 		} else {
-			// Check for soft-deleted client and restore it
 			var deleted models.Client
 			if err := s.db.Unscoped().Where("mac_address = ? AND deleted_at IS NOT NULL", inv.MACAddress).First(&deleted).Error; err == nil {
 				deleted.DeletedAt = gorm.DeletedAt{}
@@ -170,7 +168,6 @@ func (s *SQLiteStore) SaveHardwareInventory(inv *models.HardwareInventory) error
 				inv.ClientID = &deleted.ID
 				log.Printf("Storage: Restored soft-deleted client for MAC %s", inv.MACAddress)
 			} else {
-				// Auto-create a dynamic (discovered) client
 				client = models.Client{
 					MACAddress:       inv.MACAddress,
 					Enabled:          true,
@@ -346,18 +343,14 @@ func (s *SQLiteStore) GetCustomFileByID(id uint) (*models.CustomFile, error) {
 func (s *SQLiteStore) GetCustomFileByFilenameAndImage(filename string, imageID *uint, public bool) (*models.CustomFile, error) {
 	var files []models.CustomFile
 
-	// Find ALL records with this filename, regardless of public/imageID/deleted status
-	// This ensures we catch any record that would violate the unique constraint
 	if err := s.db.Unscoped().Where("filename = ?", filename).Find(&files).Error; err != nil {
 		return nil, err
 	}
 
-	// Delete all found records to avoid conflicts
 	if len(files) > 0 {
 		for _, f := range files {
 			s.db.Unscoped().Delete(&models.CustomFile{}, f.ID)
 		}
-		// Return the first one so the caller knows a file existed
 		return &files[0], nil
 	}
 
@@ -452,7 +445,6 @@ func (s *SQLiteStore) GetImageGroupByName(name string) (*models.ImageGroup, erro
 }
 
 func (s *SQLiteStore) CreateImageGroup(group *models.ImageGroup) error {
-	// Check for a soft-deleted group with the same name and parent — undelete it
 	var existing models.ImageGroup
 	q := s.db.Unscoped().Where("name = ?", group.Name)
 	if group.ParentID != nil {
@@ -493,8 +485,6 @@ func (s *SQLiteStore) ListImagesByGroup(groupID uint) ([]*models.Image, error) {
 func (s *SQLiteStore) GetImagesForClient(macAddress string) ([]models.Image, error) {
 	var client models.Client
 	if err := s.db.Where("mac_address = ? AND enabled = ?", macAddress, true).First(&client).Error; err == nil {
-		// Overlay: union client.AllowedImages with group.AllowedImages when the
-		// client belongs to an enabled group.
 		allowed := append([]string{}, client.AllowedImages...)
 		if client.ClientGroupID != nil {
 			var group models.ClientGroup
@@ -516,7 +506,6 @@ func (s *SQLiteStore) GetImagesForClient(macAddress string) ([]models.Image, err
 		if len(allowed) > 0 {
 			s.db.Where("filename IN (?) AND enabled = ?", allowed, true).Find(&assigned)
 			if len(assigned) == 0 {
-				// Debug: list all image filenames to find the mismatch
 				var allImages []models.Image
 				s.db.Select("filename").Find(&allImages)
 				var fnames []string
@@ -529,12 +518,10 @@ func (s *SQLiteStore) GetImagesForClient(macAddress string) ([]models.Image, err
 			}
 		}
 
-		// If client has ShowPublicImages enabled, also include public images
 		if client.ShowPublicImages {
 			var publicImages []models.Image
 			s.db.Where("enabled = ? AND public = ?", true, true).Find(&publicImages)
 
-			// Merge, avoiding duplicates
 			seen := make(map[string]bool)
 			for _, img := range assigned {
 				seen[img.Filename] = true
@@ -550,13 +537,11 @@ func (s *SQLiteStore) GetImagesForClient(macAddress string) ([]models.Image, err
 			return assigned, nil
 		}
 
-		// Client exists but has no assigned images and public images are off
 		if !client.ShowPublicImages {
 			return []models.Image{}, nil
 		}
 	}
 
-	// Unknown client — show all public images
 	var images []models.Image
 	if err := s.db.Where("enabled = ? AND public = ?", true, true).Find(&images).Error; err != nil {
 		return nil, err
@@ -651,8 +636,6 @@ func (s *SQLiteStore) SyncImages(isoFiles []models.SyncFile) error {
 	return nil
 }
 
-// resolveGroupPath creates ImageGroups for each segment of a path (e.g. "linux/debian")
-// and returns the ID of the leaf group. Results are cached in groupCache.
 func (s *SQLiteStore) resolveGroupPath(groupPath string, cache map[string]*uint) (*uint, error) {
 	if id, ok := cache[groupPath]; ok {
 		return id, nil
@@ -781,9 +764,6 @@ func (s *SQLiteStore) Close() error {
 	return db.Close()
 }
 
-// Snapshot writes a clean, consistent copy of the SQLite database to w
-// using `VACUUM INTO`, which is WAL- and concurrent-write-safe (the live
-// .db / .db-wal / .db-shm files can be in any state).
 func (s *SQLiteStore) Snapshot(w io.Writer) (string, error) {
 	tmp, err := os.CreateTemp("", "bootimus-snapshot-*.db")
 	if err != nil {
@@ -794,8 +774,6 @@ func (s *SQLiteStore) Snapshot(w io.Writer) (string, error) {
 	os.Remove(tmpPath)
 	defer os.Remove(tmpPath)
 
-	// VACUUM INTO refuses to overwrite an existing file, hence the remove above.
-	// Single-quote escape the path to survive any apostrophes in TMPDIR.
 	escaped := strings.ReplaceAll(tmpPath, "'", "''")
 	if err := s.db.Exec(fmt.Sprintf("VACUUM INTO '%s'", escaped)).Error; err != nil {
 		return "", fmt.Errorf("vacuum into snapshot: %w", err)
@@ -925,8 +903,6 @@ func (s *SQLiteStore) UpdateClientGroup(id uint, group *models.ClientGroup) erro
 }
 
 func (s *SQLiteStore) DeleteClientGroup(id uint) error {
-	// Detach any clients that point at this group so they don't end up with a
-	// dangling FK.
 	if err := s.db.Model(&models.Client{}).Where("client_group_id = ?", id).Update("client_group_id", nil).Error; err != nil {
 		return err
 	}

@@ -25,17 +25,19 @@ type ProfileFile struct {
 }
 
 type ProfileData struct {
-	ID                     string   `json:"id"`
-	DisplayName            string   `json:"display_name"`
-	Family                 string   `json:"family"`
-	FilenamePatterns       []string `json:"filename_patterns"`
-	KernelPaths            []string `json:"kernel_paths"`
-	InitrdPaths            []string `json:"initrd_paths"`
-	SquashfsPaths          []string `json:"squashfs_paths"`
-	DefaultBootParams      string   `json:"default_boot_params"`
-	BootParamsWithSquashfs string   `json:"boot_params_with_squashfs,omitempty"`
-	AutoInstallType        string   `json:"auto_install_type,omitempty"`
-	BootMethod             string   `json:"boot_method,omitempty"`
+	ID                     string       `json:"id"`
+	DisplayName            string       `json:"display_name"`
+	Family                 string       `json:"family"`
+	FilenamePatterns       []string     `json:"filename_patterns"`
+	KernelPaths            []string     `json:"kernel_paths"`
+	InitrdPaths            []string     `json:"initrd_paths"`
+	SquashfsPaths          []string     `json:"squashfs_paths"`
+	DefaultBootParams      string       `json:"default_boot_params"`
+	BootParamsWithSquashfs string       `json:"boot_params_with_squashfs,omitempty"`
+	AutoInstallType        string       `json:"auto_install_type,omitempty"`
+	BootMethod             string       `json:"boot_method,omitempty"`
+	Mirrors                []ISOMirror  `json:"mirrors,omitempty"`
+	Releases               []ISORelease `json:"releases,omitempty"`
 }
 
 type Manager struct {
@@ -47,8 +49,6 @@ func NewManager(store storage.Storage) *Manager {
 	return &Manager{store: store}
 }
 
-// SeedProfiles loads embedded profiles into the database on startup.
-// Only adds new profiles — never overwrites user-edited or custom profiles.
 func (m *Manager) SeedProfiles() error {
 	data, err := embeddedProfiles.ReadFile("distro-profiles.json")
 	if err != nil {
@@ -64,7 +64,6 @@ func (m *Manager) SeedProfiles() error {
 	for _, p := range pf.Profiles {
 		existing, err := m.store.GetDistroProfile(p.ID)
 		if err != nil {
-			// New profile — create it
 			profile := profileDataToModel(p, pf.Version)
 			if err := m.store.SaveDistroProfile(profile); err != nil {
 				log.Printf("Profiles: Failed to seed %s: %v", p.ID, err)
@@ -72,7 +71,6 @@ func (m *Manager) SeedProfiles() error {
 				count++
 			}
 		} else if !existing.Custom {
-			// Always update built-in profiles on startup
 			updated := profileDataToModel(p, pf.Version)
 			updated.ID = existing.ID
 			updated.CreatedAt = existing.CreatedAt
@@ -82,7 +80,6 @@ func (m *Manager) SeedProfiles() error {
 				count++
 			}
 		}
-		// Custom profiles are never overwritten
 	}
 
 	if count > 0 {
@@ -94,8 +91,6 @@ func (m *Manager) SeedProfiles() error {
 	return nil
 }
 
-// UpdateFromRemote fetches the latest profiles from the GitHub repo and updates the database.
-// Only updates built-in profiles — custom profiles are never touched.
 func (m *Manager) UpdateFromRemote() (added int, updated int, version string, err error) {
 	if m.DisableRemoteCheck {
 		return 0, 0, "", fmt.Errorf("remote profile updates are disabled")
@@ -124,13 +119,11 @@ func (m *Manager) UpdateFromRemote() (added int, updated int, version string, er
 	for _, p := range pf.Profiles {
 		existing, err := m.store.GetDistroProfile(p.ID)
 		if err != nil {
-			// New profile
 			profile := profileDataToModel(p, pf.Version)
 			if err := m.store.SaveDistroProfile(profile); err == nil {
 				added++
 			}
 		} else if !existing.Custom {
-			// Update built-in
 			updatedProfile := profileDataToModel(p, pf.Version)
 			updatedProfile.ID = existing.ID
 			updatedProfile.CreatedAt = existing.CreatedAt
@@ -144,8 +137,6 @@ func (m *Manager) UpdateFromRemote() (added int, updated int, version string, er
 	return added, updated, pf.Version, nil
 }
 
-// MatchProfile finds the best matching profile for a given ISO filename or distro name.
-// Matching priority: custom patterns > built-in patterns > profile ID match > family match.
 func (m *Manager) MatchProfile(filename string) (*models.DistroProfile, error) {
 	allProfiles, err := m.store.ListDistroProfiles()
 	if err != nil {
@@ -157,7 +148,6 @@ func (m *Manager) MatchProfile(filename string) (*models.DistroProfile, error) {
 func matchProfile(profiles []*models.DistroProfile, filename string) (*models.DistroProfile, error) {
 	filenameLower := strings.ToLower(filename)
 
-	// Pass 1: Custom profiles — exact pattern match (highest priority)
 	for _, p := range profiles {
 		if p.Custom {
 			for _, pattern := range p.FilenamePatterns {
@@ -168,7 +158,6 @@ func matchProfile(profiles []*models.DistroProfile, filename string) (*models.Di
 		}
 	}
 
-	// Pass 2: Built-in profiles — exact pattern match
 	for _, p := range profiles {
 		if !p.Custom {
 			for _, pattern := range p.FilenamePatterns {
@@ -179,14 +168,12 @@ func matchProfile(profiles []*models.DistroProfile, filename string) (*models.Di
 		}
 	}
 
-	// Pass 3: Profile ID match (e.g. filename or distro name contains "arch", "debian", etc.)
 	for _, p := range profiles {
 		if strings.Contains(filenameLower, strings.ToLower(p.ProfileID)) {
 			return p, nil
 		}
 	}
 
-	// Pass 4: Family match (e.g. distro name contains "redhat", "debian", etc.)
 	for _, p := range profiles {
 		if p.Family != "" && strings.Contains(filenameLower, strings.ToLower(p.Family)) {
 			return p, nil
@@ -196,7 +183,6 @@ func matchProfile(profiles []*models.DistroProfile, filename string) (*models.Di
 	return nil, fmt.Errorf("no matching profile for %s", filename)
 }
 
-// GetBootParams returns the appropriate boot params for an image based on its profile.
 func (m *Manager) GetBootParams(distroID string, hasSquashfs bool) string {
 	profile, err := m.store.GetDistroProfile(distroID)
 	if err != nil {

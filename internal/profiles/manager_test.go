@@ -80,8 +80,6 @@ func TestMatchProfile_CustomBeatsBuiltin(t *testing.T) {
 }
 
 func TestMatchProfile_PatternBeatsIDMatch(t *testing.T) {
-	// "debian" appears in the filename, but a built-in profile patterns
-	// for "kali" should win since it's a more specific pattern match.
 	profiles := []*models.DistroProfile{
 		{ProfileID: "debian", Custom: false, FilenamePatterns: models.StringSlice{"debian"}},
 		{ProfileID: "kali", Custom: false, FilenamePatterns: models.StringSlice{"kali"}},
@@ -90,9 +88,6 @@ func TestMatchProfile_PatternBeatsIDMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("matchProfile error: %v", err)
 	}
-	// Pass 2 walks the slice in order, so the first matching pattern wins.
-	// Both "debian" and "kali" patterns match — order in the slice determines result.
-	// This test pins the documented behaviour.
 	if got.ProfileID != "debian" {
 		t.Errorf("got %s, want debian (first pattern match in slice wins)", got.ProfileID)
 	}

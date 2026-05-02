@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
@@ -85,20 +86,11 @@ type Config struct {
 	WOLBroadcastAddr  string
 	ProfileManager    *profiles.Manager
 
-	// ProxyDHCPEnabled turns on an in-process proxyDHCP server that answers
-	// PXE boot requests without handing out IPs. Requires root or
-	// CAP_NET_BIND_SERVICE to bind UDP/67. Off by default so bootimus
-	// doesn't collide with an existing dnsmasq on the same network.
 	ProxyDHCPEnabled      bool
 	ProxyDHCPBootfileBIOS string
 	ProxyDHCPBootfileUEFI string
 	ProxyDHCPBootfileARM  string
 
-	// WindowsSMBEnabled opts into running an embedded smbd that exposes
-	// extracted Windows installation media as guest read-only shares so
-	// WinPE can auto-mount them and launch setup.exe. Off by default;
-	// requires smbd in PATH (samba package). A missing smbd is logged but
-	// does not abort startup — the feature degrades to disabled.
 	WindowsSMBEnabled bool
 	WindowsSMBPort    int
 }
@@ -320,13 +312,12 @@ func New(cfg *Config) *Server {
 	return s
 }
 
-// Bootloader set config - stores which set folder is active
 func (s *Server) bootloaderConfigPath() string {
 	return filepath.Join(s.config.DataDir, "bootloader-config.json")
 }
 
 type bootloaderConfigFile struct {
-	ActiveSet string `json:"active_set"` // folder name or "" for built-in
+	ActiveSet string `json:"active_set"`
 }
 
 func (s *Server) loadBootloaderConfig() {
@@ -365,17 +356,16 @@ func (s *Server) SetActiveBootloaderSet(name string) {
 	s.activeBootloaderSet = name
 }
 
-// resolveBootloaderFile checks the active set folder for a file, returns "" if not found
 func (s *Server) resolveBootloaderFile(filename string) string {
 	setName := s.GetActiveBootloaderSet()
 	if setName == "" || s.config.BootDir == "" {
-		return "" // use embedded
+		return ""
 	}
 	fullPath := filepath.Join(s.config.BootDir, setName, filename)
 	if _, err := os.Stat(fullPath); err == nil {
 		return fullPath
 	}
-	return "" // not in set, fall back to embedded
+	return ""
 }
 
 func (as *ActiveSessions) Add(ip, filename string, totalBytes int64, activity string) {
@@ -470,12 +460,6 @@ func (s *Server) Start() error {
 		}
 	}
 
-	// Start SMB before the admin server so admin.NewHandler captures a live
-	// *smb.Manager rather than a nil pointer. Shares for already-extracted
-	// Windows images are populated into the manager's map *before* smbd
-	// launches so the initial smb.conf already lists them — avoids a reload
-	// race where SIGHUP/reload-config lands before smbd has installed its
-	// signal/messaging handlers and kills the daemon.
 	if s.config.WindowsSMBEnabled {
 		mgr := smb.NewManager(s.config.DataDir, s.config.WindowsSMBPort)
 		s.preloadSMBShares(mgr)
@@ -510,7 +494,6 @@ func (s *Server) Start() error {
 		}
 	}()
 
-	// Periodically clean up stale active sessions
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
@@ -554,10 +537,6 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// preloadSMBShares seeds the manager's in-memory share map with all
-// already-extracted Windows images that have a successful SMB patch, so
-// that the initial smb.conf written by Start() already lists them. Called
-// *before* smbd launches — no reload/SIGHUP needed at startup.
 func (s *Server) preloadSMBShares(mgr *smb.Manager) {
 	if mgr == nil || s.config.Storage == nil {
 		return
@@ -702,15 +681,10 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// tftpRemoteAddrer matches *sender / *receiver in pin/tftp v3, used to
-// surface the client address in logs without modifying the library.
 type tftpRemoteAddrer interface {
 	RemoteAddr() net.UDPAddr
 }
 
-// tftpDebugHook logs every transfer's outcome. Visibility into whether
-// a missing final ACK is keeping a sender goroutine alive is the whole
-// point — DatagramsSent vs DatagramsAcked exposes that directly.
 type tftpDebugHook struct{}
 
 func (tftpDebugHook) OnSuccess(stats tftp.TransferStats) {
@@ -790,7 +764,6 @@ goto dhcp
 				return nil
 			}
 
-			// Check active bootloader set
 			if customPath := s.resolveBootloaderFile(cleanPath); customPath != "" {
 				file, err := os.Open(customPath)
 				if err == nil {
@@ -817,10 +790,9 @@ goto dhcp
 				}
 			}
 
-			// Default: serve embedded bootloader
-			data, err := bootloaders.Bootloaders.ReadFile(cleanPath)
+			data, resolvedSet, err := bootloaders.Resolve(s.GetActiveBootloaderSet(), cleanPath)
 			if err == nil {
-				log.Printf("TFTP: Serving embedded bootloader: %s", cleanPath)
+				log.Printf("TFTP: Serving embedded bootloader from set '%s': %s", resolvedSet, cleanPath)
 
 				if rfs, ok := rf.(interface{ SetSize(int64) error }); ok {
 					rfs.SetSize(int64(len(data)))
@@ -870,7 +842,6 @@ func (s *Server) startHTTPServer() error {
 			return
 		}
 
-		// Check active bootloader set
 		if customPath := s.resolveBootloaderFile(cleanPath); customPath != "" {
 			log.Printf("HTTP: Serving from set '%s': %s", s.GetActiveBootloaderSet(), cleanPath)
 			ext := filepath.Ext(cleanPath)
@@ -881,10 +852,9 @@ func (s *Server) startHTTPServer() error {
 			return
 		}
 
-		// Default: serve embedded bootloader
-		data, err := bootloaders.Bootloaders.ReadFile(cleanPath)
+		data, resolvedSet, err := bootloaders.Resolve(s.GetActiveBootloaderSet(), cleanPath)
 		if err == nil {
-			log.Printf("HTTP: Serving embedded bootloader: %s", cleanPath)
+			log.Printf("HTTP: Serving embedded bootloader from set '%s': %s", resolvedSet, cleanPath)
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.Write(data)
 			return
@@ -896,7 +866,6 @@ func (s *Server) startHTTPServer() error {
 	mux.HandleFunc("/inventory", s.handleInventoryReport)
 	mux.HandleFunc("/menu.ipxe", s.handleIPXEMenu)
 
-	// Serve tool files (GParted, Clonezilla, etc.)
 	toolsDir := filepath.Join(s.config.DataDir, "tools")
 	mux.Handle("/tools/", http.StripPrefix("/tools/", http.FileServer(http.Dir(toolsDir))))
 
@@ -960,7 +929,6 @@ func (s *Server) startHTTPServer() error {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		http.ServeFile(wrappedWriter, r, fullPath)
 
-		// Clean up session when handler exits (client disconnect or completion)
 		if rangeHeader == "" {
 			s.activeSessions.Remove(r.RemoteAddr)
 		}
@@ -1026,10 +994,10 @@ func (s *Server) startHTTPServer() error {
 
 	mux.HandleFunc("/bootenv/", func(w http.ResponseWriter, r *http.Request) {
 		urlPath := strings.TrimPrefix(r.URL.Path, "/bootenv/")
-		filePath := filepath.Join("bootenv", urlPath)
+		filePath := path.Join("bootenv", urlPath)
 		log.Printf("HTTP: Bootenv request - %s (always embedded)", urlPath)
 
-		data, err := bootloaders.Bootloaders.ReadFile(filePath)
+		data, _, err := bootloaders.Resolve(bootloaders.DefaultSet, filePath)
 		if err != nil {
 			log.Printf("HTTP: Error reading embedded bootenv file %s: %v", filePath, err)
 			http.Error(w, "Not found", http.StatusNotFound)
@@ -1060,9 +1028,6 @@ func (s *Server) startAdminServer() error {
 
 	s.setupAdminInterface(mux)
 
-	// Prometheus metrics endpoint — unauthenticated, consistent with how
-	// most monitoring scrapers expect /metrics to behave. Bind to admin
-	// port so it's not exposed on the public HTTP port.
 	mux.Handle("/metrics", promhttp.Handler())
 	go s.refreshMetricsGauges()
 
@@ -1105,12 +1070,10 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 
-	// Logout - redirect to login page
 	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 	})
 
-	// Auth info endpoint - returns available backends (no auth required)
 	mux.HandleFunc("/api/auth-info", func(w http.ResponseWriter, r *http.Request) {
 		if s.config.Auth != nil {
 			s.config.Auth.HandleAuthInfo(w, r)
@@ -1120,7 +1083,6 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 		}
 	})
 
-	// Login endpoint - returns JWT token
 	mux.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
 		if s.config.Auth != nil {
 			s.config.Auth.HandleLogin(w, r)
@@ -1188,7 +1150,6 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/bootloaders/delete", authWrap(adminHandler.DeleteBootloader))
 	mux.HandleFunc("/api/bootloaders/select", authWrap(adminHandler.SelectBootloader))
 
-	// Tools
 	mux.HandleFunc("/api/tools", authWrap(adminHandler.ListTools))
 	mux.HandleFunc("/api/tools/toggle", authWrap(adminHandler.ToggleTool))
 	mux.HandleFunc("/api/tools/download", authWrap(adminHandler.DownloadTool))
@@ -1214,6 +1175,7 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/profiles/save", authWrap(adminHandler.SaveDistroProfile))
 	mux.HandleFunc("/api/profiles/delete", authWrap(adminHandler.DeleteDistroProfile))
 	mux.HandleFunc("/api/profiles/update", authWrap(adminHandler.UpdateDistroProfiles))
+	mux.HandleFunc("/api/iso-catalog", authWrap(adminHandler.GetISOCatalog))
 	mux.HandleFunc("/api/images/boot-method", authWrap(adminHandler.SetBootMethod))
 
 	mux.HandleFunc("/api/active-sessions", authWrap(s.handleActiveSessions))
@@ -1270,7 +1232,6 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/files/update", authWrap(adminHandler.UpdateCustomFile))
 	mux.HandleFunc("/api/files/delete", authWrap(adminHandler.DeleteCustomFile))
 
-	// Driver pack routes
 	mux.HandleFunc("/api/drivers", authWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -1438,9 +1399,6 @@ chain http://%s:%d/inventory?mac=%s&cpu=${cpuid/0}&memsize=${memsize}&platform=$
 	w.Write([]byte(script))
 }
 
-// executeScheduledTask is the Runner bound to the scheduler package. It maps
-// a ScheduledTask's action_type to the underlying bulk primitive and returns
-// a status + error for the run-history row.
 func (s *Server) executeScheduledTask(ctx context.Context, t *models.ScheduledTask) (string, string) {
 	if s.config.Storage == nil {
 		return "failed", "storage unavailable"
@@ -1538,9 +1496,6 @@ func (s *Server) executeScheduledTask(ctx context.Context, t *models.ScheduledTa
 	}
 }
 
-// resolveRedfishForClient merges per-client Redfish settings with its group
-// defaults. Duplicates the same logic as the admin handler but kept here to
-// avoid a circular import between server/admin.
 func resolveRedfishForClient(c *models.Client, g *models.ClientGroup) (host string, port int, user string, pass string, insecure bool) {
 	host = c.IPMIHost
 	port = c.IPMIPort
@@ -1564,8 +1519,6 @@ func resolveRedfishForClient(c *models.Client, g *models.ClientGroup) (host stri
 	return
 }
 
-// refreshMetricsGauges updates the "totals" gauges every 30s. Counters are
-// incremented at event time elsewhere; gauges just mirror DB state.
 func (s *Server) refreshMetricsGauges() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -1585,14 +1538,10 @@ func (s *Server) refreshMetricsGauges() {
 	}
 }
 
-// recordBootIfNew logs a boot attempt once per (MAC, image) within a short
-// dedup window. A single client boot generates many /boot/ requests (kernel,
-// initrd, squashfs, ucode, etc.) — we only want one BootLog row per boot.
 func (s *Server) recordBootIfNew(mac, path, remoteAddr string) {
 	if s.config.Storage == nil || mac == "" || mac == "unknown" {
 		return
 	}
-	// First path segment is the image cache directory (filename minus .iso).
 	slash := strings.Index(path, "/")
 	if slash <= 0 {
 		return
@@ -1607,7 +1556,6 @@ func (s *Server) recordBootIfNew(mac, path, remoteAddr string) {
 		return
 	}
 	s.bootLogDedup[key] = now
-	// Occasional GC — keep the map from growing unbounded.
 	if len(s.bootLogDedup) > 1024 {
 		for k, t := range s.bootLogDedup {
 			if now.Sub(t) > 10*time.Minute {
@@ -1651,12 +1599,10 @@ func (s *Server) handleInventoryReport(w http.ResponseWriter, r *http.Request) {
 
 	mac := strings.ToLower(strings.ReplaceAll(r.FormValue("mac"), "-", ":"))
 	if mac == "" || mac == "${net0/mac}" {
-		// No valid MAC — just redirect to menu
 		http.Redirect(w, r, fmt.Sprintf("/menu.ipxe?mac=unknown"), http.StatusTemporaryRedirect)
 		return
 	}
 
-	// Parse memory (iPXE memsize is in bytes, may be hex or decimal)
 	var memBytes int64
 	if ms := r.FormValue("memsize"); ms != "" {
 		if strings.HasPrefix(ms, "0x") || strings.HasPrefix(ms, "0X") {
@@ -1681,7 +1627,6 @@ func (s *Server) handleInventoryReport(w http.ResponseWriter, r *http.Request) {
 		NICChip:      r.FormValue("nic_chip"),
 	}
 
-	// Detect whether this MAC is new so we can emit discovered vs updated.
 	isNewClient := false
 	if s.config.Storage != nil {
 		if _, err := s.config.Storage.GetClient(mac); err != nil {
@@ -1725,7 +1670,6 @@ func (s *Server) handleInventoryReport(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Return iPXE script that chains to the boot menu
 	script := fmt.Sprintf("#!ipxe\nchain http://%s:%d/menu.ipxe?mac=%s\n", s.config.ServerAddr, s.config.HTTPPort, mac)
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(script))
@@ -1741,7 +1685,6 @@ func (s *Server) handleIPXEMenu(w http.ResponseWriter, r *http.Request) {
 
 	s.logAndBroadcast("Client Connected: MAC %s (IP: %s) requesting boot menu", macAddress, r.RemoteAddr)
 
-	// Check for one-time next boot image
 	var nextBootImageID uint
 	if s.config.Storage != nil {
 		client, err := s.config.Storage.GetClient(macAddress)
@@ -1885,9 +1828,6 @@ reboot
 		autoInstallURL := ""
 		autoInstallParam := ""
 		if img.AutoInstallEnabled && img.AutoInstallScript != "" {
-			// ${net0/mac} is expanded by iPXE before the kernel is booted, so the
-			// resulting kernel cmdline carries the literal MAC and the autoinstall
-			// endpoint can resolve the client for template variable substitution.
 			autoInstallURL = fmt.Sprintf("http://%s:%d/autoinstall/%s?mac=${net0/mac}", s.config.ServerAddr, s.config.HTTPPort, url.PathEscape(img.Filename))
 
 			switch img.AutoInstallScriptType {
@@ -1904,7 +1844,6 @@ reboot
 			}
 		}
 
-		// Determine install image basename (install.wim or install.esd)
 		installBasename := "install.wim"
 		if img.InstallWimPath != "" && strings.Contains(strings.ToLower(img.InstallWimPath), ".esd") {
 			installBasename = "install.esd"
@@ -2140,9 +2079,6 @@ func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request)
 		image.Filename, source, scriptType, len(script))
 }
 
-// resolveAutoInstallScript walks the hierarchy: per-client file > group file >
-// image file > image inline legacy. Returns the script body, type, and a tag
-// for logging.
 func (s *Server) resolveAutoInstallScript(image *models.Image, client *models.Client) (string, string, string, error) {
 	if s.autoInstallLib != nil {
 		tryFile := func(rel, src string) (string, string, string, error) {

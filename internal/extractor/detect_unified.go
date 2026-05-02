@@ -182,23 +182,17 @@ func (e *Extractor) detectCentOSUnified(reader FileSystemReader) (*BootFiles, er
 }
 
 func (e *Extractor) detectArchUnified(reader FileSystemReader) (*BootFiles, error) {
-	// Standard Arch layout
 	paths := []struct {
 		kernel     string
 		initrd     string
 		bootParams string
 	}{
-		// Standard Arch Linux
 		{"/arch/boot/x86_64/vmlinuz-linux", "/arch/boot/x86_64/initramfs-linux.img", ""},
-		// CachyOS and some Arch derivatives
 		{"/boot/vmlinuz-linux", "/boot/initramfs-linux.img", ""},
-		// EndeavourOS
 		{"/arch/boot/x86_64/vmlinuz-linux", "/arch/boot/x86_64/archiso.img", ""},
-		// Some derivatives use different kernel names
 		{"/boot/vmlinuz-linux-cachyos", "/boot/initramfs-linux-cachyos.img", ""},
 		{"/boot/vmlinuz-linux-zen", "/boot/initramfs-linux-zen.img", ""},
 		{"/boot/vmlinuz-linux-lts", "/boot/initramfs-linux-lts.img", ""},
-		// Manjaro
 		{"/boot/vmlinuz-x86_64", "/boot/initramfs-x86_64.img", ""},
 		{"/manjaro/boot/x86_64/manjaro", "/manjaro/boot/x86_64/manjaro.img", ""},
 	}
@@ -476,7 +470,6 @@ func (e *Extractor) cacheBootFilesUnified(files *BootFiles, reader FileSystemRea
 	}
 
 	if files.Distro == "windows" {
-		// Extract entire ISO contents for Windows
 		extractedDir := filepath.Join(bootFilesDir, "iso")
 		if err := os.MkdirAll(extractedDir, 0755); err != nil {
 			return fmt.Errorf("failed to create extracted ISO directory: %w", err)
@@ -489,7 +482,6 @@ func (e *Extractor) cacheBootFilesUnified(files *BootFiles, reader FileSystemRea
 
 		files.ExtractedDir = extractedDir
 
-		// Update paths to point to extracted locations
 		bcdDest := filepath.Join(extractedDir, strings.TrimPrefix(files.Kernel, "/"))
 		files.Kernel = bcdDest
 

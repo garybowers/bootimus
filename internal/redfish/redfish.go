@@ -1,10 +1,3 @@
-// Package redfish implements a minimal Redfish client for BMC power control.
-// Scope is deliberately tiny: discover a system, query power state, and issue
-// ComputerSystem.Reset actions. No inventory, no SEL, no storage enumeration.
-//
-// Works against anything DMTF-compliant — iDRAC, iLO, XCC, Supermicro,
-// OpenBMC. Many BMCs ship with self-signed certs by default; the Insecure
-// flag on Client skips TLS verification for that case.
 package redfish
 
 import (
@@ -19,30 +12,25 @@ import (
 	"time"
 )
 
-// PowerAction is the ResetType value sent to ComputerSystem.Reset.
 type PowerAction string
 
 const (
-	PowerOn              PowerAction = "On"
-	PowerOff             PowerAction = "ForceOff"
-	PowerRestart         PowerAction = "ForceRestart"
+	PowerOn               PowerAction = "On"
+	PowerOff              PowerAction = "ForceOff"
+	PowerRestart          PowerAction = "ForceRestart"
 	PowerGracefulShutdown PowerAction = "GracefulShutdown"
-	PowerGracefulRestart PowerAction = "GracefulRestart"
+	PowerGracefulRestart  PowerAction = "GracefulRestart"
 )
 
-// Client is a single-BMC Redfish client.
 type Client struct {
-	Host     string // host or IP (no scheme)
-	Port     int    // default 443 if zero
+	Host     string
+	Port     int
 	Username string
 	Password string
-	Insecure bool // skip TLS verification — common for default BMC certs
+	Insecure bool
 	http     *http.Client
 }
 
-// New returns a Client with a 15s HTTP timeout. The timeout is deliberately
-// tight — BMCs that take longer are typically hung and benefit from a faster
-// failure signal.
 func New(host string, port int, username, password string, insecure bool) *Client {
 	if port == 0 {
 		port = 443
@@ -60,7 +48,6 @@ func New(host string, port int, username, password string, insecure bool) *Clien
 	}
 }
 
-// PowerState reports the current power state of the first system.
 func (c *Client) PowerState(ctx context.Context) (string, error) {
 	system, err := c.firstSystem(ctx)
 	if err != nil {
@@ -69,8 +56,6 @@ func (c *Client) PowerState(ctx context.Context) (string, error) {
 	return system.PowerState, nil
 }
 
-// SetPower issues ComputerSystem.Reset with the requested action against the
-// first system discovered on the BMC.
 func (c *Client) SetPower(ctx context.Context, action PowerAction) error {
 	system, err := c.firstSystem(ctx)
 	if err != nil {
@@ -117,8 +102,6 @@ func (s *system) resetActionTarget() string {
 	return s.Actions.Reset.Target
 }
 
-// firstSystem walks /redfish/v1/Systems and returns the first member. Most
-// servers expose exactly one; multi-node chassis are out of scope for v1.
 func (c *Client) firstSystem(ctx context.Context) (*system, error) {
 	var coll systemsCollection
 	if err := c.getJSON(ctx, "/redfish/v1/Systems/", &coll); err != nil {

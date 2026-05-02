@@ -1,0 +1,10 @@
+{
+  "name": "secureboot",
+  "description": "UEFI Secure Boot via ipxe/shim 16.1. Requires one-time MOK enrollment of bootimus-signing.crt per machine.",
+  "shim_version": "16.1",
+  "bootfiles": {
+    "bios": "undionly.kpxe",
+    "uefi": "ipxe-shimx64.efi",
+    "arm64": "ipxe-shimaa64.efi"
+  }
+}

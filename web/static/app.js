@@ -142,6 +142,15 @@ const collapsedImageGroups = (() => {
         return new Set(raw ? JSON.parse(raw) : []);
     } catch (_) { return new Set(); }
 })();
+let clientGroupedView = (() => {
+    try { return localStorage.getItem('client-grouped-view') === '1'; } catch (_) { return false; }
+})();
+const collapsedClientGroups = (() => {
+    try {
+        const raw = localStorage.getItem('client-collapsed-groups');
+        return new Set(raw ? JSON.parse(raw) : []);
+    } catch (_) { return new Set(); }
+})();
 let extractionProgress = {}; // Track extraction progress by filename
 
 // Theme
@@ -150,15 +159,17 @@ function toggleTheme() {
     const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     html.setAttribute('data-theme', next);
     localStorage.setItem('bootimus_theme', next);
-    const btn = document.getElementById('theme-toggle-btn');
-    if (btn) btn.setAttribute('aria-checked', next === 'dark' ? 'true' : 'false');
+    document.querySelectorAll('.theme-switch').forEach(btn => {
+        btn.setAttribute('aria-checked', next === 'dark' ? 'true' : 'false');
+    });
 }
 
 function loadSavedTheme() {
     const saved = localStorage.getItem('bootimus_theme') || 'light';
     document.documentElement.setAttribute('data-theme', saved);
-    const btn = document.getElementById('theme-toggle-btn');
-    if (btn) btn.setAttribute('aria-checked', saved === 'dark' ? 'true' : 'false');
+    document.querySelectorAll('.theme-switch').forEach(btn => {
+        btn.setAttribute('aria-checked', saved === 'dark' ? 'true' : 'false');
+    });
 }
 
 // Utility Functions
@@ -174,6 +185,7 @@ function openModal(modalId) {
 
 function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
+    if (modalId === 'get-images-modal' && typeof clearGetISOPolling === 'function') clearGetISOPolling();
 }
 
 function injectModalCloseButtons() {
@@ -365,7 +377,9 @@ function setupTabs() {
             if (item.dataset.tab === 'bootloaders') loadBootloaders();
             if (item.dataset.tab === 'profiles') loadProfiles();
             if (item.dataset.tab === 'autoinstall') loadAutoInstallFiles();
-            if (item.dataset.tab === 'settings') { loadTheme(); loadUSBImages(); loadWebhookConfig(); }
+            if (item.dataset.tab === 'boot-menu') loadTheme();
+            if (item.dataset.tab === 'settings') { loadUSBImages(); loadWebhookConfig(); }
+            if (item.dataset.tab === 'api-reference') showAPIReference();
         });
     });
 
@@ -947,35 +961,186 @@ async function loadClients() {
     }
 }
 
-function renderClientsTable() {
-    const container = document.getElementById('clients-table');
+const selectedClientMacs = new Set();
 
-    const filteredClients = clients.filter(c => rowMatchesFilter('clients', [c.mac_address, c.name, c.description, c.bootloader_set]));
+function toggleClientSelection(mac, checked) {
+    if (checked) selectedClientMacs.add(mac);
+    else selectedClientMacs.delete(mac);
+    updateClientsBulkUI();
+}
 
-    if (clients.length === 0) {
-        container.innerHTML = '<p style="color: var(--text-secondary); padding: 20px;">No clients yet. Add one to get started.</p>';
+function clearClientSelection() {
+    selectedClientMacs.clear();
+    renderClientsTable();
+}
+
+function toggleClientsSelectAll(checked) {
+    selectedClientMacs.clear();
+    if (checked) {
+        for (const c of (clients || [])) selectedClientMacs.add(c.mac_address);
+    }
+    renderClientsTable();
+}
+
+function updateClientsBulkUI() {
+    const wrap = document.getElementById('clients-bulk-actions');
+    const count = document.getElementById('clients-bulk-count');
+    const n = selectedClientMacs.size;
+    if (wrap) wrap.style.display = n > 0 ? 'flex' : 'none';
+    if (count) count.textContent = n + ' selected';
+    const selectAll = document.getElementById('clients-select-all');
+    if (selectAll) {
+        const total = (clients || []).length;
+        if (n === 0) { selectAll.checked = false; selectAll.indeterminate = false; }
+        else if (n >= total) { selectAll.checked = true; selectAll.indeterminate = false; }
+        else { selectAll.checked = false; selectAll.indeterminate = true; }
+    }
+}
+
+async function bulkSetClientsEnabled(enabled) {
+    const macs = Array.from(selectedClientMacs);
+    if (!macs.length) return;
+    let success = 0, fail = 0;
+    for (const mac of macs) {
+        try {
+            const res = await authFetch(`${API_BASE}/clients?mac=${encodeURIComponent(mac)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled }),
+            });
+            const data = await res.json();
+            if (data.success) success++; else fail++;
+        } catch (e) { fail++; }
+    }
+    const verb = enabled ? 'Enabled' : 'Disabled';
+    showAlert(`${verb} ${success}${fail ? ', ' + fail + ' failed' : ''}`, fail ? 'error' : 'success');
+    selectedClientMacs.clear();
+    await loadClients();
+    loadStats();
+}
+
+async function bulkWakeClients() {
+    const macs = Array.from(selectedClientMacs);
+    if (!macs.length) return;
+    let success = 0, fail = 0;
+    for (const mac of macs) {
+        try {
+            const res = await authFetch(`${API_BASE}/clients/wake?mac=${encodeURIComponent(mac)}`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) success++; else fail++;
+        } catch (e) { fail++; }
+    }
+    showAlert(`Wake sent to ${success}${fail ? ', ' + fail + ' failed' : ''}`, fail ? 'error' : 'success');
+}
+
+async function bulkDeleteClients() {
+    const macs = Array.from(selectedClientMacs);
+    if (!macs.length) return;
+    if (!confirm(`Delete ${macs.length} client${macs.length === 1 ? '' : 's'}?`)) return;
+    let success = 0, fail = 0;
+    for (const mac of macs) {
+        try {
+            const res = await authFetch(`${API_BASE}/clients?mac=${encodeURIComponent(mac)}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) success++; else fail++;
+        } catch (e) { fail++; }
+    }
+    showAlert(`Deleted ${success}${fail ? ', ' + fail + ' failed' : ''}`, fail ? 'error' : 'success');
+    selectedClientMacs.clear();
+    await loadClients();
+    loadStats();
+}
+
+async function openBulkAssignClientGroupModal() {
+    if (!selectedClientMacs.size) return;
+    const select = document.getElementById('bulk-assign-client-group-select');
+    select.innerHTML = '<option value="">(none)</option>';
+    try {
+        const res = await authFetch(`${API_BASE}/client-groups`);
+        const data = await res.json();
+        if (data.success && data.data) {
+            for (const g of data.data) {
+                select.innerHTML += `<option value="${g.id}">${escapeHtml(g.name)}</option>`;
+            }
+        }
+    } catch (e) {}
+    const n = selectedClientMacs.size;
+    document.getElementById('bulk-assign-client-group-count').textContent = n + ' client' + (n === 1 ? '' : 's');
+    openModal('bulk-assign-client-group-modal');
+}
+
+async function confirmBulkAssignClientGroup() {
+    const macs = Array.from(selectedClientMacs);
+    if (!macs.length) {
+        closeModal('bulk-assign-client-group-modal');
         return;
     }
+    const raw = document.getElementById('bulk-assign-client-group-select').value;
+    const body = JSON.stringify({ client_group_id: raw === '' ? null : parseInt(raw, 10) });
+    let success = 0, fail = 0;
+    for (const mac of macs) {
+        try {
+            const res = await authFetch(`${API_BASE}/clients?mac=${encodeURIComponent(mac)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body,
+            });
+            const data = await res.json();
+            if (data.success) success++; else fail++;
+        } catch (e) { fail++; }
+    }
+    showAlert(`Assigned ${success}${fail ? ', ' + fail + ' failed' : ''}`, fail ? 'error' : 'success');
+    selectedClientMacs.clear();
+    closeModal('bulk-assign-client-group-modal');
+    await loadClients();
+}
 
-    const html = `
-        <div class="table-scroll">
-        <table>
-            <thead>
-                <tr>
-                    <th>MAC Address</th>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th class="col-dot" title="Enabled / Disabled">On</th>
-                    <th>Bootloader</th>
-                    <th>Assigned Images</th>
-                    <th>Boot Count</th>
-                    <th>Last Boot</th>
-                    <th>Quick Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${filteredClients.map(client => `
+function toggleClientGrouping() {
+    clientGroupedView = !clientGroupedView;
+    try { localStorage.setItem('client-grouped-view', clientGroupedView ? '1' : '0'); } catch (_) {}
+    syncClientGroupingButton();
+    renderClientsTable();
+}
+
+function syncClientGroupingButton() {
+    const btn = document.getElementById('clients-group-toggle');
+    if (!btn) return;
+    btn.setAttribute('aria-pressed', clientGroupedView ? 'true' : 'false');
+}
+
+function toggleClientGroup(key) {
+    if (collapsedClientGroups.has(key)) collapsedClientGroups.delete(key);
+    else collapsedClientGroups.add(key);
+    try { localStorage.setItem('client-collapsed-groups', JSON.stringify([...collapsedClientGroups])); } catch (_) {}
+    renderClientsTable();
+}
+
+function toggleClientGroupFromEvent(el) {
+    if (!el || !el.dataset) return;
+    try { toggleClientGroup(JSON.parse(el.dataset.groupKey)); } catch (_) {}
+}
+
+function clientGroupName(client) {
+    if (client.client_group && client.client_group.name) return client.client_group.name;
+    if (client.client_group_id != null) {
+        const g = (clientGroups || []).find(g => g.id === client.client_group_id);
+        if (g) return g.name;
+    }
+    return null;
+}
+
+function clientRowHTML(client, includeGroupCell) {
+    const groupName = clientGroupName(client);
+    const groupCell = includeGroupCell ? `
+                        <td>
+                            ${groupName ?
+                                '<span class="badge badge-info">' + escapeHtml(groupName) + '</span>' :
+                                '<span style="color: var(--text-secondary);">-</span>'
+                            }
+                        </td>` : '';
+    return `
                     <tr class="row-clickable" onclick="editClient('${client.mac_address}')">
+                        <td class="col-check" onclick="event.stopPropagation()"><input type="checkbox" ${selectedClientMacs.has(client.mac_address) ? 'checked' : ''} onchange="toggleClientSelection('${client.mac_address}', this.checked)"></td>
                         <td><code>${client.mac_address}</code></td>
                         <td>${client.name || '-'}</td>
                         <td>
@@ -991,7 +1156,7 @@ function renderClientsTable() {
                                 '<span class="badge badge-info">' + escapeHtml(client.bootloader_set) + '</span>' :
                                 '<span style="color: var(--text-secondary);">Default</span>'
                             }
-                        </td>
+                        </td>${groupCell}
                         <td>
                             ${(client.images || []).length > 0 ?
                                 `<span title="${(client.images || []).map(i => i.name).join(', ')}">${(client.images || []).length} images</span>` :
@@ -1008,14 +1173,119 @@ function renderClientsTable() {
                             <button class="btn btn-success btn-sm" onclick="wakeClient('${client.mac_address}')">Wake</button>
                             <button class="btn btn-primary btn-sm" onclick="showNextBoot('${client.mac_address}')">Next Boot</button>
                         </td>
-                    </tr>
-                `).join('')}
-            </tbody>
+                    </tr>`;
+}
+
+function renderClientsTable() {
+    const container = document.getElementById('clients-table');
+
+    const filteredClients = clients.filter(c => rowMatchesFilter('clients', [c.mac_address, c.name, c.description, c.bootloader_set, clientGroupName(c)]));
+
+    if (clients.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-secondary); padding: 20px;">No clients yet. Add one to get started.</p>';
+        return;
+    }
+
+    syncClientGroupingButton();
+
+    const filterActive = !!(tableFilters['clients'] && tableFilters['clients'].length);
+
+    let bodyHtml;
+    let theadHtml;
+    let colspan;
+
+    if (!clientGroupedView) {
+        colspan = 11;
+        theadHtml = `
+                <tr>
+                    <th class="col-check"><input type="checkbox" id="clients-select-all" onchange="toggleClientsSelectAll(this.checked)" title="Select all"></th>
+                    <th>MAC Address</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th class="col-dot" title="Enabled / Disabled">On</th>
+                    <th>Bootloader</th>
+                    <th>Group</th>
+                    <th>Assigned Images</th>
+                    <th>Boot Count</th>
+                    <th>Last Boot</th>
+                    <th>Quick Actions</th>
+                </tr>`;
+        bodyHtml = filteredClients.map(c => clientRowHTML(c, true)).join('');
+    } else {
+        colspan = 10;
+        theadHtml = `
+                <tr>
+                    <th class="col-check"><input type="checkbox" id="clients-select-all" onchange="toggleClientsSelectAll(this.checked)" title="Select all"></th>
+                    <th>MAC Address</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th class="col-dot" title="Enabled / Disabled">On</th>
+                    <th>Bootloader</th>
+                    <th>Assigned Images</th>
+                    <th>Boot Count</th>
+                    <th>Last Boot</th>
+                    <th>Quick Actions</th>
+                </tr>`;
+
+        const buckets = new Map();
+        const ungrouped = [];
+        for (const c of filteredClients) {
+            const gid = c.client_group_id;
+            if (gid != null) {
+                if (!buckets.has(gid)) buckets.set(gid, []);
+                buckets.get(gid).push(c);
+            } else {
+                ungrouped.push(c);
+            }
+        }
+
+        let out = '';
+        const sortedGroups = (clientGroups || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        for (const group of sortedGroups) {
+            const members = buckets.get(group.id) || [];
+            if (members.length === 0) continue;
+            const collapsed = !filterActive && collapsedClientGroups.has('id:' + group.id);
+            const dataKey = _attrEscape(JSON.stringify('id:' + group.id));
+            out += `
+                    <tr class="tr-group" data-group-key="${dataKey}" onclick="toggleClientGroupFromEvent(this)">
+                        <td colspan="${colspan}" style="background: var(--bg-tertiary); cursor: pointer; user-select: none;">
+                            <span style="display: inline-block; width: 14px; color: var(--text-secondary);">${collapsed ? '▶' : '▼'}</span>
+                            <strong style="color: var(--text-primary);">${escapeHtml(group.name)}</strong>
+                            <span style="color: var(--text-muted); font-weight: 400; margin-left: 8px; font-size: 12px;">${members.length} ${members.length === 1 ? 'client' : 'clients'}</span>
+                        </td>
+                    </tr>`;
+            if (!collapsed) {
+                for (const c of members) out += clientRowHTML(c, false);
+            }
+        }
+
+        if (ungrouped.length > 0) {
+            const collapsed = !filterActive && collapsedClientGroups.has('id:ungrouped');
+            const dataKey = _attrEscape(JSON.stringify('id:ungrouped'));
+            out += `
+                    <tr class="tr-group" data-group-key="${dataKey}" onclick="toggleClientGroupFromEvent(this)">
+                        <td colspan="${colspan}" style="background: var(--bg-tertiary); cursor: pointer; user-select: none;">
+                            <span style="display: inline-block; width: 14px; color: var(--text-secondary);">${collapsed ? '▶' : '▼'}</span>
+                            <strong style="color: var(--text-primary);">Ungrouped</strong>
+                            <span style="color: var(--text-muted); font-weight: 400; margin-left: 8px; font-size: 12px;">${ungrouped.length} ${ungrouped.length === 1 ? 'client' : 'clients'}</span>
+                        </td>
+                    </tr>`;
+            if (!collapsed) {
+                for (const c of ungrouped) out += clientRowHTML(c, false);
+            }
+        }
+        bodyHtml = out;
+    }
+
+    container.innerHTML = `
+        <div class="table-scroll">
+        <table>
+            <thead>${theadHtml}</thead>
+            <tbody>${bodyHtml}</tbody>
         </table>
         </div>
     `;
-
-    container.innerHTML = html;
+    updateClientsBulkUI();
 }
 
 function showAddClientModal() {
@@ -1628,6 +1898,137 @@ function computeImageHealth(img) {
     return 'ok';
 }
 
+const selectedImageFilenames = new Set();
+
+function toggleImageSelection(filename, checked) {
+    if (checked) selectedImageFilenames.add(filename);
+    else selectedImageFilenames.delete(filename);
+    updateImagesBulkUI();
+}
+
+function clearImageSelection() {
+    selectedImageFilenames.clear();
+    renderImagesTable();
+}
+
+function toggleImagesSelectAll(checked) {
+    selectedImageFilenames.clear();
+    if (checked) {
+        for (const img of (images || [])) selectedImageFilenames.add(img.filename);
+    }
+    renderImagesTable();
+}
+
+function updateImagesBulkUI() {
+    const wrap = document.getElementById('images-bulk-actions');
+    const count = document.getElementById('images-bulk-count');
+    const n = selectedImageFilenames.size;
+    if (wrap) wrap.style.display = n > 0 ? 'flex' : 'none';
+    if (count) count.textContent = n + ' selected';
+    const selectAll = document.getElementById('images-select-all');
+    if (selectAll) {
+        const total = (images || []).length;
+        if (n === 0) { selectAll.checked = false; selectAll.indeterminate = false; }
+        else if (n >= total) { selectAll.checked = true; selectAll.indeterminate = false; }
+        else { selectAll.checked = false; selectAll.indeterminate = true; }
+    }
+}
+
+async function bulkSetImagesEnabled(enabled) {
+    const filenames = Array.from(selectedImageFilenames);
+    if (!filenames.length) return;
+    let success = 0, fail = 0;
+    for (const filename of filenames) {
+        try {
+            const res = await authFetch(`${API_BASE}/images?filename=${encodeURIComponent(filename)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled }),
+            });
+            const data = await res.json();
+            if (data.success) success++; else fail++;
+        } catch (e) { fail++; }
+    }
+    const verb = enabled ? 'Enabled' : 'Disabled';
+    showAlert(`${verb} ${success}${fail ? ', ' + fail + ' failed' : ''}`, fail ? 'error' : 'success');
+    selectedImageFilenames.clear();
+    await loadImages();
+    loadStats();
+}
+
+async function openBulkAssignGroupModal() {
+    if (!selectedImageFilenames.size) return;
+    if (!groups || groups.length === 0) {
+        await loadGroups();
+    }
+    const select = document.getElementById('bulk-assign-group-select');
+    select.innerHTML = '<option value="">Unassigned</option>';
+    for (const group of (groups || [])) {
+        select.innerHTML += `<option value="${group.id}">${escapeHtml(group.name)}</option>`;
+    }
+    const n = selectedImageFilenames.size;
+    document.getElementById('bulk-assign-group-count').textContent = n + ' image' + (n === 1 ? '' : 's');
+    openModal('bulk-assign-group-modal');
+}
+
+async function confirmBulkAssignGroup() {
+    const filenames = Array.from(selectedImageFilenames);
+    if (!filenames.length) {
+        closeModal('bulk-assign-group-modal');
+        return;
+    }
+    const raw = document.getElementById('bulk-assign-group-select').value;
+    const body = JSON.stringify({ group_id: raw === '' ? null : parseInt(raw, 10) });
+    let success = 0, fail = 0;
+    for (const filename of filenames) {
+        try {
+            const res = await authFetch(`${API_BASE}/images?filename=${encodeURIComponent(filename)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body,
+            });
+            const data = await res.json();
+            if (data.success) success++; else fail++;
+        } catch (e) { fail++; }
+    }
+    showAlert(`Assigned ${success}${fail ? ', ' + fail + ' failed' : ''}`, fail ? 'error' : 'success');
+    selectedImageFilenames.clear();
+    closeModal('bulk-assign-group-modal');
+    await loadImages();
+}
+
+async function bulkDeleteImages() {
+    const filenames = Array.from(selectedImageFilenames);
+    if (!filenames.length) return;
+    if (!confirm(`Delete ${filenames.length} image${filenames.length === 1 ? '' : 's'}?\n\nWARNING: This will permanently delete the ISO files from disk.`)) return;
+    let success = 0, fail = 0;
+    for (const filename of filenames) {
+        try {
+            const res = await authFetch(`${API_BASE}/images?filename=${encodeURIComponent(filename)}&delete_file=true`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) success++; else fail++;
+        } catch (e) { fail++; }
+    }
+    showAlert(`Deleted ${success}${fail ? ', ' + fail + ' failed' : ''}`, fail ? 'error' : 'success');
+    selectedImageFilenames.clear();
+    await loadImages();
+    loadStats();
+}
+
+const DISTRO_LOGO_FALLBACK = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>');
+
+function distroLogoSrc(distro) {
+    const id = (distro || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    return id ? `/distros/${id}.svg` : DISTRO_LOGO_FALLBACK;
+}
+
+function distroLogoHTML(distro, size) {
+    const sz = size || 24;
+    const src = distroLogoSrc(distro);
+    const alt = distro ? escapeHtml(distro) : '';
+    return `<img src="${src}" width="${sz}" height="${sz}" class="distro-logo" alt="${alt}" onerror="this.onerror=null; this.src='${DISTRO_LOGO_FALLBACK}'">`;
+}
+
 function imageRowHTML(img, includeGroupCell, depth = 0) {
     const groupCell = includeGroupCell ? `
                         <td>
@@ -1640,8 +2041,11 @@ function imageRowHTML(img, includeGroupCell, depth = 0) {
     const health = computeImageHealth(img);
     const rowClass = health === 'ok' ? 'row-clickable' : 'row-clickable row-warning';
     const rowTitle = health === 'ok' ? '' : ` title="${escapeHtml(health.reason)}"`;
+    const checked = selectedImageFilenames.has(img.filename) ? 'checked' : '';
     return `
                     <tr class="${rowClass}"${rowTitle} onclick="showImagePropertiesModal('${img.filename}')">
+                        <td class="col-check" onclick="event.stopPropagation()"><input type="checkbox" ${checked} onchange="toggleImageSelection('${img.filename}', this.checked)"></td>
+                        <td class="col-logo">${distroLogoHTML(img.distro)}</td>
                         <td${namePadStyle}>${img.name}</td>
                         <td><code>${img.filename}</code></td>
                         <td>${formatBytes(img.size)}</td>
@@ -1716,9 +2120,11 @@ function renderImagesTable() {
     let colspan;
 
     if (!imageGroupedView) {
-        colspan = 9;
+        colspan = 11;
         theadHtml = `
                 <tr>
+                    <th class="col-check"><input type="checkbox" id="images-select-all" onchange="toggleImagesSelectAll(this.checked)" title="Select all"></th>
+                    <th class="col-logo"></th>
                     <th onclick="sortImages('name')" style="cursor: pointer;">Name ${sortIcon('name')}</th>
                     <th onclick="sortImages('filename')" style="cursor: pointer;">Filename ${sortIcon('filename')}</th>
                     <th onclick="sortImages('size')" style="cursor: pointer;">Size ${sortIcon('size')}</th>
@@ -1731,9 +2137,11 @@ function renderImagesTable() {
                 </tr>`;
         bodyHtml = sortedImages.map(img => imageRowHTML(img, true)).join('');
     } else {
-        colspan = 8;
+        colspan = 10;
         theadHtml = `
                 <tr>
+                    <th class="col-check"><input type="checkbox" id="images-select-all" onchange="toggleImagesSelectAll(this.checked)" title="Select all"></th>
+                    <th class="col-logo"></th>
                     <th onclick="sortImages('name')" style="cursor: pointer;">Name ${sortIcon('name')}</th>
                     <th onclick="sortImages('filename')" style="cursor: pointer;">Filename ${sortIcon('filename')}</th>
                     <th onclick="sortImages('size')" style="cursor: pointer;">Size ${sortIcon('size')}</th>
@@ -1808,6 +2216,7 @@ function renderImagesTable() {
         </table>
         </div>
     `;
+    updateImagesBulkUI();
 }
 
 async function toggleImage(filename, currentState) {
@@ -2251,6 +2660,283 @@ function setupForms() {
     if (wf) wf.addEventListener('submit', saveWebhookConfig);
 }
 
+const API_REFERENCE = [
+    { category: 'Authentication', endpoints: [
+        { method: 'POST',   path: '/api/login',                    desc: 'Body: <code>{username, password}</code>. Returns JWT token.', publicAccess: true },
+        { method: 'GET',    path: '/api/auth-info',                desc: 'Available auth backends.', publicAccess: true },
+        { method: 'GET',    path: '/logout',                       desc: 'Redirect to login page.' },
+        { method: 'GET',    path: '/health',                       desc: 'Liveness probe.', publicAccess: true },
+    ]},
+    { category: 'Server / Stats', endpoints: [
+        { method: 'GET',    path: '/api/server-info',              desc: 'Version, uptime, paths, network info.' },
+        { method: 'GET',    path: '/api/stats',                    desc: 'Counts: clients, images, boots.' },
+        { method: 'GET',    path: '/api/active-sessions',          desc: 'Currently active boot sessions.' },
+        { method: 'GET',    path: '/metrics',                      desc: 'Prometheus metrics.' },
+    ]},
+    { category: 'Clients', endpoints: [
+        { method: 'GET',    path: '/api/clients',                  desc: 'List all clients. Add <code>?mac={mac}</code> for one.' },
+        { method: 'POST',   path: '/api/clients',                  desc: 'Create static client. Body: <code>{mac_address, name, ...}</code>' },
+        { method: 'PUT',    path: '/api/clients?mac={mac}',        desc: 'Partial update. Any model field accepted.' },
+        { method: 'DELETE', path: '/api/clients?mac={mac}',        desc: 'Delete client.' },
+        { method: 'POST',   path: '/api/clients/wake?mac={mac}',   desc: 'Send Wake-on-LAN packet.' },
+        { method: 'POST',   path: '/api/clients/next-boot?mac={mac}', desc: 'Body: <code>{filename}</code>. One-shot next-boot image.' },
+        { method: 'POST',   path: '/api/clients/promote?mac={mac}', desc: 'Promote discovered client to static.' },
+        { method: 'GET',    path: '/api/clients/inventory?mac={mac}', desc: 'Latest hardware inventory.' },
+        { method: 'GET',    path: '/api/clients/inventory/history?mac={mac}', desc: 'Historical inventory submissions.' },
+        { method: 'POST',   path: '/api/clients/power?mac={mac}',  desc: 'IPMI/Redfish power control. Body: <code>{action}</code> (on/off/reset).' },
+        { method: 'GET',    path: '/api/clients/power/status?mac={mac}', desc: 'IPMI/Redfish power status.' },
+        { method: 'POST',   path: '/api/clients/import',           desc: 'CSV import (multipart).' },
+    ]},
+    { category: 'Client Groups', endpoints: [
+        { method: 'GET',    path: '/api/client-groups',            desc: 'List all groups.' },
+        { method: 'POST',   path: '/api/client-groups',            desc: 'Body: <code>{name, description, ...}</code>' },
+        { method: 'GET',    path: '/api/client-groups/get?id={id}', desc: 'Get one group.' },
+        { method: 'PUT',    path: '/api/client-groups/update?id={id}', desc: 'Update group.' },
+        { method: 'DELETE', path: '/api/client-groups/delete?id={id}', desc: 'Delete group.' },
+        { method: 'POST',   path: '/api/client-groups/membership', desc: 'Body: <code>{group_id, client_macs[]}</code>' },
+        { method: 'POST',   path: '/api/client-groups/wake?id={id}', desc: 'Wake all members.' },
+        { method: 'POST',   path: '/api/client-groups/next-boot?id={id}', desc: 'Body: <code>{filename}</code>. Set on all members.' },
+        { method: 'POST',   path: '/api/client-groups/power?id={id}', desc: 'Body: <code>{action}</code>. Power all members.' },
+    ]},
+    { category: 'Images', endpoints: [
+        { method: 'GET',    path: '/api/images',                   desc: 'List all images. Add <code>?filename={fn}</code> for one.' },
+        { method: 'PUT',    path: '/api/images?filename={fn}',     desc: 'Partial update. Fields: name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file.' },
+        { method: 'DELETE', path: '/api/images?filename={fn}',     desc: 'Delete image. Add <code>&delete_file=true</code> to also remove the ISO.' },
+        { method: 'POST',   path: '/api/images/upload',            desc: 'Multipart: <code>file</code>, <code>public</code>, <code>description</code>.' },
+        { method: 'POST',   path: '/api/images/download',          desc: 'Body: <code>{url, description}</code>. Async download.' },
+        { method: 'POST',   path: '/api/images/extract?filename={fn}', desc: 'Extract kernel/initrd from ISO.' },
+        { method: 'GET',    path: '/api/images/extract-progress?filename={fn}', desc: 'Extraction progress.' },
+        { method: 'POST',   path: '/api/images/redetect?filename={fn}', desc: 'Re-run distro detection and boot-param resolution.' },
+        { method: 'POST',   path: '/api/images/patch-smb?filename={fn}', desc: 'Patch boot.wim for Windows SMB install.' },
+        { method: 'POST',   path: '/api/images/boot-method?filename={fn}', desc: 'Body: <code>{method}</code> (sanboot/kernel/nbd).' },
+        { method: 'POST',   path: '/api/images/netboot/download?filename={fn}', desc: 'Fetch netboot kernel/initrd from distro mirror.' },
+        { method: 'GET',    path: '/api/images/autoinstall?filename={fn}', desc: 'Get auto-install script for image.' },
+        { method: 'POST',   path: '/api/images/autoinstall?filename={fn}', desc: 'Body: <code>{script, type, enabled}</code>' },
+        { method: 'POST',   path: '/api/assign-images',            desc: 'Body: <code>{mac_address, image_filenames[]}</code>' },
+        { method: 'POST',   path: '/api/scan',                     desc: 'Scan filesystem for new ISOs.' },
+        { method: 'GET',    path: '/api/isos',                     desc: 'List ISO files on disk.' },
+        { method: 'GET',    path: '/api/downloads',                desc: 'List active downloads.' },
+        { method: 'GET',    path: '/api/downloads/progress?filename={fn}', desc: 'Download progress.' },
+    ]},
+    { category: 'Image Groups', endpoints: [
+        { method: 'GET',    path: '/api/groups',                   desc: 'List image groups.' },
+        { method: 'POST',   path: '/api/groups',                   desc: 'Body: <code>{name, parent_id, description, order}</code>' },
+        { method: 'PUT',    path: '/api/groups/update?id={id}',    desc: 'Update group.' },
+        { method: 'DELETE', path: '/api/groups/delete?id={id}',    desc: 'Delete group.' },
+    ]},
+    { category: 'Bootloaders', endpoints: [
+        { method: 'GET',    path: '/api/bootloaders',              desc: 'List sets (with built_in flag).' },
+        { method: 'POST',   path: '/api/bootloaders/create',       desc: 'Body: <code>{name}</code>. Create empty user set.' },
+        { method: 'POST',   path: '/api/bootloaders/upload',       desc: 'Multipart: <code>set</code>, <code>files[]</code>.' },
+        { method: 'DELETE', path: '/api/bootloaders/delete?set={name}', desc: 'Delete whole set, or add <code>&name={file}</code> for one file.' },
+        { method: 'POST',   path: '/api/bootloaders/select',       desc: 'Body: <code>{set}</code>. Set active set.' },
+        { method: 'GET',    path: '/api/usb',                      desc: 'List bundled USB boot images.' },
+    ]},
+    { category: 'Tools', endpoints: [
+        { method: 'GET',    path: '/api/tools',                    desc: 'List tools.' },
+        { method: 'POST',   path: '/api/tools/toggle?name={tool}', desc: 'Body: <code>{enabled}</code>' },
+        { method: 'POST',   path: '/api/tools/download?name={tool}', desc: 'Download tool to disk.' },
+        { method: 'DELETE', path: '/api/tools/delete?name={tool}', desc: 'Delete tool files.' },
+        { method: 'GET',    path: '/api/tools/progress?name={tool}', desc: 'Download progress.' },
+        { method: 'POST',   path: '/api/tools/url?name={tool}',    desc: 'Body: <code>{url}</code>. Override download URL.' },
+        { method: 'POST',   path: '/api/tools/custom',             desc: 'Body: <code>{name, display_name, ...}</code>. Create custom tool.' },
+        { method: 'DELETE', path: '/api/tools/custom/delete?name={tool}', desc: 'Delete custom tool.' },
+        { method: 'POST',   path: '/api/tools/update',             desc: 'Refresh tools catalog from remote.' },
+    ]},
+    { category: 'Distro Profiles', endpoints: [
+        { method: 'GET',    path: '/api/profiles',                 desc: 'List distro profiles.' },
+        { method: 'POST',   path: '/api/profiles/save',            desc: 'Create/update custom profile.' },
+        { method: 'DELETE', path: '/api/profiles/delete?id={profile_id}', desc: 'Delete custom profile.' },
+        { method: 'POST',   path: '/api/profiles/update',          desc: 'Refresh built-in profiles from remote.' },
+        { method: 'GET',    path: '/api/iso-catalog',              desc: 'Curated catalog of popular distros + mirror URLs (drives the Get Images modal).' },
+    ]},
+    { category: 'Auto-Install Files', endpoints: [
+        { method: 'GET',    path: '/api/autoinstall-files',        desc: 'List files.' },
+        { method: 'GET',    path: '/api/autoinstall-files/get?filename={fn}', desc: 'Get file content.' },
+        { method: 'POST',   path: '/api/autoinstall-files/save',   desc: 'Body: <code>{filename, content}</code>' },
+        { method: 'POST',   path: '/api/autoinstall-files/upload', desc: 'Multipart: <code>file</code>.' },
+        { method: 'GET',    path: '/api/autoinstall-files/download?filename={fn}', desc: 'Download file.' },
+        { method: 'DELETE', path: '/api/autoinstall-files/delete?filename={fn}', desc: 'Delete file.' },
+    ]},
+    { category: 'Custom Files', endpoints: [
+        { method: 'GET',    path: '/api/files',                    desc: 'List files. Add <code>?image_id={id}</code> to filter.' },
+        { method: 'POST',   path: '/api/files/upload',             desc: 'Multipart: <code>file</code>, <code>image_id</code>, <code>description</code>.' },
+        { method: 'PUT',    path: '/api/files/update?id={id}',     desc: 'Update file metadata.' },
+        { method: 'DELETE', path: '/api/files/delete?id={id}',     desc: 'Delete file.' },
+    ]},
+    { category: 'Driver Packs (Windows)', endpoints: [
+        { method: 'GET',    path: '/api/drivers?image_id={id}',    desc: 'List driver packs for image.' },
+        { method: 'POST',   path: '/api/drivers/upload',           desc: 'Multipart: <code>file</code>, <code>image_id</code>.' },
+        { method: 'DELETE', path: '/api/drivers/delete?id={id}',   desc: 'Delete pack.' },
+        { method: 'POST',   path: '/api/drivers/rebuild?image_id={id}', desc: 'Rebuild boot.wim with driver packs.' },
+    ]},
+    { category: 'Webhooks', endpoints: [
+        { method: 'GET',    path: '/api/webhook',                  desc: 'Get webhook config.' },
+        { method: 'PUT',    path: '/api/webhook',                  desc: 'Body: <code>{url, enabled, on_boot_started, ...}</code>' },
+        { method: 'POST',   path: '/api/webhook/test',             desc: 'Send test event.' },
+    ]},
+    { category: 'Scheduled Tasks', endpoints: [
+        { method: 'GET',    path: '/api/scheduled-tasks',          desc: 'List tasks.' },
+        { method: 'POST',   path: '/api/scheduled-tasks',          desc: 'Body: <code>{name, cron_expr, action_type, client_group_id, ...}</code>' },
+        { method: 'PUT',    path: '/api/scheduled-tasks/update?id={id}', desc: 'Update task.' },
+        { method: 'DELETE', path: '/api/scheduled-tasks/delete?id={id}', desc: 'Delete task.' },
+        { method: 'POST',   path: '/api/scheduled-tasks/run?id={id}', desc: 'Trigger now (out-of-band).' },
+    ]},
+    { category: 'Users', endpoints: [
+        { method: 'GET',    path: '/api/users',                    desc: 'List users.' },
+        { method: 'POST',   path: '/api/users',                    desc: 'Body: <code>{username, password, is_admin}</code>' },
+        { method: 'PUT',    path: '/api/users?id={id}',            desc: 'Update user.' },
+        { method: 'DELETE', path: '/api/users?id={id}',            desc: 'Delete user.' },
+        { method: 'POST',   path: '/api/users/reset-password?id={id}', desc: 'Body: <code>{new_password}</code>' },
+    ]},
+    { category: 'Settings', endpoints: [
+        { method: 'GET',    path: '/api/theme',                    desc: 'Menu theme + defaults.' },
+        { method: 'PUT',    path: '/api/theme',                    desc: 'Body: <code>{title, menu_timeout, default_menu_item}</code>' },
+        { method: 'GET',    path: '/api/backup/export',            desc: 'Export full DB backup as JSON.' },
+    ]},
+    { category: 'Logs', endpoints: [
+        { method: 'GET',    path: '/api/logs',                     desc: 'Boot log entries.' },
+        { method: 'GET',    path: '/api/logs/stream',              desc: 'Server log SSE stream.' },
+        { method: 'GET',    path: '/api/logs/buffer',              desc: 'Recent in-memory log buffer.' },
+    ]},
+    { category: 'Public Boot Endpoints (no auth)', endpoints: [
+        { method: 'GET',    path: '/menu.ipxe',                    desc: 'Generated iPXE menu script.', publicAccess: true },
+        { method: 'GET',    path: '/autoexec.ipxe',                desc: 'iPXE autoexec for chainloaded bootloader.', publicAccess: true },
+        { method: 'POST',   path: '/inventory',                    desc: 'iPXE-submitted hardware inventory.', publicAccess: true },
+        { method: 'GET',    path: '/isos/{filename}',              desc: 'Direct ISO download.', publicAccess: true },
+        { method: 'GET',    path: '/boot/{cache_dir}/{path}',      desc: 'Extracted boot files (kernel/initrd/squashfs).', publicAccess: true },
+        { method: 'GET',    path: '/autoinstall/{filename}',       desc: 'Auto-install script (preseed/kickstart/cloud-init/autounattend).', publicAccess: true },
+        { method: 'GET',    path: '/files/{filename}',             desc: 'Custom file download.', publicAccess: true },
+        { method: 'GET',    path: '/bootenv/{filename}',           desc: 'NBD boot environment kernel/initrd.', publicAccess: true },
+    ]},
+];
+
+let apiRefImage = '';
+let apiRefMac = '';
+let apiRefServer = '';
+
+async function showAPIReference() {
+    if (!images || images.length === 0) {
+        try { await loadImages(); } catch (_) {}
+    }
+    if (!clients || clients.length === 0) {
+        try { await loadClients(); } catch (_) {}
+    }
+    const serverInput = document.getElementById('api-ref-server');
+    if (serverInput && !serverInput.value) {
+        serverInput.value = window.location.origin;
+        apiRefServer = serverInput.value;
+    } else if (serverInput) {
+        apiRefServer = serverInput.value;
+    }
+    populateAPIRefDropdowns();
+    renderAPIReference();
+}
+
+function onAPIRefServerChange() {
+    apiRefServer = document.getElementById('api-ref-server').value;
+    const filter = document.getElementById('api-ref-filter');
+    renderAPIReference(filter ? filter.value : '');
+}
+
+function populateAPIRefDropdowns() {
+    const imgSel = document.getElementById('api-ref-image');
+    const macSel = document.getElementById('api-ref-mac');
+    if (imgSel) {
+        let html = '<option value="">(none)</option>';
+        for (const img of (images || [])) {
+            const sel = img.filename === apiRefImage ? ' selected' : '';
+            html += `<option value="${escapeHtml(img.filename)}"${sel}>${escapeHtml(img.name || img.filename)}</option>`;
+        }
+        imgSel.innerHTML = html;
+    }
+    if (macSel) {
+        let html = '<option value="">(none)</option>';
+        for (const c of (clients || [])) {
+            const sel = c.mac_address === apiRefMac ? ' selected' : '';
+            const label = c.name ? `${c.name} (${c.mac_address})` : c.mac_address;
+            html += `<option value="${escapeHtml(c.mac_address)}"${sel}>${escapeHtml(label)}</option>`;
+        }
+        macSel.innerHTML = html;
+    }
+}
+
+function onAPIRefSelectChange() {
+    apiRefImage = document.getElementById('api-ref-image').value;
+    apiRefMac = document.getElementById('api-ref-mac').value;
+    const filter = document.getElementById('api-ref-filter');
+    renderAPIReference(filter ? filter.value : '');
+}
+
+function fillAPIRefPath(path) {
+    const fnEnc = encodeURIComponent(apiRefImage || '{filename}');
+    const macEnc = encodeURIComponent(apiRefMac || '{mac}');
+    return path
+        .replace(/\{mac\}/g, macEnc)
+        .replace(/\{fn\}/g, fnEnc)
+        .replace(/\{filename\}/g, fnEnc);
+}
+
+function buildAPIRefCurl(method, path, isPublic) {
+    const base = (apiRefServer || window.location.origin).replace(/\/+$/, '');
+    const url = base + fillAPIRefPath(path);
+    const parts = [`curl -X ${method} '${url}'`];
+    if (!isPublic) parts.push(`-H 'Authorization: Bearer $BOOTIMUS_TOKEN'`);
+    if (method === 'POST' || method === 'PUT') {
+        parts.push(`-H 'Content-Type: application/json' -d '{}'`);
+    }
+    return parts.join(' ');
+}
+
+async function copyAPIRefCurl(btn) {
+    const wrap = btn.closest('.api-curl');
+    if (!wrap) return;
+    const code = wrap.querySelector('code').textContent;
+    try {
+        await navigator.clipboard.writeText(code);
+        btn.classList.add('copied');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = orig; }, 1200);
+    } catch (e) {
+        showAlert('Failed to copy', 'error');
+    }
+}
+
+function renderAPIReference(filter) {
+    const container = document.getElementById('api-reference-content');
+    if (!container) return;
+    const q = (filter || '').trim().toLowerCase();
+    const copyIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    let html = '';
+    for (const section of API_REFERENCE) {
+        const matching = section.endpoints.filter(e =>
+            !q || e.path.toLowerCase().includes(q) || e.desc.toLowerCase().includes(q) || section.category.toLowerCase().includes(q) || e.method.toLowerCase().includes(q)
+        );
+        if (matching.length === 0) continue;
+        html += `<div class="api-section"><h3>${escapeHtml(section.category)}</h3>`;
+        for (const e of matching) {
+            const filledPath = fillAPIRefPath(e.path);
+            const noAuthBadge = e.publicAccess ? ' <span style="color: #ffb000; font-family: ui-monospace, monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;">NO AUTH</span>' : '';
+            const curl = buildAPIRefCurl(e.method, e.path, !!e.publicAccess);
+            html += `<div class="api-row">
+                <div class="api-row-head">
+                    <span class="api-method ${e.method.toLowerCase()}">${e.method}</span>
+                    <code class="api-path">${escapeHtml(filledPath)}${noAuthBadge}</code>
+                    <span class="api-detail">${e.desc}</span>
+                </div>
+                <div class="api-curl">
+                    <code>${escapeHtml(curl)}</code>
+                    <button type="button" onclick="copyAPIRefCurl(this)" title="Copy curl command">${copyIcon}</button>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+    }
+    if (!html) html = '<p style="color: var(--text-secondary); padding: 20px;">No endpoints match the filter.</p>';
+    container.innerHTML = html;
+}
+
 // Theme
 async function loadTheme() {
     try {
@@ -2259,6 +2945,7 @@ async function loadTheme() {
         if (data.success) {
             document.getElementById('theme-title').value = data.data.title || '';
             document.getElementById('theme-timeout').value = data.data.menu_timeout != null ? data.data.menu_timeout : 30;
+            document.getElementById('theme-default-item').value = data.data.default_menu_item || '';
         }
     } catch (err) {
         console.error('Failed to load theme:', err);
@@ -2270,6 +2957,7 @@ async function saveTheme(e) {
     const theme = {
         title: document.getElementById('theme-title').value,
         menu_timeout: parseInt(document.getElementById('theme-timeout').value) || 0,
+        default_menu_item: document.getElementById('theme-default-item').value,
     };
     try {
         const res = await authFetch(`${API_BASE}/theme`, {
@@ -2683,7 +3371,7 @@ async function loadBootloaders() {
 
         for (const set of sets) {
             const isActive = set.name === activeSet;
-            const isBuiltIn = set.name === 'built-in';
+            const isBuiltIn = set.built_in === true || set.name === 'built-in';
             const escapedName = escapeHtml(set.name);
             const files = set.files || [];
 
@@ -3475,6 +4163,178 @@ document.getElementById('edit-group-form').addEventListener('submit', async func
 
 let downloadProgressInterval = null;
 
+let isoCatalog = null;
+
+async function showGetImagesModal() {
+    if (!isoCatalog) {
+        try {
+            const res = await authFetch(`${API_BASE}/iso-catalog`);
+            const data = await res.json();
+            if (data.success) {
+                isoCatalog = data.data;
+            } else {
+                showAlert(data.error || 'Failed to load ISO catalog', 'error');
+                return;
+            }
+        } catch (e) {
+            showAlert('Failed to load ISO catalog', 'error');
+            return;
+        }
+    }
+    const filter = document.getElementById('get-iso-filter');
+    if (filter) filter.value = '';
+    renderGetImagesList('');
+    openModal('get-images-modal');
+}
+
+function renderGetImagesList(filter) {
+    const container = document.getElementById('get-images-list');
+    if (!container) return;
+    const q = (filter || '').trim().toLowerCase();
+    let html = '';
+    for (const distro of (isoCatalog.distros || [])) {
+        const matching = (distro.releases || []).filter(r =>
+            !q || distro.name.toLowerCase().includes(q) || r.label.toLowerCase().includes(q) || distro.id.toLowerCase().includes(q)
+        );
+        if (matching.length === 0) continue;
+        html += `<div class="get-iso-distro"><h3>${escapeHtml(distro.name)}</h3>`;
+        for (let ri = 0; ri < matching.length; ri++) {
+            const r = matching[ri];
+            const realIdx = distro.releases.indexOf(r);
+            const rowKey = `${distro.id}-${realIdx}`;
+            const defaultBase = (distro.mirrors[0] && distro.mirrors[0].base) || '';
+            const defaultURL = defaultBase.replace(/\/+$/, '') + r.path;
+            const mirrorOpts = (distro.mirrors || []).map(m =>
+                `<option value="${escapeHtml(m.base)}">${escapeHtml(m.region)}</option>`
+            ).join('');
+            html += `<div class="get-iso-row">
+                <div class="get-iso-label" title="${escapeHtml(r.label)}">${escapeHtml(r.label)}</div>
+                <select class="get-iso-mirror-sel" data-row="${escapeHtml(rowKey)}" data-path="${escapeHtml(r.path)}" onchange="updateGetISORowURL(this)">${mirrorOpts}</select>
+                <input type="text" id="get-iso-url-${escapeHtml(rowKey)}" class="get-iso-url" value="${escapeHtml(defaultURL)}">
+                <div id="get-iso-actions-${escapeHtml(rowKey)}" class="get-iso-actions">
+                    <button type="button" class="btn btn-sm" onclick="downloadFromGetISO('${escapeHtml(rowKey)}', '${escapeHtml(distro.name)}', '${escapeHtml(r.label)}')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download
+                    </button>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+    }
+    if (!html) html = '<p style="color: var(--text-secondary); padding: 20px;">No matches.</p>';
+    container.innerHTML = html;
+}
+
+function updateGetISORowURL(select) {
+    const rowKey = select.dataset.row;
+    const path = select.dataset.path;
+    const base = select.value.replace(/\/+$/, '');
+    const input = document.getElementById('get-iso-url-' + rowKey);
+    if (input) input.value = base + path;
+}
+
+const getISOActiveDownloads = new Map();
+
+function jsAttrEscape(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function downloadFromGetISO(rowKey, distroName, releaseLabel) {
+    const input = document.getElementById('get-iso-url-' + rowKey);
+    if (!input) return;
+    const url = input.value.trim();
+    if (!url) {
+        showAlert('URL is required', 'error');
+        return;
+    }
+    renderGetISOProgress(rowKey, 'Starting…');
+    try {
+        const res = await authFetch(`${API_BASE}/images/download`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, description: `${distroName} ${releaseLabel}` }),
+        });
+        const data = await res.json();
+        if (data.success && data.data && data.data.filename) {
+            startGetISOProgressPolling(rowKey, data.data.filename, distroName, releaseLabel);
+        } else {
+            renderGetISOError(rowKey, data.error || 'Failed to start download', distroName, releaseLabel);
+        }
+    } catch (e) {
+        renderGetISOError(rowKey, e.message || 'Network error', distroName, releaseLabel);
+    }
+}
+
+function renderGetISOProgress(rowKey, statusText) {
+    const el = document.getElementById('get-iso-actions-' + rowKey);
+    if (!el) return;
+    el.innerHTML = `
+        <div class="get-iso-progress">
+            <div class="get-iso-bar"><div id="get-iso-bar-fill-${escapeHtml(rowKey)}" class="get-iso-bar-fill" style="width: 0%;"></div></div>
+            <span id="get-iso-status-${escapeHtml(rowKey)}" class="get-iso-status-text">${escapeHtml(statusText)}</span>
+        </div>`;
+}
+
+function startGetISOProgressPolling(rowKey, filename, distroName, releaseLabel) {
+    const existing = getISOActiveDownloads.get(rowKey);
+    if (existing) clearInterval(existing);
+
+    const tick = async () => {
+        try {
+            const res = await authFetch(`${API_BASE}/downloads/progress?filename=${encodeURIComponent(filename)}`);
+            const data = await res.json();
+            if (data.success && data.data) {
+                const p = data.data;
+                const pct = (p.percentage || 0).toFixed(1);
+                const fill = document.getElementById('get-iso-bar-fill-' + rowKey);
+                const status = document.getElementById('get-iso-status-' + rowKey);
+                if (fill) fill.style.width = pct + '%';
+                if (status) status.textContent = `${pct}% · ${p.speed || ''}`;
+
+                if (p.status === 'completed') {
+                    clearInterval(getISOActiveDownloads.get(rowKey));
+                    getISOActiveDownloads.delete(rowKey);
+                    renderGetISOComplete(rowKey, distroName, releaseLabel);
+                    loadImages();
+                } else if (p.status === 'error') {
+                    clearInterval(getISOActiveDownloads.get(rowKey));
+                    getISOActiveDownloads.delete(rowKey);
+                    renderGetISOError(rowKey, p.error || 'Download failed', distroName, releaseLabel);
+                }
+            }
+        } catch (_) {}
+    };
+    tick();
+    const intervalId = setInterval(tick, 1000);
+    getISOActiveDownloads.set(rowKey, intervalId);
+}
+
+function renderGetISOError(rowKey, errorMsg, distroName, releaseLabel) {
+    const el = document.getElementById('get-iso-actions-' + rowKey);
+    if (!el) return;
+    const short = errorMsg.length > 50 ? errorMsg.slice(0, 50) + '…' : errorMsg;
+    el.innerHTML = `
+        <div class="get-iso-progress">
+            <span class="get-iso-status-text" style="color: var(--danger);" title="${escapeHtml(errorMsg)}">✗ ${escapeHtml(short)}</span>
+            <button type="button" class="btn btn-sm" onclick="downloadFromGetISO('${jsAttrEscape(rowKey)}', '${jsAttrEscape(distroName)}', '${jsAttrEscape(releaseLabel)}')">Retry</button>
+        </div>`;
+}
+
+function renderGetISOComplete(rowKey, distroName, releaseLabel) {
+    const el = document.getElementById('get-iso-actions-' + rowKey);
+    if (!el) return;
+    el.innerHTML = `
+        <div class="get-iso-progress">
+            <span class="get-iso-status-text" style="color: var(--success);">✓ Downloaded</span>
+            <button type="button" class="btn btn-sm" onclick="downloadFromGetISO('${jsAttrEscape(rowKey)}', '${jsAttrEscape(distroName)}', '${jsAttrEscape(releaseLabel)}')">Again</button>
+        </div>`;
+}
+
+function clearGetISOPolling() {
+    for (const id of getISOActiveDownloads.values()) clearInterval(id);
+    getISOActiveDownloads.clear();
+}
+
 function showDownloadModal() {
     document.getElementById('download-form').reset();
     document.getElementById('download-progress-container').style.display = 'none';
@@ -4178,6 +5038,10 @@ async function showImagePropertiesModal(filename, opts) {
 
     document.getElementById('image-props-name').textContent = img.name;
     document.getElementById('image-props-filename').value = img.filename;
+    const logoEl = document.getElementById('image-props-logo');
+    logoEl.src = distroLogoSrc(img.distro);
+    logoEl.alt = img.distro || '';
+    logoEl.onerror = () => { logoEl.onerror = null; logoEl.src = DISTRO_LOGO_FALLBACK; };
     document.getElementById('image-props-display-name').value = img.name || '';
     document.getElementById('image-props-description').value = img.description || '';
     document.getElementById('image-props-order').value = img.order || 0;

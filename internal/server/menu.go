@@ -81,6 +81,25 @@ func (mb *MenuBuilder) menuTimeoutMs() int {
 	return 30000
 }
 
+func (mb *MenuBuilder) resolveDefaultItem(visibleGroups []*models.ImageGroup, ungroupedImages []models.Image) string {
+	if mb.nextBootImageID > 0 {
+		return fmt.Sprintf("iso%d", mb.nextBootImageID)
+	}
+	if mb.theme != nil {
+		switch mb.theme.DefaultMenuItem {
+		case "local", "shell", "reboot":
+			return mb.theme.DefaultMenuItem
+		}
+	}
+	if len(visibleGroups) > 0 {
+		return fmt.Sprintf("group%d", visibleGroups[0].ID)
+	}
+	if len(ungroupedImages) > 0 {
+		return fmt.Sprintf("iso%d", ungroupedImages[0].ID)
+	}
+	return "local"
+}
+
 func (mb *MenuBuilder) menuTitle() string {
 	if mb.theme != nil && mb.theme.Title != "" {
 		return mb.theme.Title
@@ -88,8 +107,6 @@ func (mb *MenuBuilder) menuTitle() string {
 	return "Bootimus - Boot Menu"
 }
 
-// encodePathSegments URL-encodes each segment of a path (handling spaces etc.)
-// while preserving / separators, so "linux/Ubuntu Server.iso" becomes "linux/Ubuntu%20Server.iso"
 func encodePathSegments(path string) string {
 	segments := strings.Split(filepath.ToSlash(path), "/")
 	for i, seg := range segments {
@@ -139,16 +156,10 @@ func (mb *MenuBuilder) buildMainMenu() string {
 	}
 
 	sb.WriteString("item --gap -- Options:\n")
+	sb.WriteString("item local Boot from Local Disk\n")
 	sb.WriteString("item shell Drop to iPXE shell\n")
 	sb.WriteString("item reboot Reboot\n")
-	defaultItem := "exit"
-	if mb.nextBootImageID > 0 {
-		defaultItem = fmt.Sprintf("iso%d", mb.nextBootImageID)
-	} else if len(visibleGroups) > 0 {
-		defaultItem = fmt.Sprintf("group%d", visibleGroups[0].ID)
-	} else if len(ungroupedImages) > 0 {
-		defaultItem = fmt.Sprintf("iso%d", ungroupedImages[0].ID)
-	}
+	defaultItem := mb.resolveDefaultItem(visibleGroups, ungroupedImages)
 
 	timeoutMs := mb.menuTimeoutMs()
 	if mb.nextBootImageID > 0 && timeoutMs == 0 {
@@ -212,6 +223,7 @@ func (mb *MenuBuilder) buildGroupMenus() string {
 		} else {
 			sb.WriteString("item start Back to Main Menu\n")
 		}
+		sb.WriteString("item local Boot from Local Disk\n")
 		sb.WriteString("item shell Drop to iPXE shell\n")
 		sb.WriteString("item reboot Reboot\n")
 		if timeoutMs := mb.menuTimeoutMs(); timeoutMs > 0 {
@@ -279,7 +291,6 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 		autoInstallParam = " autoinstall"
 	}
 
-	// Resolve boot params with placeholder substitution
 	bootParams := mb.resolveBootParams(img, baseURL, encodedFilename, cacheDir)
 	if bootParams != "" {
 		bootParams = " " + bootParams
@@ -303,24 +314,18 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 	return sb.String()
 }
 
-// resolveBootParams returns the kernel boot parameters for an image.
-// If the image has user-set boot_params, those are used with placeholder substitution.
-// Otherwise, defaults are looked up from distro profiles, falling back to a generic default.
 func (mb *MenuBuilder) resolveBootParams(img *models.Image, baseURL, encodedFilename, cacheDir string) string {
 	params := img.BootParams
 
-	// If no user params, look up from distro profile
 	if params == "" && mb.profileManager != nil && img.Distro != "" {
 		hasSquashfs := img.SquashfsPath != ""
 		params = mb.profileManager.GetBootParams(img.Distro, hasSquashfs)
 	}
 
-	// Final fallback — generic default
 	if params == "" {
 		params = fmt.Sprintf("iso-url=%s/isos/%s ip=dhcp", baseURL, encodedFilename)
 	}
 
-	// Substitute placeholders
 	params = strings.ReplaceAll(params, "{{BASE_URL}}", baseURL)
 	params = strings.ReplaceAll(params, "{{CACHE_DIR}}", cacheDir)
 	params = strings.ReplaceAll(params, "{{FILENAME}}", encodedFilename)
@@ -334,7 +339,6 @@ func (mb *MenuBuilder) resolveBootParams(img *models.Image, baseURL, encodedFile
 func (mb *MenuBuilder) buildFooter() string {
 	var sb strings.Builder
 
-	// Tools submenu
 	if len(mb.enabledTools) > 0 {
 		sb.WriteString(":tools\n")
 		sb.WriteString(fmt.Sprintf("menu %s - Tools\n", mb.menuTitle()))
@@ -350,7 +354,6 @@ func (mb *MenuBuilder) buildFooter() string {
 		sb.WriteString("goto start\n\n")
 	}
 
-	// Tool boot sections
 	for _, t := range mb.enabledTools {
 		sb.WriteString(fmt.Sprintf(":tool-%s\n", t.Name))
 		sb.WriteString(fmt.Sprintf("echo Booting %s...\n", t.DisplayName))
@@ -365,7 +368,7 @@ func (mb *MenuBuilder) buildFooter() string {
 		case "memdisk":
 			sb.WriteString(fmt.Sprintf("initrd %s\n", t.KernelURL))
 			sb.WriteString("chain memdisk raw || goto failed\n\n")
-		default: // "kernel"
+		default:
 			sb.WriteString(fmt.Sprintf("kernel %s %s\n", t.KernelURL, t.BootParams))
 			if t.InitrdURL != "" {
 				sb.WriteString(fmt.Sprintf("initrd %s\n", t.InitrdURL))
@@ -374,7 +377,11 @@ func (mb *MenuBuilder) buildFooter() string {
 		}
 	}
 
-	sb.WriteString(`:shell
+	sb.WriteString(`:local
+echo Booting from local disk...
+exit
+
+:shell
 echo Dropping to iPXE shell...
 shell
 

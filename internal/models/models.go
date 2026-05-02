@@ -81,26 +81,15 @@ type Client struct {
 	ClientGroupID    *uint          `gorm:"index" json:"client_group_id,omitempty"`
 	ClientGroup      *ClientGroup   `gorm:"foreignKey:ClientGroupID" json:"client_group,omitempty"`
 
-	// Redfish (BMC) power control. Empty fields = inherit from the client
-	// group, if any. ipmi_host is the BMC/iLO/iDRAC/XCC address — separate
-	// from the client's main interface because BMCs have their own NIC.
 	IPMIHost     string `json:"ipmi_host,omitempty"`
 	IPMIPort     int    `json:"ipmi_port,omitempty"`
 	IPMIUsername string `json:"ipmi_username,omitempty"`
 	IPMIPassword string `json:"ipmi_password,omitempty"`
 	IPMIInsecure bool   `gorm:"default:false" json:"ipmi_insecure,omitempty"`
 
-	// AutoInstallFile is a relative path under {dataDir}/autoinstall/, e.g.
-	// "windows/kiosk.xml". Empty = inherit from group, then booted image's
-	// default, then image's inline script.
 	AutoInstallFile string `json:"auto_install_file,omitempty"`
 }
 
-// ScheduledTask is a recurring action bootimus runs on a cron schedule
-// against a client group. Action types: "wake" (WOL all members),
-// "power" (Redfish against all members, ActionParam=On/ForceOff/etc),
-// "next-boot" (set next-boot image on all members, ActionParam=filename),
-// "next-boot-clear" (clear next-boot on all members).
 type ScheduledTask struct {
 	ID             uint           `gorm:"primarykey" json:"id"`
 	CreatedAt      time.Time      `json:"created_at"`
@@ -119,22 +108,16 @@ type ScheduledTask struct {
 	RunCount       int            `gorm:"default:0" json:"run_count"`
 }
 
-// WebhookConfig is a singleton (ID=1) holding the outbound webhook URL and
-// per-event toggles. Fire-and-forget HTTP POSTs with a JSON payload.
 type WebhookConfig struct {
-	ID                    uint      `gorm:"primarykey" json:"id"`
-	UpdatedAt             time.Time `json:"updated_at"`
-	URL                   string    `json:"url"`
-	Enabled               bool      `gorm:"default:false" json:"enabled"`
-	OnBootStarted         bool      `gorm:"default:true" json:"on_boot_started"`
-	OnClientDiscovered    bool      `gorm:"default:true" json:"on_client_discovered"`
-	OnInventoryUpdated    bool      `gorm:"default:false" json:"on_inventory_updated"`
+	ID                 uint      `gorm:"primarykey" json:"id"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	URL                string    `json:"url"`
+	Enabled            bool      `gorm:"default:false" json:"enabled"`
+	OnBootStarted      bool      `gorm:"default:true" json:"on_boot_started"`
+	OnClientDiscovered bool      `gorm:"default:true" json:"on_client_discovered"`
+	OnInventoryUpdated bool      `gorm:"default:false" json:"on_inventory_updated"`
 }
 
-// ClientGroup represents a set of clients that share common settings and can
-// be targeted by bulk actions (wake all, set next-boot on all members, etc.).
-// Group-level AllowedImages are unioned with each member's client-level
-// AllowedImages when resolving what that client can boot.
 type ClientGroup struct {
 	ID                 uint           `gorm:"primarykey" json:"id"`
 	CreatedAt          time.Time      `json:"created_at"`
@@ -149,9 +132,6 @@ type ClientGroup struct {
 	StaggerDelayMillis int            `gorm:"default:0" json:"stagger_delay_millis"`
 	Clients            []Client       `gorm:"foreignKey:ClientGroupID" json:"clients,omitempty"`
 
-	// Redfish (BMC) defaults inherited by member clients unless overridden.
-	// IPMIHost is almost always per-client (each BMC has its own IP) so it's
-	// not group-level; the group only carries shared credentials + port.
 	IPMIPort     int    `json:"ipmi_port,omitempty"`
 	IPMIUsername string `json:"ipmi_username,omitempty"`
 	IPMIPassword string `json:"ipmi_password,omitempty"`
@@ -312,8 +292,9 @@ type MenuTheme struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	Title        string `gorm:"default:Bootimus - Boot Menu" json:"title"`
-	MenuTimeout  int    `gorm:"default:30" json:"menu_timeout"`    // seconds, 0 = no timeout (wait forever)
+	Title           string `gorm:"default:Bootimus - Boot Menu" json:"title"`
+	MenuTimeout     int    `gorm:"default:30" json:"menu_timeout"`    // seconds, 0 = no timeout (wait forever)
+	DefaultMenuItem string `gorm:"default:local" json:"default_menu_item"`
 }
 
 type BootTool struct {

@@ -31,7 +31,7 @@ Cross-compile targets are in the [Makefile](Makefile). The Go toolchain version 
 - **Prefer deletion over preservation.** If you spot a function with no callers while working nearby, removing it is welcome. New code shouldn't add functions without callers.
 - **Hold off on abstractions until they pay for themselves.** Three similar lines is usually fine; pull out a helper once there's a third real caller.
 - **Validate at system boundaries**, not between two internal functions. Trust your callers and framework guarantees in internal code paths.
-- **Keep comments minimal and WHY-focused.** One line is usually enough. If a future reader wouldn't be confused without the comment, it can probably go.
+- **No comments.** Function and variable names carry the meaning. The only things that look like comments but stay are compiler directives (`//go:build`, `//go:embed`, `//go:generate`, `//nolint`) and `// Code generated ...; DO NOT EDIT.` markers.
 - **Wrap errors with `%w`** in sentence form: `fmt.Errorf("listen UDP/67: %w", err)`. Lowercase, no trailing punctuation.
 - **Logging** uses the standard `log` package. Lowercase messages, no trailing punctuation.
 

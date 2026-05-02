@@ -35,7 +35,6 @@ import (
 	"bootimus/internal/wol"
 )
 
-// BootloaderSelector provides bootloader set management
 type BootloaderSelector interface {
 	GetActiveBootloaderSet() string
 	SetActiveBootloaderSet(name string)
@@ -61,11 +60,8 @@ type Handler struct {
 	autoInstallLib     *autoinstall.Library
 	extractionMu       sync.RWMutex
 	extractionStates   map[string]*extractionState
-	// SchedulerReload is called after any CRUD change on ScheduledTask so
-	// the cron daemon picks up the new state without a server restart.
-	SchedulerReload func() error
-	// SchedulerRunNow fires a task immediately via the scheduler.
-	SchedulerRunNow func(id uint) error
+	SchedulerReload    func() error
+	SchedulerRunNow    func(id uint) error
 }
 
 type extractionState struct {
@@ -96,10 +92,6 @@ func NewHandler(store storage.Storage, dataDir string, isoDir string, bootDir st
 	}
 }
 
-// computeSMBPatchFingerprint returns a sha256 hex of the inputs that
-// determine the boot.wim patch contents. If any input changes after a
-// patch, the stored fingerprint diverges and the image is flagged for
-// re-embed in the UI.
 func (h *Handler) computeSMBPatchFingerprint(img *models.Image) string {
 	if img == nil {
 		return ""
@@ -114,11 +106,6 @@ func (h *Handler) computeSMBPatchFingerprint(img *models.Image) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
-// patchWindowsBootWim rewrites the WinPE startnet.cmd inside the extracted
-// ISO's boot.wim so that setup.exe auto-launches against an SMB share hosted
-// by bootimus. Returns true on success. A nil smbManager (feature disabled)
-// is a no-op returning false. Any failure is logged and returns false — the
-// image still boots into WinPE, the user just has to kick off setup manually.
 func (h *Handler) patchWindowsBootWim(isoFilename string) bool {
 	if h.smbManager == nil {
 		return false
@@ -174,9 +161,6 @@ func (h *Handler) patchWindowsBootWim(isoFilename string) bool {
 	return true
 }
 
-// resolveImageAutoInstallContent returns the autounattend content for an
-// image: file-library entry if set, else the legacy inline script. Empty
-// string means no content (caller skips staging).
 func (h *Handler) resolveImageAutoInstallContent(img *models.Image) string {
 	if h.autoInstallLib != nil && img.AutoInstallFile != "" {
 		if c, err := h.autoInstallLib.ReadPath(img.AutoInstallFile); err == nil {
@@ -186,8 +170,6 @@ func (h *Handler) resolveImageAutoInstallContent(img *models.Image) string {
 	return img.AutoInstallScript
 }
 
-// findExtractedBootWim returns the path to sources/boot.wim (or the uppercase
-// variant) inside an extracted Windows ISO directory, or "" if neither exists.
 func findExtractedBootWim(extractedISODir string) string {
 	for _, rel := range []string{"sources/boot.wim", "SOURCES/BOOT.WIM"} {
 		p := filepath.Join(extractedISODir, rel)
@@ -339,7 +321,6 @@ func (h *Handler) GetClient(w http.ResponseWriter, r *http.Request) {
 
 	mac := r.URL.Query().Get("mac")
 	if mac == "" {
-		// Try id param and look up by ID
 		idStr := r.URL.Query().Get("id")
 		if idStr != "" {
 			id, err := strconv.ParseUint(idStr, 10, 64)
@@ -408,7 +389,7 @@ func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updates models.Client
+	var updates map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
 		return
@@ -420,12 +401,32 @@ func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client.Name = updates.Name
-	client.Description = updates.Description
-	client.Enabled = updates.Enabled
-	client.ShowPublicImages = updates.ShowPublicImages
-	client.BootloaderSet = updates.BootloaderSet
-	client.AutoInstallFile = updates.AutoInstallFile
+	if name, ok := updates["name"].(string); ok {
+		client.Name = name
+	}
+	if desc, ok := updates["description"].(string); ok {
+		client.Description = desc
+	}
+	if enabled, ok := updates["enabled"].(bool); ok {
+		client.Enabled = enabled
+	}
+	if showPub, ok := updates["show_public_images"].(bool); ok {
+		client.ShowPublicImages = showPub
+	}
+	if bls, ok := updates["bootloader_set"].(string); ok {
+		client.BootloaderSet = bls
+	}
+	if aif, ok := updates["auto_install_file"].(string); ok {
+		client.AutoInstallFile = aif
+	}
+	if groupID, ok := updates["client_group_id"]; ok {
+		if groupID == nil {
+			client.ClientGroupID = nil
+		} else if gid, ok := groupID.(float64); ok {
+			groupIDUint := uint(gid)
+			client.ClientGroupID = &groupIDUint
+		}
+	}
 
 	if err := h.storage.UpdateClient(mac, client); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
@@ -469,14 +470,12 @@ func (h *Handler) WakeClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate client exists
 	if _, err := h.storage.GetClient(mac); err != nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Client not found"})
 		return
 	}
 
 	broadcastAddr := h.wolBroadcastAddr
-	// Allow per-request override
 	var req struct {
 		BroadcastAddr string `json:"broadcast_addr"`
 	}
@@ -516,7 +515,6 @@ func (h *Handler) SetNextBootImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear next boot image if no image specified
 	if req.ImageFilename == "" {
 		if err := h.storage.ClearNextBootImage(req.MACAddress); err != nil {
 			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
@@ -660,8 +658,6 @@ func (h *Handler) syncFilesystemToDatabase() {
 	h.detectManualExtractions()
 }
 
-// detectManualExtractions checks for manually extracted boot files on disk
-// and marks images as extracted if vmlinuz and initrd exist in the expected directory.
 func (h *Handler) detectManualExtractions() {
 	images, err := h.storage.ListImages()
 	if err != nil {
@@ -726,6 +722,16 @@ func detectDistroFromFilename(filename string) string {
 		}
 	}
 	return ""
+}
+
+func (h *Handler) detectAndSetDistro(image *models.Image) {
+	if h.profileManager == nil || image == nil || image.Distro != "" {
+		return
+	}
+	if profile, err := h.profileManager.MatchProfile(image.Filename); err == nil {
+		image.Distro = profile.ProfileID
+		log.Printf("Admin: Detected distro %s for %s", profile.ProfileID, image.Filename)
+	}
 }
 
 func (h *Handler) ListImages(w http.ResponseWriter, r *http.Request) {
@@ -1016,6 +1022,8 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 			existingImage.Description = description
 		}
 
+		h.detectAndSetDistro(existingImage)
+
 		if err := h.storage.UpdateImage(filename, existingImage); err != nil {
 			cleanup()
 			log.Printf("Failed to update image record, file removed: %s - %v", filename, err)
@@ -1040,6 +1048,8 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		Description: description,
 	}
 
+	h.detectAndSetDistro(&image)
+
 	if err := h.storage.CreateImage(&image); err != nil {
 		cleanup()
 		log.Printf("Failed to create image record, file removed: %s - %v", filename, err)
@@ -1051,8 +1061,6 @@ func (h *Handler) UploadImage(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusCreated, Response{Success: true, Message: "Image uploaded", Data: image})
 }
 
-// progressReader logs upload throughput every 100 MB so long uploads
-// surface in logs without flooding them.
 type progressReader struct {
 	r       io.Reader
 	name    string
@@ -1185,7 +1193,6 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	image.InitrdPath = bootFiles.Initrd
 	image.SquashfsPath = bootFiles.SquashfsPath
 
-	// Use profile boot params if available, fall back to extractor params
 	if h.profileManager != nil && bootFiles.Distro != "" {
 		hasSquashfs := bootFiles.SquashfsPath != ""
 		profileParams := h.profileManager.GetBootParams(bootFiles.Distro, hasSquashfs)
@@ -1260,9 +1267,6 @@ func (h *Handler) ExtractProgress(w http.ResponseWriter, r *http.Request) {
 	}})
 }
 
-// PatchImageSMB re-runs the boot.wim SMB patch for an already-extracted
-// Windows image. Used when the feature was enabled after extraction, or
-// when the first patch failed.
 func (h *Handler) PatchImageSMB(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -1338,15 +1342,12 @@ func (h *Handler) RedetectImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Re-detect distro — try profile match first, keep existing distro as fallback
 	if h.profileManager != nil {
 		if profile, err := h.profileManager.MatchProfile(filename); err == nil {
 			image.Distro = profile.ProfileID
 		}
-		// If filename didn't match, try matching on existing distro name
 		if image.Distro != "" {
 			if _, err := h.storage.GetDistroProfile(image.Distro); err != nil {
-				// Existing distro doesn't match a profile ID — try fuzzy match
 				if profile, err := h.profileManager.MatchProfile(image.Distro); err == nil {
 					image.Distro = profile.ProfileID
 				}
@@ -1354,7 +1355,6 @@ func (h *Handler) RedetectImage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Re-scan for squashfs in extracted directory
 	isoBase := strings.TrimSuffix(filename, filepath.Ext(filename))
 	extractedDir := filepath.Join(h.isoDir, isoBase, "iso")
 	var squashfsPath string
@@ -1371,7 +1371,6 @@ func (h *Handler) RedetectImage(w http.ResponseWriter, r *http.Request) {
 	})
 	image.SquashfsPath = squashfsPath
 
-	// Set boot params from profile
 	if h.profileManager != nil && image.Distro != "" {
 		hasSquashfs := squashfsPath != ""
 		image.BootParams = h.profileManager.GetBootParams(image.Distro, hasSquashfs)
@@ -1426,7 +1425,6 @@ func (h *Handler) SaveDistroProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if updating existing
 	existing, err := h.storage.GetDistroProfile(profile.ProfileID)
 	if err == nil {
 		profile.ID = existing.ID
@@ -1473,6 +1471,19 @@ func (h *Handler) DeleteDistroProfile(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Admin: Distro profile deleted - %s", profileID)
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Profile deleted"})
+}
+
+func (h *Handler) GetISOCatalog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	catalog, err := profiles.LoadISOCatalog()
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: catalog})
 }
 
 func (h *Handler) UpdateDistroProfiles(w http.ResponseWriter, r *http.Request) {
@@ -1691,7 +1702,6 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Walk filesystem to find all ISOs (including in subdirectories)
 	existingFiles := make(map[string]bool)
 	var isoFiles []models.SyncFile
 
@@ -1732,7 +1742,6 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sync found ISOs to database (creates groups from folders, adds new images)
 	var newImages []string
 	allImagesBefore, _ := h.storage.ListImages()
 	existingFilenames := make(map[string]bool)
@@ -1751,7 +1760,6 @@ func (h *Handler) ScanImages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Remove database entries for ISOs no longer on the filesystem
 	var deletedImages []string
 	allImages, err := h.storage.ListImages()
 	if err == nil {
@@ -1795,8 +1803,9 @@ type BootloaderFile struct {
 }
 
 type BootloaderSet struct {
-	Name  string           `json:"name"`
-	Files []BootloaderFile `json:"files"`
+	Name    string           `json:"name"`
+	Files   []BootloaderFile `json:"files"`
+	BuiltIn bool             `json:"built_in"`
 }
 
 func (h *Handler) CreateBootloaderSet(w http.ResponseWriter, r *http.Request) {
@@ -1819,8 +1828,8 @@ func (h *Handler) CreateBootloaderSet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setName := strings.TrimSpace(req.Name)
-	if setName == "" || setName == "built-in" {
-		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid set name"})
+	if setName == "" || setName == "built-in" || bootloaders.IsBuiltIn(setName) {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid set name (cannot collide with built-in)"})
 		return
 	}
 	setName = filepath.Base(setName)
@@ -1848,22 +1857,26 @@ func (h *Handler) ListBootloaders(w http.ResponseWriter, r *http.Request) {
 
 	var sets []BootloaderSet
 
-	// Built-in set from embedded files
-	var embeddedFiles []BootloaderFile
-	embeddedEntries, _ := fs.ReadDir(bootloaders.Bootloaders, ".")
-	for _, entry := range embeddedEntries {
-		if entry.IsDir() {
+	embeddedSets, _ := bootloaders.ListSets()
+	for _, setName := range embeddedSets {
+		entries, err := bootloaders.ListFiles(setName)
+		if err != nil {
 			continue
 		}
-		info, _ := entry.Info()
-		if info == nil {
-			continue
+		var files []BootloaderFile
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			info, _ := entry.Info()
+			if info == nil {
+				continue
+			}
+			files = append(files, BootloaderFile{Name: entry.Name(), Size: info.Size()})
 		}
-		embeddedFiles = append(embeddedFiles, BootloaderFile{Name: entry.Name(), Size: info.Size()})
+		sets = append(sets, BootloaderSet{Name: setName, Files: files, BuiltIn: true})
 	}
-	sets = append(sets, BootloaderSet{Name: "built-in", Files: embeddedFiles})
 
-	// Custom sets from subdirectories in bootDir
 	if h.bootDir != "" {
 		_ = os.MkdirAll(h.bootDir, 0755)
 		entries, err := os.ReadDir(h.bootDir)
@@ -1889,7 +1902,7 @@ func (h *Handler) ListBootloaders(w http.ResponseWriter, r *http.Request) {
 					}
 					files = append(files, BootloaderFile{Name: fe.Name(), Size: info.Size()})
 				}
-				sets = append(sets, BootloaderSet{Name: setName, Files: files})
+				sets = append(sets, BootloaderSet{Name: setName, Files: files, BuiltIn: bootloaders.IsBuiltIn(setName)})
 			}
 		}
 	}
@@ -1922,7 +1935,6 @@ func (h *Handler) UploadBootloader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 100MB total limit for multi-file upload
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{
 			Success: false,
@@ -1932,8 +1944,8 @@ func (h *Handler) UploadBootloader(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setName := r.FormValue("set")
-	if setName == "" || setName == "built-in" {
-		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Set name is required (cannot upload to built-in)"})
+	if setName == "" || setName == "built-in" || bootloaders.IsBuiltIn(setName) {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Cannot upload to built-in set"})
 		return
 	}
 	setName = filepath.Base(setName)
@@ -1946,7 +1958,6 @@ func (h *Handler) UploadBootloader(w http.ResponseWriter, r *http.Request) {
 
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
-		// Fallback: accept single "file" field for backwards compatibility
 		files = r.MultipartForm.File["file"]
 	}
 	if len(files) == 0 {
@@ -2008,7 +2019,7 @@ func (h *Handler) DeleteBootloader(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setName := r.URL.Query().Get("set")
-	if setName == "" || setName == "built-in" {
+	if setName == "" || setName == "built-in" || bootloaders.IsBuiltIn(setName) {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Cannot delete built-in set"})
 		return
 	}
@@ -2017,14 +2028,12 @@ func (h *Handler) DeleteBootloader(w http.ResponseWriter, r *http.Request) {
 	filename := r.URL.Query().Get("name")
 
 	if filename == "" {
-		// Delete entire set
 		setPath := filepath.Join(h.bootDir, setName)
 		if err := os.RemoveAll(setPath); err != nil {
 			h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: fmt.Sprintf("Failed to delete set: %v", err)})
 			return
 		}
 
-		// If this was the active set, revert to built-in
 		if h.bootloaderSelector.GetActiveBootloaderSet() == setName {
 			h.bootloaderSelector.SetActiveBootloaderSet("")
 			h.bootloaderSelector.SaveBootloaderConfig()
@@ -2035,7 +2044,6 @@ func (h *Handler) DeleteBootloader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete single file from set
 	filename = filepath.Base(filename)
 	filePath := filepath.Join(h.bootDir, setName, filename)
 	if err := os.Remove(filePath); err != nil {
@@ -2092,7 +2100,6 @@ func (h *Handler) SelectBootloader(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Tools management
 func (h *Handler) ListTools(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -2105,7 +2112,6 @@ func (h *Handler) ListTools(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Enrich with actual download status
 	for _, t := range toolsList {
 		t.Downloaded = h.toolsManager.IsDownloaded(t.Name)
 		if t.DownloadURL == "" {
@@ -2175,7 +2181,6 @@ func (h *Handler) DownloadTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Download in background, respond immediately
 	go func() {
 		if err := h.toolsManager.Download(name, nil); err != nil {
 			log.Printf("Tool download failed for %s: %v", name, err)
@@ -2318,10 +2323,8 @@ func (h *Handler) DeleteCustomTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete files
 	h.toolsManager.Delete(name)
 
-	// Delete from database
 	if err := h.storage.DeleteBootTool(name); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
@@ -2501,8 +2504,6 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		willBeEnabled = enabled
 	}
 
-	// Guard against locking everyone out: if this change would demote or
-	// disable an admin, make sure at least one other enabled admin remains.
 	if user.IsAdmin && user.Enabled && (!willBeAdmin || !willBeEnabled) {
 		all, err := h.storage.ListUsers()
 		if err != nil {
@@ -2730,6 +2731,8 @@ func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) downloadISO(url, filename, destPath, description string) {
 	log.Printf("Starting ISO download: %s from %s", filename, url)
 
+	downloadMgr.Add(url, filename, 0)
+
 	client := &http.Client{
 		Timeout: 0,
 	}
@@ -2749,8 +2752,7 @@ func (h *Handler) downloadISO(url, filename, destPath, description string) {
 		return
 	}
 
-	totalBytes := resp.ContentLength
-	downloadMgr.Add(url, filename, totalBytes)
+	downloadMgr.Add(url, filename, resp.ContentLength)
 
 	out, err := os.Create(destPath)
 	if err != nil {
@@ -2798,6 +2800,15 @@ func (h *Handler) downloadISO(url, filename, destPath, description string) {
 
 		if err := h.storage.SyncImages(isoFiles); err != nil {
 			log.Printf("Failed to sync downloaded ISO to database: %v", err)
+		}
+
+		if img, err := h.storage.GetImage(filename); err == nil {
+			h.detectAndSetDistro(img)
+			if img.Distro != "" {
+				if err := h.storage.UpdateImage(filename, img); err != nil {
+					log.Printf("Failed to save detected distro for %s: %v", filename, err)
+				}
+			}
 		}
 	}
 }
@@ -2917,8 +2928,6 @@ func (h *Handler) UpdateAutoInstallScript(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// ListAutoInstallFiles returns every file under {dataDir}/autoinstall/,
-// grouped implicitly by distro subdirectory.
 func (h *Handler) ListAutoInstallFiles(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -2936,8 +2945,6 @@ func (h *Handler) ListAutoInstallFiles(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: files})
 }
 
-// GetAutoInstallFile returns the content of a single file identified by
-// ?distro=<d>&filename=<f>.
 func (h *Handler) GetAutoInstallFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -2965,9 +2972,6 @@ func (h *Handler) GetAutoInstallFile(w http.ResponseWriter, r *http.Request) {
 	}})
 }
 
-// SaveAutoInstallFile creates or overwrites a file.
-// Body: { "distro": "...", "filename": "...", "content": "..." }.
-// Distro must match a distro profile ID; validated against profileManager.
 func (h *Handler) SaveAutoInstallFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodPut {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -2999,10 +3003,6 @@ func (h *Handler) SaveAutoInstallFile(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Saved"})
 }
 
-// UploadAutoInstallFile accepts a multipart upload and stores the file
-// under {dataDir}/autoinstall/{distro}/{filename}. Distro is a form field;
-// filename is taken from the uploaded file's name unless overridden via
-// the "filename" form field.
 func (h *Handler) UploadAutoInstallFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -3046,8 +3046,6 @@ func (h *Handler) UploadAutoInstallFile(w http.ResponseWriter, r *http.Request) 
 	}})
 }
 
-// DownloadAutoInstallFile returns the raw file content for a direct
-// download (sets Content-Disposition: attachment).
 func (h *Handler) DownloadAutoInstallFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -3256,7 +3254,6 @@ func (h *Handler) UploadCustomFile(w http.ResponseWriter, r *http.Request) {
 		contentType = "application/octet-stream"
 	}
 
-	// Check if file already exists and delete it first
 	log.Printf("Checking for existing file: filename=%s, imageID=%v, public=%v", cleanFilename, imageID, isPublic)
 	existingFile, err := h.storage.GetCustomFileByFilenameAndImage(cleanFilename, imageID, isPublic)
 	if err != nil {
@@ -3401,7 +3398,6 @@ func (h *Handler) DeleteCustomFile(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "File deleted"})
 }
 
-// Driver Pack Handlers
 
 func (h *Handler) ListDriverPacks(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -3476,7 +3472,6 @@ func (h *Handler) UploadDriverPack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify image exists
 	var images []*models.Image
 	images, _ = h.storage.ListImages()
 	var imageName string
@@ -3504,7 +3499,6 @@ func (h *Handler) UploadDriverPack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate ZIP file
 	if !strings.HasSuffix(strings.ToLower(originalFilename), ".zip") {
 		h.sendJSON(w, http.StatusBadRequest, Response{
 			Success: false,
@@ -3596,7 +3590,6 @@ func (h *Handler) DeleteDriverPack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get image name for file path
 	var images []*models.Image
 	images, _ = h.storage.ListImages()
 	var imageName string
@@ -3766,9 +3759,6 @@ func (h *Handler) DeleteImageGroup(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Group deleted"})
 }
 
-// resolveRedfish merges per-client settings with the client's group defaults.
-// Returns (client_host, port, username, password, insecure, ok).
-// ok=false when we can't assemble a complete config (no host + no creds).
 func (h *Handler) resolveRedfish(c *models.Client) (string, int, string, string, bool, bool) {
 	host := c.IPMIHost
 	port := c.IPMIPort
@@ -3799,7 +3789,6 @@ func (h *Handler) resolveRedfish(c *models.Client) (string, int, string, string,
 	return host, port, user, pass, insecure, true
 }
 
-// PowerClient issues a Redfish power action against a single client's BMC.
 func (h *Handler) PowerClient(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -3831,7 +3820,6 @@ func (h *Handler) PowerClient(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: fmt.Sprintf("Power %s sent to %s", action, mac)})
 }
 
-// PowerStatusClient queries current power state via Redfish.
 func (h *Handler) PowerStatusClient(w http.ResponseWriter, r *http.Request) {
 	mac := strings.ToLower(strings.ReplaceAll(r.URL.Query().Get("mac"), "-", ":"))
 	if mac == "" {
@@ -3857,8 +3845,6 @@ func (h *Handler) PowerStatusClient(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: map[string]string{"state": state}})
 }
 
-// PowerClientGroup issues a Redfish action against every member with a
-// resolvable BMC config. Honours the group's stagger delay.
 func (h *Handler) PowerClientGroup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -3915,7 +3901,6 @@ func (h *Handler) PowerClientGroup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ---- Scheduled tasks ----
 
 func (h *Handler) ListScheduledTasks(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -4033,7 +4018,6 @@ func (h *Handler) RunScheduledTask(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Task dispatched"})
 }
 
-// GetWebhookConfig returns the singleton webhook configuration.
 func (h *Handler) GetWebhookConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -4047,7 +4031,6 @@ func (h *Handler) GetWebhookConfig(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: cfg})
 }
 
-// UpdateWebhookConfig persists the webhook URL and event toggles.
 func (h *Handler) UpdateWebhookConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut && r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -4065,10 +4048,6 @@ func (h *Handler) UpdateWebhookConfig(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Webhook config saved", Data: cfg})
 }
 
-// TestWebhook fires a synthetic event to the configured URL so the user can
-// verify connectivity. Returns the downstream HTTP status or the transport
-// error; does not require Enabled=true since this is the "does it work at
-// all" button.
 func (h *Handler) TestWebhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -4101,18 +4080,6 @@ func (h *Handler) TestWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ExportBackup streams a tar.gz containing a portable database snapshot
-// (SQLite VACUUM INTO copy or Postgres pg_dump) plus the rest of the data
-// directory: bootloader-config.json, custom bootloader sets, settings, etc.
-// ISOs and downloaded tool binaries are excluded — large and reproducible.
-//
-// The DB snapshot is generated first via the storage layer, then the walker
-// skips the live SQLite files (bootimus.db, -wal, -shm, -journal) so we
-// don't ship a half-written copy alongside the clean snapshot.
-//
-// Restore is manual: stop bootimus, restore the snapshot (drop the SQLite
-// file in place, or `psql < bootimus.sql` for Postgres), extract the rest
-// of the tarball over the data directory, start bootimus.
 func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -4124,8 +4091,6 @@ func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Take the DB snapshot into a buffer first so we can fail loudly *before*
-	// streaming any bytes to the client, while we can still send a JSON error.
 	var dbBuf bytes.Buffer
 	dbName, err := h.storage.Snapshot(&dbBuf)
 	if err != nil {
@@ -4143,7 +4108,6 @@ func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 	tw := tar.NewWriter(gz)
 	defer tw.Close()
 
-	// Write the DB snapshot first.
 	dbHdr := &tar.Header{
 		Name:    dbName,
 		Mode:    0o600,
@@ -4159,12 +4123,10 @@ func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Top-level directories we deliberately skip — reproducible and potentially huge.
 	skipDirs := map[string]bool{
 		"isos":  true,
 		"tools": true,
 	}
-	// Live SQLite files — replaced by the clean snapshot above.
 	skipFiles := map[string]bool{
 		"bootimus.db":         true,
 		"bootimus.db-wal":     true,
@@ -4183,7 +4145,6 @@ func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 		if rel == "." {
 			return nil
 		}
-		// Skip excluded top-level dirs (and everything beneath them).
 		topLevel := rel
 		if i := strings.Index(topLevel, string(os.PathSeparator)); i >= 0 {
 			topLevel = topLevel[:i]
@@ -4219,14 +4180,11 @@ func (h *Handler) ExportBackup(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("Backup export failed mid-stream: %v", err)
-		// At this point we've already sent headers; nothing graceful to do.
 		return
 	}
 	log.Printf("Backup exported (%s) — db: %s (%d bytes)", ts, dbName, dbBuf.Len())
 }
 
-// ImportClientsCSV accepts a multipart CSV upload and creates or updates
-// clients. MAC is the primary key; unknown MACs create new records.
 func (h *Handler) ImportClientsCSV(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -4360,7 +4318,6 @@ func (h *Handler) ImportClientsCSV(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ---- Client groups ----
 
 func (h *Handler) ListClientGroups(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -4372,7 +4329,6 @@ func (h *Handler) ListClientGroups(w http.ResponseWriter, r *http.Request) {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
 	}
-	// Attach member counts for the list view.
 	type groupWithCount struct {
 		*models.ClientGroup
 		MemberCount int `json:"member_count"`
@@ -4446,18 +4402,10 @@ func (h *Handler) UpdateClientGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	group.ID = uint(id)
-	// Apply membership changes if a members array was provided. Members are a
-	// list of MAC addresses; anything previously in the group but not in the
-	// new list gets detached.
 	type groupWithMembers struct {
 		Members []string `json:"members"`
 	}
-	// Re-decode body to catch the members field — the earlier decode only
-	// consumed the ClientGroup fields.
 	var withMembers groupWithMembers
-	// We can't re-read r.Body, so if the caller wants to manage members they
-	// must call /api/client-groups/members instead. Leaving this block as a
-	// placeholder for clarity.
 	_ = withMembers
 
 	if err := h.storage.UpdateClientGroup(uint(id), &group); err != nil {
@@ -4491,7 +4439,6 @@ func (h *Handler) DeleteClientGroup(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Client group deleted"})
 }
 
-// SetClientGroupMembership assigns a MAC to a group (or clears it with null).
 func (h *Handler) SetClientGroupMembership(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -4516,8 +4463,6 @@ func (h *Handler) SetClientGroupMembership(w http.ResponseWriter, r *http.Reques
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Client group membership updated"})
 }
 
-// WakeClientGroup sends Wake-on-LAN to every enabled member of a group,
-// honouring the group's stagger delay to avoid broadcast storms.
 func (h *Handler) WakeClientGroup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -4542,8 +4487,6 @@ func (h *Handler) WakeClientGroup(w http.ResponseWriter, r *http.Request) {
 	if group.WOLBroadcastAddr != "" {
 		broadcastAddr = group.WOLBroadcastAddr
 	}
-	// Fire-and-forget so the caller isn't blocked while we stagger through a
-	// large fleet. Errors per-client are logged but don't fail the request.
 	stagger := time.Duration(group.StaggerDelayMillis) * time.Millisecond
 	sent := 0
 	for _, c := range members {
@@ -4573,8 +4516,6 @@ func (h *Handler) WakeClientGroup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// SetNextBootForClientGroup sets (or clears) the next-boot image for every
-// enabled member of a group.
 func (h *Handler) SetNextBootForClientGroup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -4675,7 +4616,7 @@ func (h *Handler) ListUSBImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := bootloaders.Bootloaders.ReadDir(".")
+	entries, err := bootloaders.ListFiles(bootloaders.DefaultSet)
 	if err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
@@ -4717,7 +4658,7 @@ func (h *Handler) DownloadUSBImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := bootloaders.Bootloaders.ReadFile(name)
+	data, _, err := bootloaders.Resolve(bootloaders.DefaultSet, name)
 	if err != nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "USB image not found"})
 		return
@@ -4843,12 +4784,10 @@ func (h *Handler) DeleteImageFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handle individual file deletion
 	if req.Path != "" && !req.IsDir {
 		bootDir := filepath.Join(h.isoDir, req.BaseDir)
 		filePath := filepath.Join(bootDir, req.Path)
 
-		// Security check: ensure target is within boot directory
 		cleanTarget, err := filepath.Abs(filePath)
 		if err != nil {
 			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid path"})
@@ -4876,14 +4815,12 @@ func (h *Handler) DeleteImageFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handle entire boot directory deletion (preserving autoinstall folder)
 	bootDir := filepath.Join(h.isoDir, req.BaseDir)
 	if _, err := os.Stat(bootDir); err != nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Boot directory not found"})
 		return
 	}
 
-	// Read directory contents
 	entries, err := os.ReadDir(bootDir)
 	if err != nil {
 		log.Printf("Error reading boot directory %s: %v", bootDir, err)
@@ -4891,7 +4828,6 @@ func (h *Handler) DeleteImageFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete everything except autoinstall folder
 	for _, entry := range entries {
 		if entry.Name() == "autoinstall" {
 			log.Printf("Preserving autoinstall folder: %s/autoinstall", bootDir)
@@ -4908,7 +4844,6 @@ func (h *Handler) DeleteImageFile(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Deleted boot directory contents (preserved autoinstall): %s", bootDir)
 
-	// Reset the image to sanboot mode and clear extracted flag
 	image, err := h.storage.GetImage(req.Filename)
 	if err == nil && image != nil {
 		image.Extracted = false

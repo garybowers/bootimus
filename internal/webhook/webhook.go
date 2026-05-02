@@ -1,9 +1,3 @@
-// Package webhook provides fire-and-forget outbound HTTP POST notifications
-// for bootimus lifecycle events. The config (URL, enabled, per-event toggles)
-// lives in the WebhookConfig singleton; this package reads it on every fire
-// so config changes take effect without restart.
-//
-// Failures log but don't affect the calling path — webhooks are advisory.
 package webhook
 
 import (
@@ -19,12 +13,11 @@ import (
 )
 
 const (
-	EventBootStarted       = "boot.started"
-	EventClientDiscovered  = "client.discovered"
-	EventInventoryUpdated  = "client.inventory_updated"
+	EventBootStarted      = "boot.started"
+	EventClientDiscovered = "client.discovered"
+	EventInventoryUpdated = "client.inventory_updated"
 )
 
-// Event is the JSON shape POSTed to the webhook URL.
 type Event struct {
 	Event      string            `json:"event"`
 	Timestamp  time.Time         `json:"timestamp"`
@@ -35,8 +28,6 @@ type Event struct {
 	Metadata   map[string]string `json:"metadata,omitempty"`
 }
 
-// Notifier is the tiny surface bootimus uses to raise events. Obtained from
-// New(store). All Fire calls are non-blocking.
 type Notifier struct {
 	store  storage.Storage
 	client *http.Client
@@ -49,8 +40,6 @@ func New(store storage.Storage) *Notifier {
 	}
 }
 
-// Fire sends the event to the configured webhook if enabled and the specific
-// event type is turned on. Runs on a goroutine so callers aren't blocked.
 func (n *Notifier) Fire(ev Event) {
 	if n == nil || n.store == nil {
 		return

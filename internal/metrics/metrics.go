@@ -1,8 +1,3 @@
-// Package metrics exposes Prometheus metrics for bootimus.
-//
-// Metrics are registered on the default Prometheus registry and served via
-// promhttp on /metrics on the admin port. Counters are incremented from the
-// serving paths (TFTP, HTTP boot, proxyDHCP) via the exported Inc* helpers.
 package metrics
 
 import (

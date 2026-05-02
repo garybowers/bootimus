@@ -125,7 +125,6 @@ func (e *Extractor) extractViaBsdtar(isoPath string) (*BootFiles, error) {
 		return nil, fmt.Errorf("bsdtar failed: %w (%s)", err, strings.TrimSpace(string(output)))
 	}
 
-	// Scan for kernel, initrd, squashfs
 	bootPaths := []struct{ kernel, initrd, squashfs string }{
 		{"casper/vmlinuz", "casper/initrd", "casper/filesystem.squashfs"},
 		{"casper/vmlinuz.efi", "casper/initrd.lz", "casper/filesystem.squashfs"},
@@ -143,7 +142,6 @@ func (e *Extractor) extractViaBsdtar(isoPath string) (*BootFiles, error) {
 		kPath := filepath.Join(extractDir, bp.kernel)
 		iPath := filepath.Join(extractDir, bp.initrd)
 		if fileExistsOnDisk(kPath) && fileExistsOnDisk(iPath) {
-			// Copy kernel and initrd to expected locations
 			kernelDest := filepath.Join(baseDir, "vmlinuz")
 			initrdDest := filepath.Join(baseDir, "initrd")
 
@@ -1005,7 +1003,6 @@ func fileExists(img *iso9660.Image, path string) bool {
 	if err == nil {
 		return true
 	}
-	// Fallback: list parent directory and try fuzzy matching
 	dir := filepath.Dir(path)
 	base := strings.ToLower(filepath.Base(path))
 	parentFile, err := findFile(img, dir)
@@ -1061,21 +1058,16 @@ func findFile(img *iso9660.Image, path string) (*iso9660.File, error) {
 			}
 		}
 
-		// ISO9660 names may have version suffixes (;1), underscores instead of dots,
-		// or be truncated. Try progressively looser matching.
 		if !found {
 			partUpper := strings.ToUpper(part)
 			for _, child := range children {
 				childName := child.Name()
-				// Strip version suffix (e.g. "INITRD;1" -> "INITRD")
 				cleanName := strings.Split(childName, ";")[0]
-				// Try case-insensitive with stripped suffix
 				if strings.EqualFold(cleanName, part) {
 					current = child
 					found = true
 					break
 				}
-				// Try with dots replaced by underscores
 				normalizedChild := strings.ToUpper(strings.ReplaceAll(cleanName, ".", "_"))
 				normalizedPart := strings.ToUpper(strings.ReplaceAll(part, ".", "_"))
 				if normalizedChild == normalizedPart {
@@ -1083,7 +1075,6 @@ func findFile(img *iso9660.Image, path string) (*iso9660.File, error) {
 					found = true
 					break
 				}
-				// Try prefix match for truncated names
 				if len(partUpper) > 8 && strings.HasPrefix(partUpper, strings.ToUpper(cleanName)) {
 					current = child
 					found = true
@@ -1201,7 +1192,6 @@ func (e *Extractor) detectAndExtractUnified(reader FileSystemReader, isoPath str
 		}
 	}
 
-	// Fallback: generic scanner that walks the filesystem looking for kernel/initrd
 	log.Printf("No known distro layout matched, trying generic boot file scanner...")
 	if files, err := e.detectGenericUnified(reader); err == nil && files != nil {
 		if distroName != "" {
@@ -1363,7 +1353,6 @@ func (e *Extractor) extractUDFFile(reader *udf.Reader, file *udf.File, destDir, 
 	return nil
 }
 
-// ApplyDriverPacks injects driver packs into a Windows boot.wim file
 func (e *Extractor) ApplyDriverPacks(bootWimPath string, driverPackPaths []string) error {
 	if !wim.IsAvailable() {
 		return fmt.Errorf("wimlib-imagex is not installed - driver injection not available")
@@ -1374,7 +1363,6 @@ func (e *Extractor) ApplyDriverPacks(bootWimPath string, driverPackPaths []strin
 		return fmt.Errorf("failed to create WIM manager: %w", err)
 	}
 
-	// Get the number of images in the WIM
 	imageCount, err := wimManager.GetImageCount(bootWimPath)
 	if err != nil {
 		return fmt.Errorf("failed to get WIM image count: %w", err)
@@ -1382,8 +1370,6 @@ func (e *Extractor) ApplyDriverPacks(bootWimPath string, driverPackPaths []strin
 
 	log.Printf("Found %d image(s) in boot.wim", imageCount)
 
-	// Inject drivers into image 2 (the main Windows PE image)
-	// Image 1 is typically the boot configuration, image 2 is the actual PE environment
 	imageIndex := 2
 	if imageCount < 2 {
 		imageIndex = 1
@@ -1393,7 +1379,6 @@ func (e *Extractor) ApplyDriverPacks(bootWimPath string, driverPackPaths []strin
 		return fmt.Errorf("failed to inject drivers: %w", err)
 	}
 
-	// Optimize the WIM after modification
 	if err := wimManager.OptimizeWIM(bootWimPath); err != nil {
 		log.Printf("Warning: Failed to optimize WIM: %v", err)
 	}

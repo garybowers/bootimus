@@ -10,10 +10,6 @@ import (
 	"sync"
 )
 
-// Manager runs an isolated smbd process that exposes extracted Windows
-// installation media as read-only guest shares. State files live under
-// {dataDir}/smb/ so the server does not collide with a host-level Samba
-// install.
 type Manager struct {
 	dataDir string
 	port    int
@@ -61,7 +57,6 @@ func (m *Manager) Port() int {
 	return m.port
 }
 
-// Start writes the initial smb.conf and launches smbd in the foreground.
 func (m *Manager) Start() error {
 	smbdPath, err := exec.LookPath("smbd")
 	if err != nil {
@@ -86,9 +81,6 @@ func (m *Manager) Start() error {
 
 	log.Printf("SMB: smbd started (PID %d, port %d)", m.cmd.Process.Pid, m.port)
 
-	// Reap the child so a crash surfaces as a clean exit log instead of a
-	// zombie. smb.conf errors and missing state dirs typically kill smbd
-	// within the first second.
 	go func(cmd *exec.Cmd) {
 		err := cmd.Wait()
 		if err != nil {
@@ -101,12 +93,6 @@ func (m *Manager) Start() error {
 	return nil
 }
 
-// Reload rewrites smb.conf and tells smbd to pick up the changes via
-// `smbcontrol reload-config`. We avoid raw SIGHUP because smbd installs its
-// signal handlers some way into startup — a SIGHUP that lands before that
-// takes the default action (terminate) and kills the daemon. smbcontrol
-// goes through samba's own messaging bus, which is only ready once smbd has
-// completed its own init, so it's race-free.
 func (m *Manager) Reload() error {
 	if err := m.writeConfig(); err != nil {
 		return fmt.Errorf("failed to write smb.conf: %w", err)
@@ -134,7 +120,6 @@ func (m *Manager) Stop() {
 	}
 }
 
-// SanitizeShareName derives an SMB-safe share name from an ISO base name.
 func SanitizeShareName(isoBase string) string {
 	var sb strings.Builder
 	for _, r := range isoBase {

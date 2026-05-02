@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="600"
+   height="600"
+   viewBox="0 0 600 600"
+   fill="none"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="bazzite_b.svg"
+   inkscape:version="1.3.2 (091e20ef0f, 2023-11-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.89666667"
+     inkscape:cx="300.55762"
+     inkscape:cy="300.55762"
+     inkscape:window-width="1457"
+     inkscape:window-height="1212"
+     inkscape:window-x="26"
+     inkscape:window-y="23"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg8" />
+  <path
+     fill-rule="evenodd"
+     clip-rule="evenodd"
+     d="m 178,50 h 64 V 178 H 376.185 C 432.416,178 478,223.584 478,279.815 478,389.269 389.27,478 279.815,478 223.584,478 178,432.416 178,376.185 V 242 H 50 v -64 h 128 z m 64,192 V 376.185 C 242,397.07 258.93,414 279.815,414 353.923,414 414,353.923 414,279.815 414,258.93 397.07,242 376.185,242 Z"
+     fill="#ffffff"
+     fill-opacity="0.5"
+     id="path2" />
+  <defs
+     id="defs8">
+    <linearGradient
+       id="paint0_linear_1016_105"
+       x1="50"
+       y1="50"
+       x2="550"
+       y2="550"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0.0684898"
+         stop-color="#0047AB"
+         id="stop7" />
+      <stop
+         offset="0.741212"
+         stop-color="#8A2BE2"
+         id="stop8" />
+    </linearGradient>
+  </defs>
+</svg>

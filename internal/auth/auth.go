@@ -30,7 +30,7 @@ type Claims struct {
 type LoginRequest struct {
 	Username   string `json:"username"`
 	Password   string `json:"password"`
-	AuthMethod string `json:"auth_method"` // "local" or "ldap"
+	AuthMethod string `json:"auth_method"`
 }
 
 type LoginResponse struct {
@@ -44,7 +44,6 @@ func NewManager(userStore database.UserStore, ldapConfig ...*LDAPConfig) (*Manag
 		return nil, fmt.Errorf("userStore is required for authentication")
 	}
 
-	// Generate a random JWT secret on startup
 	secret := make([]byte, 32)
 	if _, err := rand.Read(secret); err != nil {
 		return nil, fmt.Errorf("failed to generate JWT secret: %w", err)
@@ -141,7 +140,6 @@ func (m *Manager) GetUserAdmin(username string) bool {
 	return user.IsAdmin
 }
 
-// HandleAuthInfo returns available auth backends (no auth required)
 func (m *Manager) HandleAuthInfo(w http.ResponseWriter, r *http.Request) {
 	backends := []map[string]string{
 		{"id": "local", "name": "Local"},
@@ -157,7 +155,6 @@ func (m *Manager) HandleAuthInfo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": backends})
 }
 
-// HandleLogin processes login requests and returns a JWT token
 func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -196,7 +193,7 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 			authenticated = true
 			isAdmin = ldapAdmin
 		}
-	default: // "local"
+	default:
 		if m.ValidateCredentials(req.Username, req.Password) {
 			authenticated = true
 			isAdmin = m.GetUserAdmin(req.Username)
@@ -231,7 +228,6 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// JWTMiddleware validates JWT tokens from Authorization: Bearer header
 func (m *Manager) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -251,7 +247,6 @@ func (m *Manager) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// Check user still exists and is enabled
 		user, err := m.userStore.GetUser(claims.Username)
 		if err != nil || !user.Enabled {
 			w.Header().Set("Content-Type", "application/json")

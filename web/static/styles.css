@@ -130,6 +130,39 @@ header {
     #login-screen::before { animation: none; }
 }
 
+#login-form {
+    background: var(--bg-secondary);
+    padding: 28px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
+}
+[data-theme="dark"] #login-form {
+    background: var(--bg-tertiary);
+    box-shadow: var(--shadow-lg);
+}
+
+#login-submit {
+    width: 100%;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--bg-primary);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    box-sizing: border-box;
+}
+#login-submit:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
 .lang-select {
     width: auto;
     min-width: 160px;
@@ -342,6 +375,43 @@ th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--bor
 .status-dot.on  { background: #22c55e; box-shadow: 0 0 6px rgba(34, 197, 94, 0.45); }
 .status-dot.off { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.35); }
 .col-dot { text-align: center; width: 1%; }
+.col-logo { text-align: center; width: 1%; padding-right: 0; }
+.col-check { text-align: center; width: 1%; padding: 0 4px; }
+.col-check input[type="checkbox"] { cursor: pointer; vertical-align: middle; margin: 0; }
+
+.api-section { margin-bottom: 22px; }
+.api-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-secondary); margin: 14px 0 6px; font-weight: 600; }
+.api-row { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.api-row-head { display: grid; grid-template-columns: 70px minmax(220px, 360px) 1fr; gap: 12px; align-items: center; }
+.api-curl { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg-tertiary); border-radius: var(--radius-sm); }
+.api-curl code { flex: 1; overflow-x: auto; white-space: nowrap; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; color: var(--text-secondary); }
+.api-curl button { background: transparent; border: none; cursor: pointer; padding: 2px 6px; color: var(--text-secondary); display: inline-flex; align-items: center; border-radius: 3px; }
+.api-curl button:hover { color: var(--text-primary); background: var(--accent-light); }
+.api-curl button.copied { color: var(--success); }
+.api-method { display: inline-block; min-width: 56px; padding: 3px 8px; border-radius: 3px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 700; text-align: center; letter-spacing: 0.5px; }
+.api-method.get    { background: rgba(52, 152, 219, 0.12); color: #3498db; }
+.api-method.post   { background: rgba(46, 204, 113, 0.12); color: #2ecc71; }
+.api-method.put    { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
+.api-method.delete { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+.api-method.public { background: rgba(255, 176, 0, 0.12); color: #ffb000; }
+.api-row code.api-path { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; color: var(--text-primary); background: transparent; padding: 0; }
+.api-row .api-detail { color: var(--text-secondary); font-size: 12px; }
+.api-row .api-detail code { font-family: ui-monospace, monospace; font-size: 11px; padding: 1px 4px; background: var(--bg-tertiary); border-radius: 3px; color: var(--text-primary); }
+
+.get-iso-distro { margin-bottom: 18px; }
+.get-iso-distro h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-secondary); margin: 14px 0 6px; font-weight: 600; }
+.get-iso-row { display: grid; grid-template-columns: minmax(200px, 1.2fr) 160px 2fr auto; gap: 10px; align-items: center; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+.get-iso-row:last-child { border-bottom: none; }
+.get-iso-label { font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.get-iso-mirror-sel, .get-iso-url { padding: 0 8px; height: 32px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 12px; }
+.get-iso-url { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; }
+.get-iso-actions { display: flex; align-items: center; justify-content: flex-end; min-width: 180px; }
+.get-iso-progress { display: flex; align-items: center; gap: 8px; width: 100%; }
+.get-iso-bar { flex: 1; height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+.get-iso-bar-fill { height: 100%; background: var(--success); border-radius: 3px; transition: width 0.2s ease; }
+.get-iso-status-text { font-size: 11px; color: var(--text-secondary); white-space: nowrap; min-width: 90px; text-align: right; }
+.distro-logo { display: block; margin: 0 auto; object-fit: contain; }
+.distro-logo-modal { width: 32px; height: 32px; object-fit: contain; vertical-align: middle; margin-right: 10px; }
 th {
     background: var(--bg-tertiary); color: var(--text-secondary);
     font-weight: 600; font-size: 11px; text-transform: uppercase;
@@ -506,19 +576,8 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
 .si-section:last-child { margin-bottom: 0; }
 .si-heading {
     font-size: 18px; font-weight: 600; color: var(--text-primary);
-    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+    margin-bottom: 16px;
 }
-.si-heading::before {
-    content: '';
-    display: inline-block;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--accent);
-    flex-shrink: 0;
-}
-.si-heading.si-heading-teal::before { background: var(--teal); }
-.si-heading.si-heading-info::before { background: var(--info); }
-.si-heading.si-heading-success::before { background: var(--success); }
 
 /* Running status grid - clean cells in a white card */
 .rs-grid {

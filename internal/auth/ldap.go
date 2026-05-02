@@ -10,17 +10,17 @@ import (
 )
 
 type LDAPConfig struct {
-	Host         string // LDAP server hostname
-	Port         int    // LDAP server port (389 for LDAP, 636 for LDAPS)
-	UseTLS       bool   // Use LDAPS (TLS)
-	StartTLS     bool   // Use StartTLS
-	SkipVerify   bool   // Skip TLS certificate verification
-	BindDN       string // Bind DN for search (e.g. "cn=readonly,dc=example,dc=com")
-	BindPassword string // Bind password for search
-	BaseDN       string // Base DN for user search (e.g. "dc=example,dc=com")
-	UserFilter   string // User search filter (e.g. "(sAMAccountName=%s)" for AD or "(uid=%s)" for OpenLDAP)
-	GroupFilter  string // Group filter for admin access (optional, e.g. "cn=bootimus-admins")
-	GroupBaseDN  string // Base DN for group search (defaults to BaseDN)
+	Host         string
+	Port         int
+	UseTLS       bool
+	StartTLS     bool
+	SkipVerify   bool
+	BindDN       string
+	BindPassword string
+	BaseDN       string
+	UserFilter   string
+	GroupFilter  string
+	GroupBaseDN  string
 }
 
 func (c *LDAPConfig) IsConfigured() bool {
@@ -54,7 +54,6 @@ func ldapAuthenticate(config *LDAPConfig, username, password string) (bool, bool
 	}
 	defer conn.Close()
 
-	// StartTLS if configured
 	if config.StartTLS {
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: config.SkipVerify,
@@ -65,17 +64,15 @@ func ldapAuthenticate(config *LDAPConfig, username, password string) (bool, bool
 		}
 	}
 
-	// Bind with service account to search for user
 	if config.BindDN != "" {
 		if err := conn.Bind(config.BindDN, config.BindPassword); err != nil {
 			return false, false, fmt.Errorf("LDAP service bind failed: %w", err)
 		}
 	}
 
-	// Search for the user
 	userFilter := config.UserFilter
 	if userFilter == "" {
-		userFilter = "(sAMAccountName=%s)" // Default to Active Directory
+		userFilter = "(sAMAccountName=%s)"
 	}
 	filter := fmt.Sprintf(userFilter, ldap.EscapeFilter(username))
 
@@ -93,20 +90,18 @@ func ldapAuthenticate(config *LDAPConfig, username, password string) (bool, bool
 	}
 
 	if len(result.Entries) == 0 {
-		return false, false, nil // User not found
+		return false, false, nil
 	}
 
 	userDN := result.Entries[0].DN
 
-	// Bind as the user to verify password
 	if err := conn.Bind(userDN, password); err != nil {
 		log.Printf("LDAP: Authentication failed for user %s", username)
-		return false, false, nil // Invalid password
+		return false, false, nil
 	}
 
 	log.Printf("LDAP: User %s authenticated successfully (DN: %s)", username, userDN)
 
-	// Check admin group membership
 	isAdmin := false
 	if config.GroupFilter != "" {
 		memberOf := result.Entries[0].GetAttributeValues("memberOf")
@@ -118,14 +113,12 @@ func ldapAuthenticate(config *LDAPConfig, username, password string) (bool, bool
 			}
 		}
 
-		// If memberOf didn't work, try a group search
 		if !isAdmin {
 			groupBaseDN := config.GroupBaseDN
 			if groupBaseDN == "" {
 				groupBaseDN = config.BaseDN
 			}
 
-			// Re-bind as service account for group search
 			if config.BindDN != "" {
 				conn.Bind(config.BindDN, config.BindPassword)
 			}
@@ -149,7 +142,6 @@ func ldapAuthenticate(config *LDAPConfig, username, password string) (bool, bool
 			log.Printf("LDAP: User %s is a member of admin group", username)
 		}
 	} else {
-		// No group filter — all LDAP users are admins
 		isAdmin = true
 	}
 

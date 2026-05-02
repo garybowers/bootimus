@@ -90,8 +90,6 @@ func init() {
 	}
 }
 
-// openStoreOrExit opens the configured storage backend (Postgres or SQLite)
-// and runs migrations. Exits the process on failure — callers are CLI ops.
 func openStoreOrExit() storage.Storage {
 	dataDir := viper.GetString("data_dir")
 	pgHost := viper.GetString("db.host")
@@ -120,9 +118,6 @@ func openStoreOrExit() storage.Storage {
 	return store
 }
 
-// setUserFlags applies enabled and/or isAdmin updates to a user. nil means
-// "leave unchanged". Refuses to demote/disable the last active admin unless
-// --force is passed.
 func setUserFlags(username string, enabled, isAdmin *bool) {
 	store := openStoreOrExit()
 	user, err := store.GetUser(username)

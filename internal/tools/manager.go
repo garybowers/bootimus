@@ -23,21 +23,17 @@ var embeddedTools embed.FS
 
 const RemoteToolsURL = "https://raw.githubusercontent.com/garybowers/bootimus/main/tools-profiles.json"
 
-// ToolDefinition defines a built-in tool that can be downloaded and served
 type ToolDefinition struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	Description string `json:"description"`
-	Version     string `json:"version"`
-	DownloadURL string `json:"download_url"`
-	KernelPath  string `json:"kernel_path"`
-	InitrdPath  string `json:"initrd_path"`
-	BootParams  string `json:"boot_params"`
-	BootMethod  string `json:"boot_method,omitempty"`
-	ArchiveType string `json:"archive_type,omitempty"`
-	// Optional BIOS variant: when set, a second download is fetched and the
-	// menu dispatches to it on legacy/BIOS clients (iPXE ${platform} != efi).
-	// Only meaningful for chain-mode tools today (e.g. netboot.xyz).
+	Name            string `json:"name"`
+	DisplayName     string `json:"display_name"`
+	Description     string `json:"description"`
+	Version         string `json:"version"`
+	DownloadURL     string `json:"download_url"`
+	KernelPath      string `json:"kernel_path"`
+	InitrdPath      string `json:"initrd_path"`
+	BootParams      string `json:"boot_params"`
+	BootMethod      string `json:"boot_method,omitempty"`
+	ArchiveType     string `json:"archive_type,omitempty"`
 	DownloadURLBIOS string `json:"download_url_bios,omitempty"`
 	KernelPathBIOS  string `json:"kernel_path_bios,omitempty"`
 }
@@ -62,7 +58,7 @@ func init() {
 }
 
 type DownloadProgress struct {
-	Status     string  `json:"status"`      // "idle", "downloading", "extracting", "done", "error"
+	Status     string  `json:"status"`
 	Percent    float64 `json:"percent"`
 	Downloaded int64   `json:"downloaded"`
 	Total      int64   `json:"total"`
@@ -104,7 +100,6 @@ func (m *Manager) ToolDir(name string) string {
 	return filepath.Join(m.ToolsDir(), name)
 }
 
-// GetDefinition returns the built-in definition for a tool
 func GetDefinition(name string) *ToolDefinition {
 	for i := range BuiltInTools {
 		if BuiltInTools[i].Name == name {
@@ -114,10 +109,6 @@ func GetDefinition(name string) *ToolDefinition {
 	return nil
 }
 
-// SeedTools loads the embedded manifest into BuiltInTools and the database on startup.
-// Built-in tool records are refreshed from the manifest (DownloadURL, KernelPath, BootParams,
-// etc.). User-facing mutable state — Enabled, Downloaded, Order — is preserved. Custom tools
-// (Custom == true) are never touched.
 func (m *Manager) SeedTools() error {
 	data, err := embeddedTools.ReadFile("tools-profiles.json")
 	if err != nil {
@@ -138,8 +129,6 @@ func (m *Manager) SeedTools() error {
 	return nil
 }
 
-// UpdateFromRemote fetches the latest manifest from GitHub and updates the database.
-// Built-in tool records are overwritten; custom tools are never touched.
 func (m *Manager) UpdateFromRemote() (added int, updated int, version string, err error) {
 	if m.DisableRemoteCheck {
 		return 0, 0, "", fmt.Errorf("remote tool updates are disabled")
@@ -170,9 +159,6 @@ func (m *Manager) UpdateFromRemote() (added int, updated int, version string, er
 	return added, updated, mnf.Version, nil
 }
 
-// applyManifest refreshes BuiltInTools and the DB records for all built-in tools in the
-// manifest. User-set fields (Enabled, Downloaded, Order) are preserved. Custom tools are
-// never modified.
 func (m *Manager) applyManifest(mnf toolsManifest) (added int, updated int) {
 	BuiltInTools = mnf.Tools
 
@@ -223,7 +209,6 @@ func (m *Manager) applyManifest(mnf toolsManifest) (added int, updated int) {
 	return added, updated
 }
 
-// IsDownloaded checks if a tool's files exist on disk
 func (m *Manager) IsDownloaded(name string) bool {
 	var kernelPath, initrdPath string
 
@@ -251,14 +236,12 @@ func (m *Manager) IsDownloaded(name string) bool {
 	return true
 }
 
-// Download downloads and extracts a tool's files. Uses the URL from the DB record.
 func (m *Manager) Download(name string, progressCh chan<- string) error {
 	tool, err := m.store.GetBootTool(name)
 	if err != nil {
 		return fmt.Errorf("tool not found in database: %w", err)
 	}
 
-	// Build effective definition from built-in or custom tool DB fields
 	var displayName, downloadURL, kernelPath, archiveType string
 	var downloadURLBIOS, kernelPathBIOS string
 
@@ -349,7 +332,6 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 	log.Printf("Tools: Downloaded %s (%d bytes)", displayName, written)
 	m.setProgress(name, &DownloadProgress{Status: "extracting", Percent: 100, Downloaded: written, Total: totalSize})
 
-	// Handle different archive types
 	if archiveType == "" {
 		archiveType = "zip"
 	}
@@ -361,7 +343,6 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 			return fmt.Errorf("zip extraction failed: %w", err)
 		}
 	case "bin":
-		// Single binary - move to tool dir with the expected filename
 		destName := kernelPath
 		if destName == "" {
 			destName = filepath.Base(downloadURL)
@@ -376,7 +357,6 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 			return fmt.Errorf("failed to copy binary: %w", err)
 		}
 	case "iso":
-		// Copy the ISO and extract it
 		isoPath := filepath.Join(toolDir, name+".iso")
 		if err := copyFile(tmpPath, isoPath); err != nil {
 			m.setProgress(name, &DownloadProgress{Status: "error", Error: err.Error()})
@@ -387,8 +367,6 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 		return fmt.Errorf("unknown archive type: %s", archiveType)
 	}
 
-	// Fetch the BIOS variant alongside the main (EFI) download if defined.
-	// Always treated as a single binary placed at toolDir/<kernelPathBIOS>.
 	if downloadURLBIOS != "" && kernelPathBIOS != "" {
 		biosDest := filepath.Join(toolDir, kernelPathBIOS)
 		if err := os.MkdirAll(filepath.Dir(biosDest), 0755); err != nil {
@@ -402,7 +380,6 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 		}
 	}
 
-	// Update database
 	tool, err = m.store.GetBootTool(name)
 	if err != nil {
 		return err
@@ -418,8 +395,6 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 	return nil
 }
 
-// fetchToFile downloads a single URL straight to disk. Used for fetching
-// the optional BIOS variant of a chain tool alongside the primary EFI one.
 func (m *Manager) fetchToFile(rawURL, destPath string) error {
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
@@ -446,7 +421,6 @@ func (m *Manager) fetchToFile(rawURL, destPath string) error {
 	return nil
 }
 
-// Delete removes a tool's downloaded files
 func (m *Manager) Delete(name string) error {
 	toolDir := m.ToolDir(name)
 	if err := os.RemoveAll(toolDir); err != nil {
@@ -462,7 +436,6 @@ func (m *Manager) Delete(name string) error {
 	return m.store.SaveBootTool(tool)
 }
 
-// GetEnabledTools returns tools that are enabled and downloaded
 func (m *Manager) GetEnabledTools(serverURL string) []EnabledTool {
 	tools, err := m.store.ListBootTools()
 	if err != nil {
@@ -523,10 +496,10 @@ type EnabledTool struct {
 	Name          string
 	DisplayName   string
 	KernelURL     string
-	KernelURLBIOS string // optional; populated when the tool has a BIOS variant
+	KernelURLBIOS string
 	InitrdURL     string
 	BootParams    string
-	BootMethod    string // "kernel", "memdisk", "chain"
+	BootMethod    string
 }
 
 type progressWriter struct {
@@ -569,7 +542,6 @@ func extractZip(zipPath, destDir string) error {
 	for _, f := range r.File {
 		target := filepath.Join(destDir, f.Name)
 
-		// Security: prevent zip slip
 		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(destDir)+string(os.PathSeparator)) {
 			continue
 		}

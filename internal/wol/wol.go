@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-// SendMagicPacket sends a Wake-on-LAN magic packet to the given MAC address.
-// broadcastAddr should be a LAN broadcast address like "192.168.1.255" or "255.255.255.255".
 func SendMagicPacket(macAddr, broadcastAddr string) error {
 	mac, err := parseMACAddress(macAddr)
 	if err != nil {
@@ -19,7 +17,6 @@ func SendMagicPacket(macAddr, broadcastAddr string) error {
 		broadcastAddr = "255.255.255.255"
 	}
 
-	// Magic packet: 6 bytes of 0xFF followed by MAC repeated 16 times (102 bytes total)
 	var packet [102]byte
 	for i := 0; i < 6; i++ {
 		packet[i] = 0xFF

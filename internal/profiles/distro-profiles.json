@@ -1,5 +1,5 @@
 {
-  "version": "0.1.64",
+  "version": "0.1.68",
   "profiles": [
     {
       "id": "ubuntu",
@@ -11,7 +11,17 @@
       "squashfs_paths": ["/casper/filesystem.squashfs"],
       "default_boot_params": "boot=casper initrd=initrd ds=nocloud ip=dhcp iso-url={{BASE_URL}}/isos/{{FILENAME}}",
       "auto_install_type": "autoinstall",
-      "boot_method": "kernel"
+      "boot_method": "kernel",
+      "mirrors": [
+        {"region": "Global (Canonical)", "base": "https://releases.ubuntu.com"},
+        {"region": "UK (Bytemark)", "base": "https://mirror.bytemark.co.uk/ubuntu-releases"},
+        {"region": "DE (GWDG)", "base": "https://ftp.gwdg.de/pub/linux/ubuntu-releases"}
+      ],
+      "releases": [
+        {"label": "24.04 LTS Desktop (amd64)", "path": "/24.04.3/ubuntu-24.04.3-desktop-amd64.iso"},
+        {"label": "24.04 LTS Server (amd64)", "path": "/24.04.3/ubuntu-24.04.3-live-server-amd64.iso"},
+        {"label": "22.04 LTS Desktop (amd64)", "path": "/22.04.5/ubuntu-22.04.5-desktop-amd64.iso"}
+      ]
     },
     {
       "id": "mint",
@@ -23,7 +33,16 @@
       "squashfs_paths": ["/casper/filesystem.squashfs"],
       "default_boot_params": "boot=casper initrd=initrd ds=nocloud ip=dhcp iso-url={{BASE_URL}}/isos/{{FILENAME}}",
       "auto_install_type": "",
-      "boot_method": "kernel"
+      "boot_method": "kernel",
+      "mirrors": [
+        {"region": "Global (kernel.org)", "base": "https://mirrors.edge.kernel.org/linuxmint"},
+        {"region": "AU (AARNet)", "base": "https://mirror.aarnet.edu.au/pub/linuxmint"}
+      ],
+      "releases": [
+        {"label": "22.1 Cinnamon (64-bit)", "path": "/stable/22.1/linuxmint-22.1-cinnamon-64bit.iso"},
+        {"label": "22.1 MATE (64-bit)", "path": "/stable/22.1/linuxmint-22.1-mate-64bit.iso"},
+        {"label": "22.1 XFCE (64-bit)", "path": "/stable/22.1/linuxmint-22.1-xfce-64bit.iso"}
+      ]
     },
     {
       "id": "popos",
@@ -72,19 +91,48 @@
       "default_boot_params": "initrd=initrd boot=live priority=critical",
       "boot_params_with_squashfs": "initrd=initrd boot=live priority=critical fetch={{SQUASHFS}}",
       "auto_install_type": "preseed",
+      "boot_method": "kernel",
+      "mirrors": [
+        {"region": "Global (Official)", "base": "https://cdimage.debian.org/debian-cd/current/amd64"},
+        {"region": "UK (Bytemark)", "base": "https://mirror.bytemark.co.uk/debian-cd/current/amd64"},
+        {"region": "DE (GWDG)", "base": "https://ftp.gwdg.de/debian-cd/current/amd64"}
+      ],
+      "releases": [
+        {"label": "13 (Trixie) DVD-1 (amd64)", "path": "/iso-dvd/debian-13.4.0-amd64-DVD-1.iso"},
+        {"label": "13 (Trixie) Netinst (amd64)", "path": "/iso-cd/debian-13.4.0-amd64-netinst.iso"}
+      ]
+    },
+    {
+      "id": "steamos",
+      "display_name": "SteamOS",
+      "family": "arch",
+      "filename_patterns": ["steamos", "steam-os", "steamdeck"],
+      "kernel_paths": ["/arch/boot/x86_64/vmlinuz-linux", "/boot/vmlinuz-linux", "/boot/vmlinuz"],
+      "initrd_paths": ["/arch/boot/x86_64/initramfs-linux.img", "/boot/initramfs-linux.img"],
+      "squashfs_paths": ["/arch/x86_64/airootfs.sfs"],
+      "default_boot_params": "initrd=initrd archisobasedir=arch archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ ip=:::::eth0:dhcp",
+      "auto_install_type": "",
       "boot_method": "kernel"
     },
     {
       "id": "arch",
       "display_name": "Arch Linux",
       "family": "arch",
-      "filename_patterns": ["arch", "cachyos", "cachy", "endeavouros", "artix", "blackarch", "parabola", "steamos", "garuda", "arco"],
+      "filename_patterns": ["arch", "cachyos", "cachy", "endeavouros", "artix", "blackarch", "parabola", "garuda", "arco"],
       "kernel_paths": ["/arch/boot/x86_64/vmlinuz-linux", "/boot/vmlinuz-linux", "/arch/boot/x86_64/vmlinuz-linux", "/boot/vmlinuz-linux-cachyos", "/boot/vmlinuz-linux-zen", "/boot/vmlinuz-linux-lts"],
       "initrd_paths": ["/arch/boot/x86_64/initramfs-linux.img", "/boot/initramfs-linux.img", "/arch/boot/x86_64/archiso.img", "/boot/initramfs-linux-cachyos.img", "/boot/initramfs-linux-zen.img", "/boot/initramfs-linux-lts.img"],
       "squashfs_paths": ["/arch/x86_64/airootfs.sfs"],
       "default_boot_params": "initrd=initrd archisobasedir=arch archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ ip=:::::eth0:dhcp",
       "auto_install_type": "",
-      "boot_method": "kernel"
+      "boot_method": "kernel",
+      "mirrors": [
+        {"region": "Global (Rackspace)", "base": "https://mirror.rackspace.com/archlinux/iso/latest"},
+        {"region": "DE (Hetzner)", "base": "https://mirror.hetzner.com/archlinux/iso/latest"},
+        {"region": "UK (Bytemark)", "base": "https://mirror.bytemark.co.uk/archlinux/iso/latest"}
+      ],
+      "releases": [
+        {"label": "Latest (x86_64)", "path": "/archlinux-x86_64.iso"}
+      ]
     },
     {
       "id": "manjaro",
@@ -94,8 +142,32 @@
       "kernel_paths": ["/boot/vmlinuz-x86_64", "/manjaro/boot/x86_64/manjaro"],
       "initrd_paths": ["/boot/initramfs-x86_64.img", "/manjaro/boot/x86_64/manjaro.img"],
       "squashfs_paths": [],
-      "default_boot_params": "",
+      "default_boot_params": "initrd=initrd misobasedir=manjaro miso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ ip=:::::eth0:dhcp",
       "auto_install_type": "",
+      "boot_method": "kernel"
+    },
+    {
+      "id": "silverblue",
+      "display_name": "Fedora Silverblue",
+      "family": "redhat",
+      "filename_patterns": ["silverblue", "kinoite", "sericea", "onyx", "fedora-atomic"],
+      "kernel_paths": ["/images/pxeboot/vmlinuz"],
+      "initrd_paths": ["/images/pxeboot/initrd.img"],
+      "squashfs_paths": ["/LiveOS/squashfs.img"],
+      "default_boot_params": "initrd=initrd root=live:{{BASE_URL}}/isos/{{FILENAME}} rd.live.image inst.repo={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ inst.stage2={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ rd.neednet=1",
+      "auto_install_type": "kickstart",
+      "boot_method": "kernel"
+    },
+    {
+      "id": "bazzite",
+      "display_name": "Bazzite",
+      "family": "redhat",
+      "filename_patterns": ["bazzite", "bluefin", "aurora", "ucore"],
+      "kernel_paths": ["/images/pxeboot/vmlinuz"],
+      "initrd_paths": ["/images/pxeboot/initrd.img"],
+      "squashfs_paths": ["/LiveOS/squashfs.img"],
+      "default_boot_params": "initrd=initrd root=live:{{BASE_URL}}/isos/{{FILENAME}} rd.live.image inst.repo={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ inst.stage2={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ rd.neednet=1",
+      "auto_install_type": "kickstart",
       "boot_method": "kernel"
     },
     {
@@ -108,7 +180,16 @@
       "squashfs_paths": ["/LiveOS/squashfs.img"],
       "default_boot_params": "initrd=initrd root=live:{{BASE_URL}}/isos/{{FILENAME}} rd.live.image inst.repo={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ inst.stage2={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ rd.neednet=1",
       "auto_install_type": "kickstart",
-      "boot_method": "kernel"
+      "boot_method": "kernel",
+      "mirrors": [
+        {"region": "Global (Auto-redirect)", "base": "https://download.fedoraproject.org/pub/fedora/linux/releases"},
+        {"region": "UK (Mythic Beasts)", "base": "https://mirrors.mythic-beasts.com/fedora-pub/fedora/linux/releases"},
+        {"region": "DE (Hetzner)", "base": "https://ftp.hetzner.com/fedora/linux/releases"}
+      ],
+      "releases": [
+        {"label": "41 Workstation (x86_64)", "path": "/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso"},
+        {"label": "41 Server DVD (x86_64)", "path": "/41/Server/x86_64/iso/Fedora-Server-dvd-x86_64-41-1.4.iso"}
+      ]
     },
     {
       "id": "centos",
@@ -130,7 +211,7 @@
       "kernel_paths": ["/boot/bzImage", "/boot/vmlinuz"],
       "initrd_paths": ["/boot/initrd"],
       "squashfs_paths": ["/nix-store.squashfs"],
-      "default_boot_params": "",
+      "default_boot_params": "init=/nix/var/nix/profiles/system/init initrd=initrd loglevel=4 boot.shell_on_fail",
       "auto_install_type": "",
       "boot_method": "kernel"
     },
@@ -156,7 +237,15 @@
       "squashfs_paths": [],
       "default_boot_params": "modules=loop,squashfs,sd-mod,usb-storage quiet",
       "auto_install_type": "",
-      "boot_method": "kernel"
+      "boot_method": "kernel",
+      "mirrors": [
+        {"region": "Global (CDN)", "base": "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64"}
+      ],
+      "releases": [
+        {"label": "3.20 Standard (x86_64)", "path": "/alpine-standard-3.20.3-x86_64.iso"},
+        {"label": "3.20 Extended (x86_64)", "path": "/alpine-extended-3.20.3-x86_64.iso"},
+        {"label": "3.20 Virtual (x86_64)", "path": "/alpine-virt-3.20.3-x86_64.iso"}
+      ]
     },
     {
       "id": "gentoo",
@@ -190,7 +279,7 @@
       "kernel_paths": ["/kernels/huge.s/bzImage", "/kernels/hugesmp.s/bzImage", "/boot/vmlinuz"],
       "initrd_paths": ["/isolinux/initrd.img", "/boot/initrd.img"],
       "squashfs_paths": [],
-      "default_boot_params": "",
+      "default_boot_params": "initrd=initrd load_ramdisk=1 prompt_ramdisk=0 rw printk.time=0 kbd=us locale=en_US.UTF-8",
       "auto_install_type": "",
       "boot_method": "kernel"
     },
@@ -226,7 +315,7 @@
       "kernel_paths": ["/boot/vmlinuz"],
       "initrd_paths": ["/boot/core.gz", "/boot/rootfs.gz"],
       "squashfs_paths": [],
-      "default_boot_params": "",
+      "default_boot_params": "initrd=initrd quiet base",
       "auto_install_type": "",
       "boot_method": "kernel"
     },
@@ -241,7 +330,15 @@
       "default_boot_params": "initrd=initrd boot=live priority=critical",
       "boot_params_with_squashfs": "initrd=initrd boot=live priority=critical fetch={{SQUASHFS}}",
       "auto_install_type": "",
-      "boot_method": "kernel"
+      "boot_method": "kernel",
+      "mirrors": [
+        {"region": "Global (Official)", "base": "https://cdimage.kali.org/current"},
+        {"region": "DE (Kumi)", "base": "https://mirror.kumi.systems/kali-images/current"}
+      ],
+      "releases": [
+        {"label": "2024.4 Live (amd64)", "path": "/kali-linux-2024.4-live-amd64.iso"},
+        {"label": "2024.4 Installer (amd64)", "path": "/kali-linux-2024.4-installer-amd64.iso"}
+      ]
     },
     {
       "id": "parrot",
@@ -289,7 +386,7 @@
       "kernel_paths": ["/sources/boot.wim"],
       "initrd_paths": [],
       "squashfs_paths": [],
-      "default_boot_params": "",
+      "default_boot_params": "rawbcd",
       "auto_install_type": "autounattend",
       "boot_method": "kernel"
     },
@@ -301,7 +398,7 @@
       "kernel_paths": ["/kernel/kernel.xz", "/EFI/BOOT/kernel.xz"],
       "initrd_paths": ["/initrd/initrd.xz", "/EFI/BOOT/initrd.xz"],
       "squashfs_paths": [],
-      "default_boot_params": "",
+      "default_boot_params": "initrd=initrd console=tty0 console=ttyS0,115200n8 quiet rw rootwait",
       "auto_install_type": "",
       "boot_method": "kernel"
     },

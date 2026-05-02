@@ -1,8 +1,3 @@
-// Package proxydhcp implements a PXE proxyDHCP responder (RFC 4578).
-//
-// It answers only the PXE-specific DHCP options (next-server, bootfile,
-// vendor class) and never offers an IP address, so it coexists with any
-// existing DHCP server on the same broadcast domain without conflict.
 package proxydhcp
 
 import (
@@ -20,7 +15,6 @@ import (
 )
 
 type Config struct {
-	// ServerIP is advertised as next-server. If zero, defaultServerIP picks one.
 	ServerIP      net.IP
 	BootfileBIOS  string
 	BootfileUEFI  string
@@ -60,8 +54,6 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("listen UDP/67: %w (needs root or CAP_NET_BIND_SERVICE)", err)
 	}
-	// SO_BROADCAST lets us reply from source port 67 directly, which many PXE
-	// ROMs require — they drop DHCP replies that don't come from port 67.
 	if err := enableBroadcast(conn); err != nil {
 		conn.Close()
 		return fmt.Errorf("enable broadcast on UDP/67: %w", err)
@@ -154,17 +146,14 @@ func (s *Server) handle(conn *net.UDPConn, src *net.UDPAddr, req *dhcpv4.DHCPv4,
 		log.Printf("proxyDHCP: build reply: %v", err)
 		return
 	}
-	// yiaddr must be zero — we are a proxy, not a DHCP server.
 	resp.YourIPAddr = net.IPv4zero
 	if guid := req.GetOneOption(dhcpv4.OptionClientMachineIdentifier); guid != nil {
 		resp.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, guid))
 	}
-	// Older PXE ROMs read the bootp `file` header, not option 67.
 	resp.BootFileName = bootfile
 
 	dst := &net.UDPAddr{IP: net.IPv4bcast, Port: 68}
 	if !bootp {
-		// PXE boot-server REQUEST on 4011: reply unicast to the client source.
 		dst = src
 	}
 
@@ -177,14 +166,10 @@ func (s *Server) handle(conn *net.UDPConn, src *net.UDPAddr, req *dhcpv4.DHCPv4,
 		req.MessageType(), req.ClientHWAddr, clientArch(req), bootfile)
 }
 
-// pxeVendorOptions builds the DHCP option 43 (vendor-specific) payload for
-// PXE. Sub-option 6 (PXE_DISCOVERY_CONTROL) with bit 3 set tells the client
-// to use the BootFileName directly and skip boot-server discovery, which is
-// what AMI/Supermicro UEFI PXE ROMs expect before they'll TFTP the bootfile.
 func pxeVendorOptions() []byte {
 	return []byte{
-		0x06, 0x01, 0x08, // PXE_DISCOVERY_CONTROL = USE_BOOT_FILE
-		0xff, // end
+		0x06, 0x01, 0x08,
+		0xff,
 	}
 }
 
