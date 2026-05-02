@@ -6,7 +6,6 @@ import (
 	"net"
 	"strconv"
 	"sync"
-	"syscall"
 
 	"bootimus/internal/metrics"
 
@@ -173,20 +172,6 @@ func pxeVendorOptions() []byte {
 	}
 }
 
-func enableBroadcast(conn *net.UDPConn) error {
-	raw, err := conn.SyscallConn()
-	if err != nil {
-		return err
-	}
-	var setErr error
-	if err := raw.Control(func(fd uintptr) {
-		setErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1)
-	}); err != nil {
-		return err
-	}
-	return setErr
-}
-
 func (s *Server) bootfileFor(req *dhcpv4.DHCPv4) string {
 	switch clientArch(req) {
 	case iana.EFI_IA32, iana.EFI_X86_64, iana.EFI_BC:
@@ -232,3 +217,4 @@ func defaultServerIP() (net.IP, error) {
 	}
 	return nil, fmt.Errorf("no suitable IPv4 address found")
 }
+
