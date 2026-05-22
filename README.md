@@ -95,14 +95,15 @@ docker-compose up -d
 
 ## Documentation
 
-- **[Deployment Guide](docs/deployment.md)** - Docker, binary, networking, and storage
-- **[Image Management](docs/images.md)** - Upload ISOs, extract kernels, netboot support
-- **[USB Appliance](docs/appliance.md)** - Flashable Alpine+bootimus image for portable PXE servers
-- **[Admin Console](docs/admin.md)** - Web UI and REST API reference
-- **[DHCP Configuration](docs/dhcp.md)** - Configure your DHCP server
-- **[Client Management](docs/clients.md)** - MAC-based access control, auto-discovery, next boot
-- **[Authentication](docs/authentication.md)** - JWT auth, LDAP/Active Directory setup
-- **[Distro Profiles](docs/distro-profiles.md)** - Data-driven distro detection and boot params
+- **[Deployment Guide](docs/en/deployment.md)** - Docker, binary, networking, and storage
+- **[Image Management](docs/en/images.md)** - Upload ISOs, extract kernels, netboot support
+- **[USB Appliance](docs/en/appliance.md)** - Flashable Alpine+bootimus image for portable PXE servers
+- **[Admin Console](docs/en/admin.md)** - Web UI and REST API reference
+- **[DHCP Configuration](docs/en/dhcp.md)** - Configure your DHCP server
+- **[Auto-Install](docs/en/auto-install.md)** - autounattend.xml, cloud-init, kickstart, preseed
+- **[Client Management](docs/en/clients.md)** - MAC-based access control, auto-discovery, next boot
+- **[Authentication](docs/en/authentication.md)** - JWT auth, LDAP/Active Directory setup
+- **[Distro Profiles](docs/en/distro-profiles.md)** - Data-driven distro detection and boot params
 
 ## Boot Tools
 
@@ -158,7 +159,7 @@ The built-in set is always available as a fallback. Files not present in the act
 
 For distributions not in this list, the **generic boot scanner** automatically walks the ISO filesystem to find kernel and initrd files and attempts to extract boot parameters from syslinux/grub configuration files.
 
-Need to add a new distro? Create a **custom distro profile** from the admin UI — no code change required. See the [Distro Profiles Guide](docs/distro-profiles.md). You can also contribute profiles to the official list via pull request.
+Need to add a new distro? Create a **custom distro profile** from the admin UI — no code change required. See the [Distro Profiles Guide](docs/en/distro-profiles.md). You can also contribute profiles to the official list via pull request.
 
 ## ISO Organisation
 
@@ -303,7 +304,7 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 }
 ```
 
-See [DHCP Configuration Guide](docs/dhcp.md) for Dnsmasq, MikroTik, Ubiquiti, and more.
+See [DHCP Configuration Guide](docs/en/dhcp.md) for Dnsmasq, MikroTik, Ubiquiti, and more.
 
 ## Building from Source
 

@@ -1,4 +1,4 @@
-.PHONY: help build run clean docker-build docker-up docker-down docker-push release binaries bootloaders sync-profiles bump appliance appliance-amd64 appliance-arm64 test-appliance build-website push-website
+.PHONY: help build run clean docker-build docker-up docker-down docker-push release binaries bootloaders sync-profiles bump appliance appliance-amd64 appliance-arm64 test-appliance build-website push-website deploy-website
 
 VERSION     ?= $(shell cat VERSION)
 DOCKER_USER ?= garybowers
@@ -12,6 +12,7 @@ BINARY      := bootimus
 GCP_PROJECT      ?= b1-services-230040
 GCP_REGION       ?= europe-west2
 GCP_REPO         ?= bootimus
+CLOUDRUN_SERVICE ?= bootimus
 WEBSITE_VERSION  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo latest)
 WEBSITE_IMAGE    := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT)/$(GCP_REPO)/website
 
@@ -47,6 +48,7 @@ help:
 	@echo "Website (marketing site -> Google Artifact Registry):"
 	@echo "  make build-website    - Build amd64 image from repo root into GCP AR"
 	@echo "  make push-website     - Build + push to $(GCP_REGION)-docker.pkg.dev"
+	@echo "  make deploy-website   - Push + roll Cloud Run service '$(CLOUDRUN_SERVICE)' to the new image"
 	@echo ""
 	@echo "Versioning:"
 	@echo "  make bump NEW_VERSION=X.Y.Z  - Bump VERSION + sync into both *-profiles.json"
@@ -174,3 +176,11 @@ push-website: build-website
 	@echo ""
 	@echo "Cloud Run image URL:"
 	@echo "  $(WEBSITE_IMAGE):latest"
+
+deploy-website: push-website
+	@echo "Rolling Cloud Run service '$(CLOUDRUN_SERVICE)' in $(GCP_REGION) to $(WEBSITE_IMAGE):$(WEBSITE_VERSION)…"
+	gcloud run services update $(CLOUDRUN_SERVICE) \
+		--project=$(GCP_PROJECT) \
+		--region=$(GCP_REGION) \
+		--image=$(WEBSITE_IMAGE):$(WEBSITE_VERSION)
+	@echo "Deployed. Live at the Cloud Run service URL."
