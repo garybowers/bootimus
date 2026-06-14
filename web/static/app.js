@@ -1884,6 +1884,9 @@ function computeImageHealth(img) {
     if (img.boot_method === 'nbd' && !img.extracted) {
         return { reason: 'NBD boot needs extraction' };
     }
+    if (img.boot_method === 'nfs' && !img.extracted) {
+        return { reason: 'NFS boot needs extraction' };
+    }
     // Distro is known and the boot method doesn't match what the profile
     // recommends — same-distro mismatch is the strongest signal of "won't
     // boot well", e.g. Ubuntu on sanboot.
@@ -2122,6 +2125,8 @@ function imageRowHTML(img, includeGroupCell, depth = 0) {
                                 '<span class="badge badge-success">Kernel</span>' :
                                 img.boot_method === 'nbd' ?
                                 '<span class="badge badge-warning">NBD</span>' :
+                                img.boot_method === 'nfs' ?
+                                '<span class="badge badge-warning">NFS</span>' :
                                 '<span class="badge badge-info">SAN</span>'
                             }
                             ${!img.sanboot_compatible && img.sanboot_hint && img.boot_method === 'sanboot' && !img.extracted ?
@@ -2559,7 +2564,8 @@ async function cycleBootMethod(filename, currentMethod) {
     const cycle = {
         'sanboot': 'kernel',
         'kernel': 'nbd',
-        'nbd': 'sanboot'
+        'nbd': 'nfs',
+        'nfs': 'sanboot'
     };
     const nextMethod = cycle[currentMethod] || 'sanboot';
     await setBootMethod(filename, nextMethod);
@@ -2771,7 +2777,7 @@ const API_REFERENCE = [
         { method: 'GET',    path: '/api/images/extract-progress?filename={fn}', desc: 'Extraction progress.' },
         { method: 'POST',   path: '/api/images/redetect?filename={fn}', desc: 'Re-run distro detection and boot-param resolution.' },
         { method: 'POST',   path: '/api/images/patch-smb?filename={fn}', desc: 'Patch boot.wim for Windows SMB install.' },
-        { method: 'POST',   path: '/api/images/boot-method?filename={fn}', desc: 'Body: <code>{method}</code> (sanboot/kernel/nbd).' },
+        { method: 'POST',   path: '/api/images/boot-method?filename={fn}', desc: 'Body: <code>{method}</code> (sanboot/kernel/nbd/nfs).' },
         { method: 'POST',   path: '/api/images/netboot/download?filename={fn}', desc: 'Fetch netboot kernel/initrd from distro mirror.' },
         { method: 'GET',    path: '/api/images/autoinstall?filename={fn}', desc: 'Get auto-install script for image.' },
         { method: 'POST',   path: '/api/images/autoinstall?filename={fn}', desc: 'Body: <code>{script, type, enabled}</code>' },

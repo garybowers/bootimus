@@ -135,6 +135,7 @@ const TRANSLATIONS = {
         'props.boot_method.sanboot': 'SAN Boot',
         'props.boot_method.kernel': 'Kernel/Initrd',
         'props.boot_method.nbd': 'NBD Mount',
+        'props.boot_method.nfs': 'NFS Mount',
 
         'props.action.extract': 'Extract',
         'props.action.re_extract': 'Re-Extract',
@@ -299,6 +300,7 @@ const TRANSLATIONS = {
         'props.boot_method.sanboot': 'SAN-Boot',
         'props.boot_method.kernel': 'Kernel/Initrd',
         'props.boot_method.nbd': 'NBD-Mount',
+        'props.boot_method.nfs': 'NFS-Mount',
 
         'props.action.extract': 'Extrahieren',
         'props.action.re_extract': 'Neu extrahieren',
@@ -463,6 +465,7 @@ const TRANSLATIONS = {
         'props.boot_method.sanboot': 'Démarrage SAN',
         'props.boot_method.kernel': 'Noyau/Initrd',
         'props.boot_method.nbd': 'Montage NBD',
+        'props.boot_method.nfs': 'Montage NFS',
 
         'props.action.extract': 'Extraire',
         'props.action.re_extract': 'Ré-extraire',
@@ -631,6 +634,7 @@ const TRANSLATIONS = {
         'props.boot_method.sanboot': 'SAN-загрузка',
         'props.boot_method.kernel': 'Ядро/Initrd',
         'props.boot_method.nbd': 'Монтирование NBD',
+        'props.boot_method.nfs': 'Монтирование NFS',
 
         'props.action.extract': 'Извлечь',
         'props.action.re_extract': 'Извлечь заново',
@@ -795,6 +799,7 @@ const TRANSLATIONS = {
         'props.boot_method.sanboot': 'SAN 引导',
         'props.boot_method.kernel': '内核 / Initrd',
         'props.boot_method.nbd': 'NBD 挂载',
+        'props.boot_method.nfs': 'NFS 挂载',
 
         'props.action.extract': '解包',
         'props.action.re_extract': '重新解包',
