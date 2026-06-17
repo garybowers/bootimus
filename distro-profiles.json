@@ -15,12 +15,13 @@
       "mirrors": [
         {"region": "Global (Canonical)", "base": "https://releases.ubuntu.com"},
         {"region": "UK (Bytemark)", "base": "https://mirror.bytemark.co.uk/ubuntu-releases"},
-        {"region": "DE (GWDG)", "base": "https://ftp.gwdg.de/pub/linux/ubuntu-releases"}
+        {"region": "DE (Uni Erlangen)", "base": "https://ftp.uni-erlangen.de/mirrors/ubuntu-releases"}
       ],
       "releases": [
-        {"label": "24.04 LTS Desktop (amd64)", "path": "/24.04.3/ubuntu-24.04.3-desktop-amd64.iso"},
-        {"label": "24.04 LTS Server (amd64)", "path": "/24.04.3/ubuntu-24.04.3-live-server-amd64.iso"},
-        {"label": "22.04 LTS Desktop (amd64)", "path": "/22.04.5/ubuntu-22.04.5-desktop-amd64.iso"}
+        {"label": "26.04 LTS Desktop (amd64)", "path": "/26.04/ubuntu-26.04-desktop-amd64.iso"},
+        {"label": "26.04 LTS Server (amd64)", "path": "/26.04/ubuntu-26.04-live-server-amd64.iso"},
+        {"label": "24.04 LTS Desktop (amd64)", "path": "/24.04.4/ubuntu-24.04.4-desktop-amd64.iso"},
+	{"label": "24.04 LTS Server (amd64)", "path": "/24.04.4/ubuntu-24.04.4-live-server-amd64.iso"}
       ]
     },
     {
@@ -35,12 +36,13 @@
       "auto_install_type": "",
       "boot_method": "kernel",
       "mirrors": [
-        {"region": "UK (Universiry of Kent Mirrorservice)", "base": "https://mirrorservice.org/sites/www.linuxmint.com/pub/linuxmint.com"}
+        {"region": "UK (Universiry of Kent Mirrorservice)", "base": "https://mirrorservice.org/sites/www.linuxmint.com/pub/linuxmint.com"},
+	{"region": "DE (GWDG)", "base": "https://ftp5.gwdg.de/pub/linux/debian/mint"}
       ],
       "releases": [
-        {"label": "22.3 Cinnamon (64-bit)", "path": "/stable/22.1/linuxmint-22.3-cinnamon-64bit.iso"},
-        {"label": "22.3 MATE (64-bit)", "path": "/stable/22.1/linuxmint-22.3-mate-64bit.iso"},
-        {"label": "22.3 XFCE (64-bit)", "path": "/stable/22.1/linuxmint-22.3-xfce-64bit.iso"}
+        {"label": "22.3 Cinnamon (64-bit)", "path": "/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso"},
+        {"label": "22.3 MATE (64-bit)", "path": "/stable/22.3/linuxmint-22.3-mate-64bit.iso"},
+        {"label": "22.3 XFCE (64-bit)", "path": "/stable/22.3/linuxmint-22.3-xfce-64bit.iso"}
       ]
     },
     {
@@ -109,8 +111,8 @@
         {"region": "DE (GWDG)", "base": "https://ftp.gwdg.de/debian-cd/current/amd64"}
       ],
       "releases": [
-        {"label": "13 (Trixie) DVD-1 (amd64)", "path": "/iso-dvd/debian-13.4.0-amd64-DVD-1.iso"},
-        {"label": "13 (Trixie) Netinst (amd64)", "path": "/iso-cd/debian-13.4.0-amd64-netinst.iso"}
+        {"label": "13 (Trixie) DVD-1 (amd64)", "path": "/iso-dvd/debian-13.5.0-amd64-DVD-1.iso"},
+        {"label": "13 (Trixie) Netinst (amd64)", "path": "/iso-cd/debian-13.5.0-amd64-netinst.iso"}
       ]
     },
     {
