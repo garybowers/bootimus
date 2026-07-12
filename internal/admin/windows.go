@@ -75,6 +75,10 @@ func (h *Handler) RebuildBootWim(imageID uint) error {
 		if err := copyFile(bootWimPath, backupPath); err != nil {
 			return fmt.Errorf("failed to backup boot.wim: %w", err)
 		}
+	} else {
+		if err := copyFile(backupPath, bootWimPath); err != nil {
+			return fmt.Errorf("failed to copy backup to boot.wim: %w", err)
+		}
 	}
 
 	log.Printf("Extracting driver packs...")
@@ -103,27 +107,13 @@ func (h *Handler) RebuildBootWim(imageID uint) error {
 	for idx := 1; idx <= imageCount; idx++ {
 		log.Printf("Processing WIM image %d...", idx)
 
-		log.Printf("  Extracting image %d...", idx)
-		extractCmd := exec.Command("wimextract", bootWimPath, fmt.Sprintf("%d", idx), "--dest-dir", extractDir)
+		log.Printf("  Updating image %d...", idx)
+		extractCmd := exec.Command("wimupdate", bootWimPath, fmt.Sprintf("%d", idx))
+		extractCmd.Stdin = strings.NewReader(fmt.Sprintf("add \"%s\" \"/Windows/System32/DriverStore/FileRepository\"\n", driversDir))
 		if output, err := extractCmd.CombinedOutput(); err != nil {
-			log.Printf("wimextract output: %s", string(output))
-			return fmt.Errorf("failed to extract WIM image %d: %w", idx, err)
+			log.Printf("wimupdate output: %s", string(output))
+			return fmt.Errorf("failed to update WIM image %d: %w", idx, err)
 		}
-
-		log.Printf("  Injecting drivers into image %d...", idx)
-		if err := injectDriversOffline(extractDir, driversDir); err != nil {
-			return fmt.Errorf("failed to inject drivers into image %d: %w", idx, err)
-		}
-
-		log.Printf("  Capturing modified image %d...", idx)
-		captureCmd := exec.Command("wimcapture", extractDir, bootWimPath, fmt.Sprintf("%d", idx), "--compress=LZX")
-		if output, err := captureCmd.CombinedOutput(); err != nil {
-			log.Printf("wimcapture output: %s", string(output))
-			return fmt.Errorf("failed to capture WIM image %d: %w", idx, err)
-		}
-
-		os.RemoveAll(extractDir)
-		os.MkdirAll(extractDir, 0755)
 	}
 
 	now := time.Now()
@@ -136,42 +126,6 @@ func (h *Handler) RebuildBootWim(imageID uint) error {
 
 	log.Printf("Successfully rebuilt boot.wim for %s", imageName)
 	return nil
-}
-
-func injectDriversOffline(mountDir, driversDir string) error {
-	windowsDir := filepath.Join(mountDir, "Windows")
-	if _, err := os.Stat(windowsDir); os.IsNotExist(err) {
-		return fmt.Errorf("Windows directory not found in extracted image")
-	}
-
-	driverStoreDir := filepath.Join(windowsDir, "System32", "DriverStore", "FileRepository")
-	if err := os.MkdirAll(driverStoreDir, 0755); err != nil {
-		return fmt.Errorf("failed to create DriverStore directory: %w", err)
-	}
-
-	return filepath.Walk(driversDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
-			return nil
-		}
-
-		relPath, err := filepath.Rel(driversDir, path)
-		if err != nil {
-			return err
-		}
-
-		destPath := filepath.Join(driverStoreDir, relPath)
-		destDir := filepath.Dir(destPath)
-
-		if err := os.MkdirAll(destDir, 0755); err != nil {
-			return err
-		}
-
-		return copyFile(path, destPath)
-	})
 }
 
 func extractZipFile(zipPath, destDir string) error {
