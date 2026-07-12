@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"bootimus/internal/models"
+	"bootimus/internal/wim"
 )
 
 func (h *Handler) RebuildBootWim(imageID uint) error {
@@ -86,14 +87,17 @@ func (h *Handler) RebuildBootWim(imageID uint) error {
 	}
 
 	log.Printf("Listing WIM images...")
-	infoCmd := exec.Command("wiminfo", bootWimPath)
-	infoOutput, err := infoCmd.CombinedOutput()
+
+	wimManager, err := wim.NewManager()
 	if err != nil {
-		log.Printf("wiminfo output: %s", string(infoOutput))
-		return fmt.Errorf("failed to get WIM info: %w", err)
+		return fmt.Errorf("failed to create WIM manager: %w", err)
 	}
 
-	imageCount := 2
+	imageCount, err := wimManager.GetImageCount(bootWimPath)
+	if err != nil {
+		return fmt.Errorf("failed to get WIM image count: %w", err)
+	}
+
 	log.Printf("Processing %d WIM image(s)", imageCount)
 
 	for idx := 1; idx <= imageCount; idx++ {
