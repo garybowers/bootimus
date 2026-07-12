@@ -1145,8 +1145,8 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/images", authWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			id := r.URL.Query().Get("id")
-			if id != "" {
+			filename := r.URL.Query().Get("filename")
+			if filename != "" {
 				adminHandler.GetImage(w, r)
 			} else {
 				adminHandler.ListImages(w, r)
