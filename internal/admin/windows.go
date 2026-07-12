@@ -35,7 +35,7 @@ func (h *Handler) RebuildBootWim(imageID uint) error {
 
 	imageName := strings.TrimSuffix(image.Filename, filepath.Ext(image.Filename))
 	imageDir := filepath.Join(h.isoDir, imageName)
-	bootWimPath := filepath.Join(imageDir, "sources", "boot.wim")
+	bootWimPath := filepath.Join(imageDir, "iso", "sources", "boot.wim")
 
 	if _, err := os.Stat(bootWimPath); os.IsNotExist(err) {
 		return fmt.Errorf("boot.wim not found at %s", bootWimPath)
