@@ -356,8 +356,59 @@ func (s *Server) GetActiveBootloaderSet() string {
 
 func (s *Server) SetActiveBootloaderSet(name string) {
 	s.activeBootloaderSetMu.Lock()
-	defer s.activeBootloaderSetMu.Unlock()
 	s.activeBootloaderSet = name
+	s.activeBootloaderSetMu.Unlock()
+
+	display := name
+	if display == "" {
+		display = bootloaders.DefaultSet
+	}
+	bios, uefi, arm64 := s.proxyDHCPBootfiles()
+	log.Printf("Bootloader set %q active: PXE bootfiles BIOS=%s UEFI=%s ARM64=%s", display, bios, uefi, arm64)
+}
+
+// activeSetManifest loads manifest.json for the active bootloader set — from
+// the on-disk set directory when present, otherwise from the embedded sets.
+func (s *Server) activeSetManifest() *bootloaders.Manifest {
+	setName := s.GetActiveBootloaderSet()
+	if setName == "" {
+		setName = bootloaders.DefaultSet
+	}
+	if s.config.BootDir != "" {
+		diskPath := filepath.Join(s.config.BootDir, setName, "manifest.json")
+		if data, err := os.ReadFile(diskPath); err == nil {
+			if m, err := bootloaders.ParseManifest(data); err == nil {
+				return m
+			}
+		}
+	}
+	m, err := bootloaders.LoadManifest(setName)
+	if err != nil {
+		return nil
+	}
+	return m
+}
+
+// proxyDHCPBootfiles returns the bootfile names proxyDHCP should advertise.
+// Precedence: explicitly configured value (differs from the compiled default)
+// > active bootloader set manifest > compiled default. Evaluated per DHCP
+// request, so switching sets takes effect without a restart.
+func (s *Server) proxyDHCPBootfiles() (bios, uefi, arm64 string) {
+	bios = s.config.ProxyDHCPBootfileBIOS
+	uefi = s.config.ProxyDHCPBootfileUEFI
+	arm64 = s.config.ProxyDHCPBootfileARM
+	if m := s.activeSetManifest(); m != nil {
+		if (bios == "" || bios == proxydhcp.DefaultBootfileBIOS) && m.Bootfiles.BIOS != "" {
+			bios = m.Bootfiles.BIOS
+		}
+		if (uefi == "" || uefi == proxydhcp.DefaultBootfileUEFI) && m.Bootfiles.UEFI != "" {
+			uefi = m.Bootfiles.UEFI
+		}
+		if (arm64 == "" || arm64 == proxydhcp.DefaultBootfileARM64) && m.Bootfiles.ARM64 != "" {
+			arm64 = m.Bootfiles.ARM64
+		}
+	}
+	return bios, uefi, arm64
 }
 
 func (s *Server) resolveBootloaderFile(filename string) string {
@@ -540,6 +591,7 @@ func (s *Server) Start() error {
 			BootfileBIOS:  s.config.ProxyDHCPBootfileBIOS,
 			BootfileUEFI:  s.config.ProxyDHCPBootfileUEFI,
 			BootfileARM64: s.config.ProxyDHCPBootfileARM,
+			Bootfiles:     s.proxyDHCPBootfiles,
 		})
 		if err != nil {
 			log.Printf("proxyDHCP: failed to construct server: %v", err)
@@ -1768,10 +1820,6 @@ echo Auto-install enabled for this image
 {{if eq $img.Distro "windows"}}
 echo Loading Windows boot files via wimboot...
 kernel http://{{$.ServerAddr}}:{{$.HTTPPort}}/wimboot
-initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/bootmgfw.efi bootmgfw.efi
-initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/bootx64.efi bootx64.efi
-initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/bcd BCD
-initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/boot.sdi boot.sdi
 initrd http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/boot.wim boot.wim
 {{if $img.InstallWimPath}}initrd --name {{$img.InstallBasename}} http://{{$.ServerAddr}}:{{$.HTTPPort}}/boot/{{$img.CacheDir}}/{{$img.InstallBasename}}
 {{end}}boot || goto failed

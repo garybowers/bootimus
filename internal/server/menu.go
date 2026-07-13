@@ -307,10 +307,19 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 
 	switch img.Distro {
 	case "windows", "windows7":
+		// wimboot's command line only takes its own flags — kernel parameters
+		// and the generic iso-url fallback are meaningless here and make it
+		// abort with "Unrecognised argument" (the UI locks the field for the
+		// same reason). Only the legacy windows7 profile passes flags (rawbcd).
+		wimbootArgs := ""
+		if img.Distro == "windows7" {
+			wimbootArgs = bootParams
+		}
 		sb.WriteString("echo Loading Windows boot files via wimboot...\n")
-		sb.WriteString(fmt.Sprintf("kernel %s/wimboot%s\n", baseURL, bootParams))
-		sb.WriteString(fmt.Sprintf("initrd %s/boot/%s/iso/boot/bcd BCD || initrd %s/boot/%s/iso/BOOT/BCD BCD\n", baseURL, cacheDir, baseURL, cacheDir))
-		sb.WriteString(fmt.Sprintf("initrd %s/boot/%s/iso/boot/boot.sdi boot.sdi || initrd %s/boot/%s/iso/BOOT/BOOT.SDI boot.sdi\n", baseURL, cacheDir, baseURL, cacheDir))
+		sb.WriteString(fmt.Sprintf("kernel %s/wimboot%s\n", baseURL, wimbootArgs))
+		// Ship only boot.wim and let wimboot synthesize the ramdisk BCD +
+		// boot.sdi (the documented minimal setup). Feeding the ISO's DVD BCD
+		// hangs 24H2/25H2 media on a black screen after the loading bar.
 		sb.WriteString(fmt.Sprintf("initrd %s/boot/%s/iso/sources/boot.wim boot.wim || initrd %s/boot/%s/iso/SOURCES/BOOT.WIM boot.wim\n", baseURL, cacheDir, baseURL, cacheDir))
 		sb.WriteString("boot || goto failed\n")
 

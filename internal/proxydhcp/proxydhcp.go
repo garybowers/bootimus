@@ -13,11 +13,21 @@ import (
 	"github.com/insomniacslk/dhcp/iana"
 )
 
+const (
+	DefaultBootfileBIOS  = "undionly.kpxe"
+	DefaultBootfileUEFI  = "bootimus.efi"
+	DefaultBootfileARM64 = "bootimus-arm64.efi"
+)
+
 type Config struct {
 	ServerIP      net.IP
 	BootfileBIOS  string
 	BootfileUEFI  string
 	BootfileARM64 string
+	// Bootfiles, when set, is consulted on every request; any non-empty value
+	// it returns overrides the static Bootfile* fields. This lets the server
+	// switch bootloader sets at runtime without restarting proxyDHCP.
+	Bootfiles func() (bios, uefi, arm64 string)
 }
 
 type Server struct {
@@ -37,13 +47,13 @@ func NewServer(cfg Config) (*Server, error) {
 		cfg.ServerIP = ip
 	}
 	if cfg.BootfileBIOS == "" {
-		cfg.BootfileBIOS = "undionly.kpxe"
+		cfg.BootfileBIOS = DefaultBootfileBIOS
 	}
 	if cfg.BootfileUEFI == "" {
-		cfg.BootfileUEFI = "bootimus.efi"
+		cfg.BootfileUEFI = DefaultBootfileUEFI
 	}
 	if cfg.BootfileARM64 == "" {
-		cfg.BootfileARM64 = "bootimus-arm64.efi"
+		cfg.BootfileARM64 = DefaultBootfileARM64
 	}
 	return &Server{cfg: cfg, done: make(chan struct{})}, nil
 }
@@ -66,8 +76,9 @@ func (s *Server) Start() error {
 	}
 	s.conn4011 = conn4011
 
+	bios, uefi, arm64 := s.effectiveBootfiles()
 	log.Printf("proxyDHCP: listening on UDP/67 + UDP/4011, advertising next-server=%s (BIOS=%s, UEFI=%s, ARM64=%s)",
-		s.cfg.ServerIP, s.cfg.BootfileBIOS, s.cfg.BootfileUEFI, s.cfg.BootfileARM64)
+		s.cfg.ServerIP, bios, uefi, arm64)
 
 	s.wg.Add(2)
 	go s.loop(conn, true)
@@ -172,14 +183,32 @@ func pxeVendorOptions() []byte {
 	}
 }
 
+func (s *Server) effectiveBootfiles() (bios, uefi, arm64 string) {
+	bios, uefi, arm64 = s.cfg.BootfileBIOS, s.cfg.BootfileUEFI, s.cfg.BootfileARM64
+	if s.cfg.Bootfiles != nil {
+		overrideBIOS, overrideUEFI, overrideARM64 := s.cfg.Bootfiles()
+		if overrideBIOS != "" {
+			bios = overrideBIOS
+		}
+		if overrideUEFI != "" {
+			uefi = overrideUEFI
+		}
+		if overrideARM64 != "" {
+			arm64 = overrideARM64
+		}
+	}
+	return bios, uefi, arm64
+}
+
 func (s *Server) bootfileFor(req *dhcpv4.DHCPv4) string {
+	bios, uefi, arm64 := s.effectiveBootfiles()
 	switch clientArch(req) {
 	case iana.EFI_IA32, iana.EFI_X86_64, iana.EFI_BC:
-		return s.cfg.BootfileUEFI
+		return uefi
 	case iana.EFI_ARM64:
-		return s.cfg.BootfileARM64
+		return arm64
 	default:
-		return s.cfg.BootfileBIOS
+		return bios
 	}
 }
 

@@ -190,6 +190,17 @@ func buildStartnetScript(serverAddr, shareName string, smbPort, httpPort int, is
 
 	base := fmt.Sprintf(`@echo off
 wpeinit
+rem Windows 11 24H2+ WinPE ships with insecure guest auth disabled and SMB
+rem signing required; guest sessions cannot sign, so mapping the read-only
+rem guest share fails with access denied. Re-enable guest SMB for this
+rem WinPE session only (never touches the installed OS). Must be set before
+rem the Workstation service starts, which is when the parameters are read.
+reg add HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters /v AllowInsecureGuestAuth /t REG_DWORD /d 1 /f >nul 2>&1
+reg add HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters /v RequireSecuritySignature /t REG_DWORD /d 0 /f >nul 2>&1
+rem Start the SMB client now so the redirector finishes binding to the NIC
+rem while we wait for the network below — started any later, the first
+rem mapping attempts fail with transient "System error 53".
+net start Workstation >nul 2>&1
 echo Acquiring DHCP lease...
 ipconfig /renew >nul 2>&1
 
@@ -211,14 +222,15 @@ exit /b 1
 :netready
 
 echo Connecting to bootimus installation source...
-rem Kick the SMB client stack — net use otherwise triggers lazy init and races wpeinit.
-net start Workstation >nul 2>&1
 set /a TRIES=0
 :mapshare
-net use Z: \\%s\%s /persistent:no >nul
+rem Expected to fail with "System error 53" for the first few tries while the
+rem SMB client stack and the server's 445 path come up — the loop handles it.
+net use Z: \\%s\%s /persistent:no >nul 2>&1
 if not errorlevel 1 goto mapped
 set /a TRIES+=1
 if %%TRIES%% geq 30 goto mapfail
+echo Still trying to connect (%%TRIES%%/30), please wait...
 ping 127.0.0.1 -n 4 >nul 2>&1
 goto mapshare
 :mapfail
