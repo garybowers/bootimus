@@ -93,6 +93,27 @@ cd bootimus
 docker-compose up -d
 ```
 
+### Archlinux aur packages
+
+[![bootimus](https://img.shields.io/aur/version/bootimus?label=bootimus)](https://aur.archlinux.org/packages/bootimus/)
+[![bootimus-bin](https://img.shields.io/aur/version/bootimus-bin?label=bootimus-bin)](https://aur.archlinux.org/packages/bootimus-bin/)
+
+bootimus is available on the [AUR](https://wiki.archlinux.org/index.php/Arch_User_Repository):
+- [bootimus](https://aur.archlinux.org/packages/bootimus/) (release package with systemd integration)
+- [bootimus-bin](https://aur.archlinux.org/packages/bootimus-bin/) (standalone binary release package)
+
+You can install it using your [AUR helper](https://wiki.archlinux.org/index.php/AUR_helpers) of choice.
+
+Example:
+```shell
+$ yay -Sy bootimus
+
+# Edit /etc/bootimus/bootimus.yaml with your preference
+
+# And start the service
+$ systemctl start bootimus
+```
+
 ## Documentation
 
 - **[Deployment Guide](docs/en/deployment.md)** - Docker, binary, networking, and storage
