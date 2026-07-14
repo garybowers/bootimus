@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"bootimus/internal/proxydhcp"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -66,9 +68,9 @@ func init() {
 	rootCmd.PersistentFlags().Bool("disable-remote-profiles", false, "Disable remote distro profile updates")
 
 	rootCmd.PersistentFlags().Bool("proxy-dhcp", false, "Enable in-process proxyDHCP server (answers PXE requests without handing out IPs; requires root or CAP_NET_BIND_SERVICE)")
-	rootCmd.PersistentFlags().String("proxy-dhcp-bootfile-bios", "undionly.kpxe", "Bootfile advertised to legacy BIOS PXE clients")
-	rootCmd.PersistentFlags().String("proxy-dhcp-bootfile-uefi", "bootimus.efi", "Bootfile advertised to UEFI x64 PXE clients")
-	rootCmd.PersistentFlags().String("proxy-dhcp-bootfile-arm64", "bootimus-arm64.efi", "Bootfile advertised to UEFI ARM64 PXE clients")
+	rootCmd.PersistentFlags().String("proxy-dhcp-bootfile-bios", proxydhcp.DefaultBootfileBIOS, "Bootfile advertised to legacy BIOS PXE clients (default follows the active bootloader set's manifest)")
+	rootCmd.PersistentFlags().String("proxy-dhcp-bootfile-uefi", proxydhcp.DefaultBootfileUEFI, "Bootfile advertised to UEFI x64 PXE clients (default follows the active bootloader set's manifest)")
+	rootCmd.PersistentFlags().String("proxy-dhcp-bootfile-arm64", proxydhcp.DefaultBootfileARM64, "Bootfile advertised to UEFI ARM64 PXE clients (default follows the active bootloader set's manifest)")
 
 	rootCmd.PersistentFlags().Bool("windows-smb", false, "Enable Samba share for unattended Windows PXE installs (requires smbd in PATH)")
 	rootCmd.PersistentFlags().Int("windows-smb-port", 445, "SMB port (Windows 'net use' always uses 445; override only for testing)")

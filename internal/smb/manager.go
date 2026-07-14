@@ -194,6 +194,11 @@ func (m *Manager) writeConfig() error {
    path = %s
    read only = yes
    guest ok = yes
+   # Guest maps to "nobody" (uid 65534), which NFS-backed data dirs commonly
+   # reject (root squash / export rules only trust specific UIDs). The
+   # bootimus process already reads these files as root, so let smbd do the
+   # same. Shares are read-only, so this only widens reads.
+   force user = root
    browseable = yes
 
 `, name, path)
