@@ -49,9 +49,12 @@ curl -u admin:password -X POST http://localhost:8081/api/images/download \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://releases.ubuntu.com/24.04/ubuntu-24.04-live-server-amd64.iso",
+    "filename": "ubuntu-24.04-live-server-amd64.iso",
     "description": "Ubuntu 24.04 LTS Server"
   }'
 ```
+
+**NB** The `filename` parameter is optional. When not given, its derived from the `url` parameter.
 
 **Monitor progress**:
 ```bash
