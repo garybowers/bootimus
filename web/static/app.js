@@ -2772,7 +2772,7 @@ const API_REFERENCE = [
         { method: 'PUT',    path: '/api/images?filename={fn}',     desc: 'Partial update. Fields: name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file.' },
         { method: 'DELETE', path: '/api/images?filename={fn}',     desc: 'Delete image. Add <code>&delete_file=true</code> to also remove the ISO.' },
         { method: 'POST',   path: '/api/images/upload',            desc: 'Multipart: <code>file</code>, <code>public</code>, <code>description</code>.' },
-        { method: 'POST',   path: '/api/images/download',          desc: 'Body: <code>{url, description}</code>. Async download.' },
+        { method: 'POST',   path: '/api/images/download',          desc: 'Body: <code>{url, filename, description}</code>. filename is optional. Async download.' },
         { method: 'POST',   path: '/api/images/extract?filename={fn}', desc: 'Extract kernel/initrd from ISO.' },
         { method: 'GET',    path: '/api/images/extract-progress?filename={fn}', desc: 'Extraction progress.' },
         { method: 'POST',   path: '/api/images/redetect?filename={fn}', desc: 'Re-run distro detection and boot-param resolution.' },
@@ -5328,7 +5328,7 @@ async function loadImageFileBrowser(filename) {
 function renderFileBrowser(files, filename) {
     const container = document.getElementById('image-file-browser');
 
-    const baseDir = filename.replace('.iso', '');
+    const baseDir = filename.replace(/\.[^/.]+$/, '');
     const hasFiles = files && files.length > 0;
 
     let html = `

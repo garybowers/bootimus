@@ -213,8 +213,6 @@ func setUserPassword(username string) {
 	fmt.Printf("Password updated for %s\n", username)
 }
 
-// promptForPassword reads a password twice from the terminal without echoing
-// it, and confirms the two entries match.
 func promptForPassword() (string, error) {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {

@@ -23,8 +23,6 @@ func (f *fakeUserStore) GetUser(username string) (*models.User, error) {
 	return u, nil
 }
 
-// Regression test for the missing-authorization flaw (issues #84 / #89 security
-// report, CWE-862): an authenticated non-admin must not reach admin endpoints.
 func TestAdminMiddlewareRequiresAdmin(t *testing.T) {
 	store := &fakeUserStore{users: map[string]*models.User{
 		"alice": {Username: "alice", Enabled: true, IsAdmin: true},
@@ -59,16 +57,12 @@ func TestAdminMiddlewareRequiresAdmin(t *testing.T) {
 	if got := call("Bearer " + tok("alice", true)); got != http.StatusOK {
 		t.Fatalf("admin: want 200, got %d", got)
 	}
-	// Non-admin with a truthful token → 403.
 	if got := call("Bearer " + tok("bob", false)); got != http.StatusForbidden {
 		t.Fatalf("non-admin: want 403, got %d", got)
 	}
-	// Forged token claiming admin for a non-admin account → still 403,
-	// because admin status is re-derived from the store.
 	if got := call("Bearer " + tok("bob", true)); got != http.StatusForbidden {
 		t.Fatalf("forged admin claim: want 403, got %d", got)
 	}
-	// Live demotion: alice loses admin, her existing token no longer works.
 	store.users["alice"].IsAdmin = false
 	if got := call("Bearer " + tok("alice", true)); got != http.StatusForbidden {
 		t.Fatalf("demoted admin: want 403, got %d", got)

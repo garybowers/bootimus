@@ -2703,6 +2703,7 @@ func formatBytes(bytes int64) string {
 func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		URL         string `json:"url"`
+		Filename    string `json:"filename"`
 		Description string `json:"description"`
 	}
 
@@ -2716,7 +2717,12 @@ func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := filepath.Base(req.URL)
+	var filename string
+	if req.Filename != "" {
+		filename = req.Filename
+	} else {
+		filename = filepath.Base(req.URL)
+	}
 	if !strings.HasSuffix(strings.ToLower(filename), ".iso") {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "URL must point to an .iso file"})
 		return

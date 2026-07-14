@@ -1140,11 +1140,6 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 
 	useAuth := s.config.Auth != nil
 
-	// adminWrap protects the administrative API. When authentication is
-	// enabled it requires a valid session that currently holds admin
-	// privileges, so an authenticated non-admin cannot reach privileged
-	// operations (e.g. user management). With auth disabled (single-user
-	// mode) the handler is served directly.
 	adminWrap := func(handler http.HandlerFunc) http.HandlerFunc {
 		if useAuth {
 			return s.config.Auth.AdminMiddleware(handler)
@@ -1207,8 +1202,8 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/images", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			id := r.URL.Query().Get("id")
-			if id != "" {
+			filename := r.URL.Query().Get("filename")
+			if filename != "" {
 				adminHandler.GetImage(w, r)
 			} else {
 				adminHandler.ListImages(w, r)
@@ -1650,8 +1645,13 @@ func (s *Server) recordBootIfNew(mac, path, remoteAddr string) {
 	s.bootLogDedupMu.Unlock()
 
 	imageName := imageDir
-	if img, err := s.config.Storage.GetImage(imageDir + ".iso"); err == nil {
-		imageName = img.Name
+	if images, err := s.config.Storage.ListImages(); err == nil {
+		for _, img := range images {
+			if strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename)) == imageDir {
+				imageName = img.Name
+				break
+			}
+		}
 	}
 	metrics.BootAttempts.WithLabelValues(imageName).Inc()
 	go func() {

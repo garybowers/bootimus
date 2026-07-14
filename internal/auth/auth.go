@@ -228,9 +228,6 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// authenticate validates the bearer token and confirms the account is still
-// enabled. It writes the appropriate error response and returns ok=false when
-// the request should not proceed.
 func (m *Manager) authenticate(w http.ResponseWriter, r *http.Request) (*Claims, bool) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
@@ -257,8 +254,6 @@ func (m *Manager) authenticate(w http.ResponseWriter, r *http.Request) (*Claims,
 		return nil, false
 	}
 
-	// Re-derive admin status from the store rather than trusting the token
-	// claim, so a demotion takes effect immediately.
 	claims.IsAdmin = user.IsAdmin
 	return claims, true
 }
@@ -272,9 +267,6 @@ func (m *Manager) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// AdminMiddleware requires a valid session whose account currently holds admin
-// privileges. It protects the administrative API from authenticated but
-// non-admin users.
 func (m *Manager) AdminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := m.authenticate(w, r)
