@@ -8,6 +8,7 @@ Bootimus 使用发行版 profile 来检测 ISO 类型并生成正确的引导参
 - [工作原理](#工作原理)
 - [查看 Profile](#查看-profile)
 - [更新 Profile](#更新-profile)
+- [远程更新与隐私](#远程更新与隐私)
 - [创建自定义 Profile](#创建自定义-profile)
 - [Profile 字段](#profile-字段)
 - [占位符](#占位符)
@@ -56,17 +57,27 @@ User creates:   Custom profiles stored in database (never overwritten)
 
 ## 更新 Profile
 
-### 自动(推荐)
+更新 profile 始终是一个**显式、按需触发的操作** — Bootimus 绝不会自行联系远程目录。在你触发更新之前,使用的都是构建时嵌入到二进制文件中的 profile。关于究竟会联系哪些服务以及如何禁用,请参阅[远程更新与隐私](#远程更新与隐私)。
 
-在 Distro Profiles 标签页点击 **"Check for Updates"**。这会从以下地址抓取最新 profile:
+当你触发更新时:
 
-```
-https://raw.githubusercontent.com/garybowers/bootimus/main/distro-profiles.json
-```
-
-- 自动添加新 profile
-- 把现有内建 profile 更新到最新版本
+- 新增 profile 会被添加
+- 现有的内建 profile 会被更新到最新版本
 - 自定义 profile 从不被修改
+
+有三种方式触发更新:
+
+### 从管理界面
+
+在 **Boot > Distro Profiles** 标签页点击 **"Check for Updates"**。
+
+### 从命令行
+
+```bash
+bootimus profiles update
+```
+
+它使用与 `serve` 相同的数据库配置(若设置了 `db.host` 则使用 PostgreSQL,否则使用 `data_dir` 下的本地 SQLite 数据库)。它会遵循 `--disable-remote-profiles`,当设置了该标志时会直接退出而不联系网络。
 
 ### 通过 API
 
@@ -81,6 +92,46 @@ curl -H "Authorization: Bearer $TOKEN" -X POST http://localhost:8081/api/profile
   "message": "Updated to version 0.1.21 (2 added, 5 updated)"
 }
 ```
+
+## 远程更新与隐私
+
+Bootimus 是自托管的,不会在后台悄悄回传数据。它唯一一次为获取 profile 而联系外部服务,是在**你**通过上述某种方式显式触发更新时。
+
+**联系的端点(仅在显式更新时):**
+
+```
+https://raw.githubusercontent.com/garybowers/bootimus/main/distro-profiles.json
+```
+
+对应的工具目录(**Tools** 标签页上的 "Check for Updates" / `POST /api/tools/update`)行为相同,联系的是:
+
+```
+https://raw.githubusercontent.com/garybowers/bootimus/main/tools-profiles.json
+```
+
+这些都是发往 GitHub 静态文件主机的普通、无需认证的 `GET` 请求。Bootimus 不会随请求发送任何系统信息、标识符或使用数据 — 它只是下载该 JSON 文件。请注意,与任何 HTTP 请求一样,GitHub 能看到你的源 IP 地址和标准的请求元数据。
+
+### 禁用远程更新
+
+为确保 Bootimus 绝不会联系远程目录 — 用于隔离网络(air-gapped)部署,或出于策略考虑 — 可以在启动时加上:
+
+```bash
+bootimus serve --disable-remote-profiles
+```
+
+或设置等效的配置/环境变量值:
+
+```yaml
+# bootimus.yaml
+disable_remote_profiles: true
+```
+
+```bash
+# environment variable
+BOOTIMUS_DISABLE_REMOTE_PROFILES=true
+```
+
+禁用后,首次运行时仍会从二进制文件中植入嵌入的 profile,因此 Bootimus 在离线状态下依然完全可用。"Check for Updates" 按钮、`/api/profiles/update` 端点以及 `bootimus profiles update` 都将拒绝运行。
 
 ## 创建自定义 Profile
 

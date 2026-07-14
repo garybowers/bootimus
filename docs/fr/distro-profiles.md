@@ -8,6 +8,7 @@ Bootimus utilise des profils de distro pour détecter les types d'ISOs et géné
 - [Fonctionnement](#fonctionnement)
 - [Voir les profils](#voir-les-profils)
 - [Mettre à jour les profils](#mettre-à-jour-les-profils)
+- [Mises à jour distantes et confidentialité](#mises-à-jour-distantes-et-confidentialité)
 - [Créer des profils personnalisés](#créer-des-profils-personnalisés)
 - [Champs de profil](#champs-de-profil)
 - [Placeholders](#placeholders)
@@ -56,17 +57,27 @@ Va dans **Boot > Distro Profiles** du panneau d'administration pour voir tous le
 
 ## Mettre à jour les profils
 
-### Automatique (recommandé)
+Mettre à jour les profils est toujours une **action explicite, à la demande** — Bootimus ne contacte jamais le catalogue distant de lui-même. Tant que tu ne déclenches pas de mise à jour, ce sont les profils embarqués dans le binaire au moment du build qui sont utilisés. Voir [Mises à jour distantes et confidentialité](#mises-à-jour-distantes-et-confidentialité) pour savoir exactement ce qui est contacté et comment le désactiver.
 
-Clique sur **« Check for Updates »** dans l'onglet Distro Profiles. Ça récupère les derniers profils depuis :
+Quand tu déclenches une mise à jour :
 
-```
-https://raw.githubusercontent.com/garybowers/bootimus/main/distro-profiles.json
-```
-
-- Les nouveaux profils sont ajoutés automatiquement
+- Les nouveaux profils sont ajoutés
 - Les profils built-in existants sont mis à jour vers la dernière version
 - Les profils custom ne sont jamais modifiés
+
+Il y a trois façons de la déclencher :
+
+### Depuis l'interface d'administration
+
+Clique sur **« Check for Updates »** dans l'onglet **Boot > Distro Profiles**.
+
+### Depuis la CLI
+
+```bash
+bootimus profiles update
+```
+
+Ça utilise la même configuration de base de données que `serve` (PostgreSQL si `db.host` est défini, sinon la base SQLite locale sous `data_dir`). Ça respecte `--disable-remote-profiles` et se termine sans contacter le réseau quand ce flag est défini.
 
 ### Via l'API
 
@@ -81,6 +92,46 @@ Réponse :
   "message": "Updated to version 0.1.21 (2 added, 5 updated)"
 }
 ```
+
+## Mises à jour distantes et confidentialité
+
+Bootimus est auto-hébergé et ne fait pas de « phone home » en arrière-plan. Le seul moment où il contacte un service externe pour les profils, c'est quand **toi** tu déclenches explicitement une mise à jour via l'une des méthodes ci-dessus.
+
+**Endpoint contacté (uniquement lors d'une mise à jour explicite) :**
+
+```
+https://raw.githubusercontent.com/garybowers/bootimus/main/distro-profiles.json
+```
+
+Le catalogue d'outils équivalent (« Check for Updates » dans l'onglet **Tools** / `POST /api/tools/update`) se comporte de la même façon et contacte :
+
+```
+https://raw.githubusercontent.com/garybowers/bootimus/main/tools-profiles.json
+```
+
+Ce sont de simples requêtes `GET` non authentifiées vers l'hébergeur de fichiers statiques de GitHub. Bootimus n'envoie avec elles aucune information système, aucun identifiant, ni aucune donnée d'usage — il télécharge simplement le fichier JSON. Note que, comme pour toute requête HTTP, GitHub voit ton adresse IP source et les métadonnées de requête standard.
+
+### Désactiver les mises à jour distantes
+
+Pour garantir que Bootimus ne contacte jamais le catalogue distant — pour les déploiements air-gapped, ou par principe — démarre-le avec :
+
+```bash
+bootimus serve --disable-remote-profiles
+```
+
+ou définis la valeur config/env équivalente :
+
+```yaml
+# bootimus.yaml
+disable_remote_profiles: true
+```
+
+```bash
+# environment variable
+BOOTIMUS_DISABLE_REMOTE_PROFILES=true
+```
+
+Quand c'est désactivé, les profils embarqués sont quand même initialisés depuis le binaire au premier lancement, donc Bootimus est pleinement fonctionnel hors ligne. Le bouton « Check for Updates », l'endpoint `/api/profiles/update` et `bootimus profiles update` refuseront tous de s'exécuter.
 
 ## Créer des profils personnalisés
 
