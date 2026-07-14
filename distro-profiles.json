@@ -197,11 +197,11 @@
       "mirrors": [
         {"region": "Global (Auto-redirect)", "base": "https://download.fedoraproject.org/pub/fedora/linux/releases"},
         {"region": "UK (Mythic Beasts)", "base": "https://mirrors.mythic-beasts.com/fedora-pub/fedora/linux/releases"},
-        {"region": "DE (Hetzner)", "base": "https://ftp.hetzner.com/fedora/linux/releases"}
+        {"region": "DE (FAU)", "base": "https://ftp.fau.de/fedora/linux/releases"}
       ],
       "releases": [
-        {"label": "41 Workstation (x86_64)", "path": "/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso"},
-        {"label": "41 Server DVD (x86_64)", "path": "/41/Server/x86_64/iso/Fedora-Server-dvd-x86_64-41-1.4.iso"}
+        {"label": "44 Workstation (x86_64)", "path": "/44/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-44-1.7.iso"},
+        {"label": "44 Server DVD (x86_64)", "path": "/44/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44-1.7.iso"}
       ]
     },
     {
@@ -279,7 +279,16 @@
       "squashfs_paths": [],
       "default_boot_params": "install={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/",
       "auto_install_type": "",
-      "boot_method": "kernel"
+      "boot_method": "kernel",
+      "mirrors": [
+	{"region": "DE (RTWH Aachen)", "base": "https://ftp.halifax.rwth-aachen.de/opensuse"}
+      ],
+      "releases": [
+        {"label": "Tumbleweed DVD (64-bit)", "path": "/tumbleweed/iso/openSUSE-Tumbleweed-DVD-x86_64-Current.iso"},
+        {"label": "Tumbleweed NET (64-bit)", "path": "/tumbleweed/iso/openSUSE-Tumbleweed-NET-x86_64-Current.iso"},
+	{"label": "Leap 16.1 Online Install (64-bit)", "path": "/distribution/leap/16.1/iso/Leap-16.1-online-installer-x86_64.install.iso"},
+	{"label": "Leap 16.1 Offline Install (64-bit)", "path": "/distribution/leap/16.1/iso/Leap-16.1-offline-installer-x86_64.install.iso"}
+	]
     },
     {
       "id": "alpine",
