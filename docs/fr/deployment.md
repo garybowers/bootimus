@@ -10,6 +10,7 @@ Guide complet pour déployer Bootimus dans différents environnements avec confi
 - [Configuration réseau](#configuration-réseau)
 - [Configuration du stockage](#configuration-du-stockage)
 - [Options de base de données](#options-de-base-de-données)
+- [Mises à jour distantes et confidentialité](#mises-à-jour-distantes-et-confidentialité)
 - [Déploiement en production](#déploiement-en-production)
 
 ## Démarrage rapide
@@ -348,6 +349,22 @@ export BOOTIMUS_DB_SSLMODE=require
 - Serveur PostgreSQL 12+
 - Connectivité réseau vers la base
 - Infrastructure supplémentaire
+
+## Mises à jour distantes et confidentialité
+
+Bootimus est auto-hébergé et ne fait **pas** de « phone home » en arrière-plan. Il est livré avec un catalogue complet de profils de distro et d'outils embarqué dans le binaire, il est donc pleinement fonctionnel sans aucun accès internet sortant.
+
+Le **seul** moment où Bootimus contacte un service externe, c'est quand un opérateur déclenche **explicitement** une mise à jour des profils/outils — via les boutons « Check for Updates » de l'interface d'administration, la commande CLI `bootimus profiles update`, ou les endpoints `POST /api/profiles/update` et `POST /api/tools/update`. Chacun d'eux effectue un `GET` non authentifié d'un fichier JSON statique sur GitHub (`raw.githubusercontent.com/garybowers/bootimus/main/...`) et n'envoie aucune information système ni aucun identifiant.
+
+Pour garantir qu'aucun contact distant n'ait jamais lieu (par ex. les déploiements air-gapped), lance-le avec les mises à jour distantes désactivées :
+
+```bash
+bootimus serve --disable-remote-profiles
+# or in bootimus.yaml:  disable_remote_profiles: true
+# or via env:           BOOTIMUS_DISABLE_REMOTE_PROFILES=true
+```
+
+Voir le [Guide des profils de distro](distro-profiles.md#remote-updates--privacy) pour tous les détails.
 
 ## Déploiement en production
 

@@ -8,6 +8,7 @@ Bootimus uses distro profiles to detect ISO types and generate the correct boot 
 - [How It Works](#how-it-works)
 - [Viewing Profiles](#viewing-profiles)
 - [Updating Profiles](#updating-profiles)
+- [Remote updates & privacy](#remote-updates--privacy)
 - [Creating Custom Profiles](#creating-custom-profiles)
 - [Profile Fields](#profile-fields)
 - [Placeholders](#placeholders)
@@ -56,17 +57,34 @@ Navigate to **Boot > Distro Profiles** in the admin panel to see all loaded prof
 
 ## Updating Profiles
 
-### Automatic (Recommended)
+Updating profiles is always an **explicit, on-demand action** — Bootimus never
+contacts the remote catalogue on its own. Until you trigger an update, the
+profiles embedded in the binary at build time are used. See
+[Remote updates & privacy](#remote-updates--privacy) for exactly what is
+contacted and how to disable it.
 
-Click **"Check for Updates"** in the Distro Profiles tab. This fetches the latest profiles from:
+When you trigger an update:
 
-```
-https://raw.githubusercontent.com/garybowers/bootimus/main/distro-profiles.json
-```
-
-- New profiles are added automatically
+- New profiles are added
 - Existing built-in profiles are updated to the latest version
 - Custom profiles are never modified
+
+There are three ways to trigger it:
+
+### From the admin UI
+
+Click **"Check for Updates"** in the **Boot > Distro Profiles** tab.
+
+### From the CLI
+
+```bash
+bootimus profiles update
+```
+
+This uses the same database configuration as `serve` (PostgreSQL if `db.host`
+is set, otherwise the local SQLite database under `data_dir`). It honours
+`--disable-remote-profiles` and exits without contacting the network when that
+flag is set.
 
 ### Via API
 
@@ -81,6 +99,56 @@ Response:
   "message": "Updated to version 0.1.21 (2 added, 5 updated)"
 }
 ```
+
+## Remote updates & privacy
+
+Bootimus is self-hosted and does not phone home in the background. The only time
+it reaches out to an external service for profiles is when **you** explicitly
+trigger an update via one of the methods above.
+
+**Endpoint contacted (only on an explicit update):**
+
+```
+https://raw.githubusercontent.com/garybowers/bootimus/main/distro-profiles.json
+```
+
+The equivalent tools catalogue ("Check for Updates" on the **Tools** tab /
+`POST /api/tools/update`) behaves the same way and contacts:
+
+```
+https://raw.githubusercontent.com/garybowers/bootimus/main/tools-profiles.json
+```
+
+These are plain, unauthenticated `GET` requests to GitHub's static file host.
+Bootimus sends no system information, identifiers, or usage data with them — it
+simply downloads the JSON file. Note that, as with any HTTP request, GitHub sees
+your source IP address and standard request metadata.
+
+### Disabling remote updates
+
+To guarantee Bootimus never contacts the remote catalogue — for air-gapped
+deployments, or as a matter of policy — start it with:
+
+```bash
+bootimus serve --disable-remote-profiles
+```
+
+or set the equivalent config/env value:
+
+```yaml
+# bootimus.yaml
+disable_remote_profiles: true
+```
+
+```bash
+# environment variable
+BOOTIMUS_DISABLE_REMOTE_PROFILES=true
+```
+
+When disabled, the embedded profiles are still seeded from the binary on first
+run, so Bootimus is fully functional offline. The "Check for Updates" button,
+the `/api/profiles/update` endpoint, and `bootimus profiles update` will all
+decline to run.
 
 ## Creating Custom Profiles
 

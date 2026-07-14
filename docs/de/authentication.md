@@ -33,10 +33,21 @@ Beim ersten Start wird ein zufälliges Passwort generiert und in die Server-Logs
 
 ### Admin-Passwort zurücksetzen
 
+Auf ein neues zufälliges Passwort zurücksetzen (startet eine vollständige Server-Instanz):
 ```bash
 ./bootimus serve --reset-admin-password
 # oder mit Docker
 docker exec bootimus /bootimus serve --reset-admin-password
+```
+
+Oder ein bestimmtes Passwort direkt in der Datenbank setzen, ohne einen Port
+zu binden (ideal für die Notfallwiederherstellung):
+```bash
+# Interaktive Abfrage (verdeckte Eingabe, hält das Passwort aus der Shell-Historie heraus)
+./bootimus user set-password admin
+
+# Oder es für Skripte nicht-interaktiv übergeben
+./bootimus user set-password admin --password 'neues-passwort'
 ```
 
 ### Nutzerverwaltung
@@ -46,6 +57,18 @@ Zusätzliche Nutzer können im Tab **Users** des Admin-Panels angelegt werden. J
 - **Password**: Als bcrypt-Hash gespeichert
 - **Admin**: Ob der Nutzer Admin-Rechte hat
 - **Enabled**: Kann ohne Löschung deaktiviert werden
+
+Nutzer können auch über die CLI verwaltet werden, ohne den Server zu starten
+(nützlich für die Wiederherstellung). Diese Befehle wirken direkt auf die
+konfigurierte Datenbank (SQLite oder PostgreSQL):
+```bash
+./bootimus user list                       # alle lokalen Nutzer auflisten
+./bootimus user enable <username>          # ein Konto aktivieren
+./bootimus user disable <username>         # ein Konto deaktivieren
+./bootimus user set-admin <username>       # Admin-Rechte erteilen
+./bootimus user unset-admin <username>     # Admin-Rechte entziehen
+./bootimus user set-password <username>    # ein Passwort setzen (Abfrage, oder --password)
+```
 
 ## Login-Ablauf
 
@@ -283,6 +306,12 @@ JWT-Token sind 24 Stunden gültig. Nach Ablauf wird automatisch die Login-Seite 
 Admin-Passwort zurücksetzen:
 ```bash
 ./bootimus serve --reset-admin-password
+```
+
+Oder, wenn das Starten des Servers unpraktisch ist (z. B. Portkonflikte), das
+Passwort direkt in der Datenbank setzen:
+```bash
+./bootimus user set-password admin
 ```
 
 Das funktioniert immer, unabhängig von der LDAP-Konfiguration.

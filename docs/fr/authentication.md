@@ -33,10 +33,21 @@ Au premier démarrage, un mot de passe aléatoire est généré et affiché dans
 
 ### Réinitialiser le mot de passe admin
 
+Réinitialiser vers un nouveau mot de passe aléatoire (démarre une instance complète du serveur) :
 ```bash
 ./bootimus serve --reset-admin-password
-# or with Docker
+# ou avec Docker
 docker exec bootimus /bootimus serve --reset-admin-password
+```
+
+Ou définir un mot de passe précis directement dans la base de données, sans
+ouvrir de port (idéal pour la récupération d'urgence) :
+```bash
+# Saisie interactive (entrée masquée, garde le mot de passe hors de l'historique du shell)
+./bootimus user set-password admin
+
+# Ou le fournir de façon non interactive pour les scripts
+./bootimus user set-password admin --password 'nouveau-mot-de-passe'
 ```
 
 ### Gestion des utilisateurs
@@ -46,6 +57,18 @@ Des utilisateurs supplémentaires peuvent être créés depuis l'onglet **Users*
 - **Password** : stocké en hash bcrypt
 - **Admin** : si l'utilisateur a les privilèges admin
 - **Enabled** : peut être désactivé sans suppression
+
+Les utilisateurs peuvent aussi être gérés depuis la CLI sans démarrer le serveur
+(utile pour la récupération). Ces commandes agissent directement sur la base de
+données configurée (SQLite ou PostgreSQL) :
+```bash
+./bootimus user list                       # lister tous les utilisateurs locaux
+./bootimus user enable <username>          # activer un compte
+./bootimus user disable <username>         # désactiver un compte
+./bootimus user set-admin <username>       # accorder les droits admin
+./bootimus user unset-admin <username>     # retirer les droits admin
+./bootimus user set-password <username>    # définir un mot de passe (saisie interactive, ou --password)
+```
 
 ## Flux de connexion
 
@@ -283,6 +306,12 @@ Les tokens JWT sont valables 24 heures. Après expiration, la page de login s'af
 Réinitialise le mot de passe admin :
 ```bash
 ./bootimus serve --reset-admin-password
+```
+
+Ou, si démarrer le serveur est peu pratique (ex. conflits de ports), définir le
+mot de passe directement dans la base de données :
+```bash
+./bootimus user set-password admin
 ```
 
 Ça marche toujours, quelle que soit la config LDAP.

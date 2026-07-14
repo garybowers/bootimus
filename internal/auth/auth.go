@@ -228,33 +228,57 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (m *Manager) authenticate(w http.ResponseWriter, r *http.Request) (*Claims, bool) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Authentication required"})
+		return nil, false
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	claims, err := m.ValidateToken(tokenString)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Invalid or expired token"})
+		return nil, false
+	}
+
+	user, err := m.userStore.GetUser(claims.Username)
+	if err != nil || !user.Enabled {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "User account disabled"})
+		return nil, false
+	}
+
+	claims.IsAdmin = user.IsAdmin
+	return claims, true
+}
+
 func (m *Manager) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Authentication required"})
+		if _, ok := m.authenticate(w, r); !ok {
 			return
 		}
+		next(w, r)
+	}
+}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		claims, err := m.ValidateToken(tokenString)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Invalid or expired token"})
+func (m *Manager) AdminMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := m.authenticate(w, r)
+		if !ok {
 			return
 		}
-
-		user, err := m.userStore.GetUser(claims.Username)
-		if err != nil || !user.Enabled {
+		if !claims.IsAdmin {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "User account disabled"})
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Administrator privileges required"})
 			return
 		}
-
 		next(w, r)
 	}
 }

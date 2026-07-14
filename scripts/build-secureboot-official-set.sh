@@ -34,10 +34,23 @@ OUT_DIR="$ROOT_DIR/bootloaders/secureboot-official"
 # First iPXE release with official Secure Boot signed binaries is v2.0.0.
 IPXE_VERSION="${IPXE_VERSION:-v2.0.0}"
 IPXE_RELEASE_BASE="https://github.com/ipxe/ipxe/releases/download/${IPXE_VERSION}"
+IPXE_SHA256="${IPXE_SHA256:-01a526d4cc791fc30362259c609d6c506cc64a7bdff51b9a5eb788354e17eee1}"
 WIMBOOT_VERSION="${WIMBOOT_VERSION:-v2.9.0}"
 WIMBOOT_RELEASE_BASE="https://github.com/ipxe/wimboot/releases/download/${WIMBOOT_VERSION}"
+WIMBOOT_SHA256="${WIMBOOT_SHA256:-5f067ccdc4d084d5bf77b6c853bd0f8402dfc2b4cd1b103d358993ae97fae8e3}"
 
-for tool in curl tar; do
+verify_sha256() {
+    [ -z "$2" ] && return 0
+    actual="$(sha256sum "$1" | awk '{print $1}')"
+    if [ "$actual" != "$2" ]; then
+        echo "Checksum mismatch for $1" >&2
+        echo "  expected: $2" >&2
+        echo "  actual:   $actual" >&2
+        exit 1
+    fi
+}
+
+for tool in curl tar sha256sum; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "Required tool not found in PATH: $tool" >&2
         exit 1
@@ -51,6 +64,7 @@ trap 'rm -rf "$STAGING"' EXIT
 
 echo "==> Downloading iPXE ${IPXE_VERSION} signed netboot archive"
 curl -fsSL -o "$STAGING/ipxeboot.tar.gz" "$IPXE_RELEASE_BASE/ipxeboot.tar.gz"
+verify_sha256 "$STAGING/ipxeboot.tar.gz" "$IPXE_SHA256"
 mkdir -p "$STAGING/extract"
 tar -xzf "$STAGING/ipxeboot.tar.gz" -C "$STAGING/extract"
 
@@ -102,6 +116,7 @@ fi
 
 echo "==> Downloading wimboot ${WIMBOOT_VERSION}"
 curl -fsSL -o "$STAGING/wimboot" "$WIMBOOT_RELEASE_BASE/wimboot"
+verify_sha256 "$STAGING/wimboot" "$WIMBOOT_SHA256"
 
 # --- assemble the output set ---------------------------------------------------
 

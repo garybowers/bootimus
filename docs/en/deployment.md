@@ -10,6 +10,7 @@ Complete guide for deploying Bootimus in various environments with networking an
 - [Networking Configuration](#networking-configuration)
 - [Storage Configuration](#storage-configuration)
 - [Database Options](#database-options)
+- [Remote Updates & Privacy](#remote-updates--privacy)
 - [Production Deployment](#production-deployment)
 
 ## Quick Start
@@ -348,6 +349,32 @@ export BOOTIMUS_DB_SSLMODE=require
 - PostgreSQL 12+ server
 - Network connectivity to database
 - Additional infrastructure
+
+## Remote Updates & Privacy
+
+Bootimus is self-hosted and does **not** phone home in the background. It ships
+with a full catalogue of distro and tool profiles embedded in the binary, so it
+is fully functional with no outbound internet access.
+
+The **only** time Bootimus contacts an external service is when an operator
+**explicitly** triggers a profile/tool update — via the "Check for Updates"
+buttons in the admin UI, the `bootimus profiles update` CLI command, or the
+`POST /api/profiles/update` and `POST /api/tools/update` endpoints. Each of
+those performs an unauthenticated `GET` of a static JSON file on GitHub
+(`raw.githubusercontent.com/garybowers/bootimus/main/...`) and sends no system
+information or identifiers.
+
+To guarantee no remote contact ever happens (e.g. air-gapped deployments), run
+with remote updates disabled:
+
+```bash
+bootimus serve --disable-remote-profiles
+# or in bootimus.yaml:  disable_remote_profiles: true
+# or via env:           BOOTIMUS_DISABLE_REMOTE_PROFILES=true
+```
+
+See the [Distro Profiles guide](distro-profiles.md#remote-updates--privacy) for
+full details.
 
 ## Production Deployment
 

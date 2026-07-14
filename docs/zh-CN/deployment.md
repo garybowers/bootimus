@@ -10,6 +10,7 @@
 - [网络配置](#网络配置)
 - [存储配置](#存储配置)
 - [数据库选项](#数据库选项)
+- [远程更新与隐私](#远程更新与隐私)
 - [生产环境部署](#生产环境部署)
 
 ## 快速开始
@@ -348,6 +349,22 @@ export BOOTIMUS_DB_SSLMODE=require
 - PostgreSQL 12+ 服务器
 - 到数据库的网络连通
 - 额外的基础设施
+
+## 远程更新与隐私
+
+Bootimus 是自托管的,**不会**在后台悄悄回传数据。它随附一份完整的发行版和工具 profile 目录,嵌入在二进制文件中,因此在没有对外网络访问的情况下也完全可用。
+
+Bootimus **唯一**一次联系外部服务,是在运维人员**显式**触发 profile/工具更新时 — 通过管理界面中的 "Check for Updates" 按钮、`bootimus profiles update` 命令行命令,或 `POST /api/profiles/update` 和 `POST /api/tools/update` 端点。上述每种方式都会对 GitHub 上的一个静态 JSON 文件(`raw.githubusercontent.com/garybowers/bootimus/main/...`)执行一次无需认证的 `GET` 请求,且不会发送任何系统信息或标识符。
+
+为确保绝不发生任何远程联系(例如隔离网络 air-gapped 部署),请在启动时禁用远程更新:
+
+```bash
+bootimus serve --disable-remote-profiles
+# or in bootimus.yaml:  disable_remote_profiles: true
+# or via env:           BOOTIMUS_DISABLE_REMOTE_PROFILES=true
+```
+
+完整细节请参阅[发行版 Profile 指南](distro-profiles.md#远程更新与隐私)。
 
 ## 生产环境部署
 

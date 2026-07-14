@@ -2703,6 +2703,7 @@ func formatBytes(bytes int64) string {
 func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		URL         string `json:"url"`
+		Filename    string `json:"filename"`
 		Description string `json:"description"`
 	}
 
@@ -2716,7 +2717,12 @@ func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filename := filepath.Base(req.URL)
+	var filename string
+	if req.Filename != "" {
+		filename = req.Filename
+	} else {
+		filename = filepath.Base(req.URL)
+	}
 	if !strings.HasSuffix(strings.ToLower(filename), ".iso") {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "URL must point to an .iso file"})
 		return
@@ -2815,10 +2821,18 @@ func (h *Handler) downloadISO(url, filename, destPath, description string) {
 		}
 
 		if img, err := h.storage.GetImage(filename); err == nil {
+			changed := false
+			if description != "" {
+				img.Description = description
+				changed = true
+			}
 			h.detectAndSetDistro(img)
 			if img.Distro != "" {
+				changed = true
+			}
+			if changed {
 				if err := h.storage.UpdateImage(filename, img); err != nil {
-					log.Printf("Failed to save detected distro for %s: %v", filename, err)
+					log.Printf("Failed to save image metadata for %s: %v", filename, err)
 				}
 			}
 		}

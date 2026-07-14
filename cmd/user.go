@@ -1,16 +1,20 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"bootimus/internal/storage"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/term"
 )
 
 var userForce bool
+var userPassword string
 
 var userCmd = &cobra.Command{
 	Use:   "user",
@@ -77,6 +81,20 @@ var userUnsetAdminCmd = &cobra.Command{
 	},
 }
 
+var userSetPasswordCmd = &cobra.Command{
+	Use:   "set-password <username>",
+	Short: "Set a user's password",
+	Long: `Set a local user's password directly in the database.
+
+If --password is omitted you'll be prompted interactively (input is hidden
+and confirmed), avoiding exposure in your shell history. Provide --password
+for non-interactive/scripted use.`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		setUserPassword(args[0])
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(userCmd)
 	userCmd.AddCommand(userListCmd)
@@ -84,10 +102,13 @@ func init() {
 	userCmd.AddCommand(userDisableCmd)
 	userCmd.AddCommand(userSetAdminCmd)
 	userCmd.AddCommand(userUnsetAdminCmd)
+	userCmd.AddCommand(userSetPasswordCmd)
 
 	for _, c := range []*cobra.Command{userDisableCmd, userUnsetAdminCmd} {
 		c.Flags().BoolVar(&userForce, "force", false, "Bypass the last-active-admin guard")
 	}
+
+	userSetPasswordCmd.Flags().StringVar(&userPassword, "password", "", "New password (omit to be prompted interactively)")
 }
 
 func openStoreOrExit() storage.Storage {
@@ -158,4 +179,62 @@ func setUserFlags(username string, enabled, isAdmin *bool) {
 		os.Exit(1)
 	}
 	fmt.Printf("Updated %s: enabled=%v admin=%v\n", username, user.Enabled, user.IsAdmin)
+}
+
+func setUserPassword(username string) {
+	store := openStoreOrExit()
+	user, err := store.GetUser(username)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "User not found: %s\n", username)
+		os.Exit(1)
+	}
+
+	password := userPassword
+	if password == "" {
+		password, err = promptForPassword()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+	}
+	if password == "" {
+		fmt.Fprintln(os.Stderr, "Password cannot be empty")
+		os.Exit(1)
+	}
+
+	if err := user.SetPassword(password); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to hash password: %v\n", err)
+		os.Exit(1)
+	}
+	if err := store.UpdateUser(username, user); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to update user: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Password updated for %s\n", username)
+}
+
+func promptForPassword() (string, error) {
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		return "", errors.New("--password is required when stdin is not a terminal")
+	}
+
+	fmt.Print("New password: ")
+	first, err := term.ReadPassword(fd)
+	fmt.Println()
+	if err != nil {
+		return "", fmt.Errorf("failed to read password: %w", err)
+	}
+
+	fmt.Print("Confirm password: ")
+	second, err := term.ReadPassword(fd)
+	fmt.Println()
+	if err != nil {
+		return "", fmt.Errorf("failed to read password: %w", err)
+	}
+
+	if strings.TrimRight(string(first), "\r\n") != strings.TrimRight(string(second), "\r\n") {
+		return "", errors.New("passwords do not match")
+	}
+	return strings.TrimRight(string(first), "\r\n"), nil
 }
