@@ -23,11 +23,11 @@ Au premier démarrage, un mot de passe aléatoire est généré et affiché dans
 ╔════════════════════════════════════════════════════════════════╗
 ║                    ADMIN PASSWORD GENERATED                    ║
 ╠════════════════════════════════════════════════════════════════╣
-║  Username: admin                                                ║
+║  Username: admin                                               ║
 ║  Password: AbCdEfGh1234567890-_XyZ123456                       ║
 ╠════════════════════════════════════════════════════════════════╣
 ║  This password will NOT be shown again!                        ║
-║  Save it now or reset it using --reset-admin-password flag    ║
+║  Save it now or reset it using --reset-admin-password flag     ║
 ╚════════════════════════════════════════════════════════════════╝
 ```
 
