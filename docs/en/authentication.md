@@ -33,10 +33,21 @@ On first startup, a random password is generated and printed to the server logs:
 
 ### Reset Admin Password
 
+Reset to a new random password (starts a full server instance):
 ```bash
 ./bootimus serve --reset-admin-password
 # or with Docker
 docker exec bootimus /bootimus serve --reset-admin-password
+```
+
+Or set a specific password directly against the database, without binding any
+ports (ideal for emergency recovery):
+```bash
+# Prompt interactively (hidden input, keeps the password out of shell history)
+./bootimus user set-password admin
+
+# Or supply it non-interactively for scripting
+./bootimus user set-password admin --password 'new-password'
 ```
 
 ### User Management
@@ -46,6 +57,18 @@ Additional users can be created from the **Users** tab in the admin panel. Each 
 - **Password**: Stored as bcrypt hash
 - **Admin**: Whether the user has admin privileges
 - **Enabled**: Can be disabled without deletion
+
+Users can also be managed from the CLI without starting the server (useful for
+recovery). These commands operate directly on the configured database
+(SQLite or PostgreSQL):
+```bash
+./bootimus user list                       # list all local users
+./bootimus user enable <username>          # enable an account
+./bootimus user disable <username>         # disable an account
+./bootimus user set-admin <username>       # grant admin rights
+./bootimus user unset-admin <username>     # revoke admin rights
+./bootimus user set-password <username>    # set a password (prompts, or --password)
+```
 
 ## Login Flow
 
@@ -283,6 +306,12 @@ JWT tokens are valid for 24 hours. After expiry, the login page is shown automat
 Reset the admin password:
 ```bash
 ./bootimus serve --reset-admin-password
+```
+
+Or, if starting the server is inconvenient (e.g. port conflicts), set the
+password directly against the database:
+```bash
+./bootimus user set-password admin
 ```
 
 This always works regardless of LDAP configuration.

@@ -33,10 +33,21 @@ Bootimus использует JWT (JSON Web Token) для аутентифика
 
 ### Сброс пароля администратора
 
+Сбросить на новый случайный пароль (запускает полноценный экземпляр сервера):
 ```bash
 ./bootimus serve --reset-admin-password
 # или через Docker
 docker exec bootimus /bootimus serve --reset-admin-password
+```
+
+Либо задать конкретный пароль напрямую в базе данных, не привязываясь к портам
+(идеально для аварийного восстановления):
+```bash
+# Интерактивный ввод (скрытый ввод, пароль не попадает в историю shell)
+./bootimus user set-password admin
+
+# Или передать неинтерактивно для скриптов
+./bootimus user set-password admin --password 'новый-пароль'
 ```
 
 ### Управление пользователями
@@ -46,6 +57,18 @@ docker exec bootimus /bootimus serve --reset-admin-password
 - **Password**: хранится как bcrypt-хеш
 - **Admin**: есть ли у пользователя права администратора
 - **Enabled**: можно отключить без удаления
+
+Пользователями также можно управлять из CLI, не запуская сервер (удобно для
+восстановления). Эти команды работают напрямую с настроенной базой данных
+(SQLite или PostgreSQL):
+```bash
+./bootimus user list                       # список всех локальных пользователей
+./bootimus user enable <username>          # включить учётную запись
+./bootimus user disable <username>         # отключить учётную запись
+./bootimus user set-admin <username>       # выдать права администратора
+./bootimus user unset-admin <username>     # снять права администратора
+./bootimus user set-password <username>    # задать пароль (запрос ввода или --password)
+```
 
 ## Процесс входа
 
@@ -283,6 +306,12 @@ JWT-токены действительны 24 часа. После истече
 Сбросьте пароль администратора:
 ```bash
 ./bootimus serve --reset-admin-password
+```
+
+Либо, если запускать сервер неудобно (например, из-за конфликтов портов), задайте
+пароль напрямую в базе данных:
+```bash
+./bootimus user set-password admin
 ```
 
 Это всегда работает, независимо от конфигурации LDAP.
