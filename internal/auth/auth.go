@@ -228,33 +228,65 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// authenticate validates the bearer token and confirms the account is still
+// enabled. It writes the appropriate error response and returns ok=false when
+// the request should not proceed.
+func (m *Manager) authenticate(w http.ResponseWriter, r *http.Request) (*Claims, bool) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Authentication required"})
+		return nil, false
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	claims, err := m.ValidateToken(tokenString)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Invalid or expired token"})
+		return nil, false
+	}
+
+	user, err := m.userStore.GetUser(claims.Username)
+	if err != nil || !user.Enabled {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "User account disabled"})
+		return nil, false
+	}
+
+	// Re-derive admin status from the store rather than trusting the token
+	// claim, so a demotion takes effect immediately.
+	claims.IsAdmin = user.IsAdmin
+	return claims, true
+}
+
 func (m *Manager) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Authentication required"})
+		if _, ok := m.authenticate(w, r); !ok {
 			return
 		}
+		next(w, r)
+	}
+}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		claims, err := m.ValidateToken(tokenString)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Invalid or expired token"})
+// AdminMiddleware requires a valid session whose account currently holds admin
+// privileges. It protects the administrative API from authenticated but
+// non-admin users.
+func (m *Manager) AdminMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := m.authenticate(w, r)
+		if !ok {
 			return
 		}
-
-		user, err := m.userStore.GetUser(claims.Username)
-		if err != nil || !user.Enabled {
+		if !claims.IsAdmin {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "User account disabled"})
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Administrator privileges required"})
 			return
 		}
-
 		next(w, r)
 	}
 }

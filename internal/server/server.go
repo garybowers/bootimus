@@ -1102,6 +1102,11 @@ func (s *Server) startAdminServer() error {
 
 	s.setupAdminInterface(mux)
 
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "OK\n")
+	})
+
 	mux.Handle("/metrics", promhttp.Handler())
 	go s.refreshMetricsGauges()
 
@@ -1135,9 +1140,14 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 
 	useAuth := s.config.Auth != nil
 
-	authWrap := func(handler http.HandlerFunc) http.HandlerFunc {
+	// adminWrap protects the administrative API. When authentication is
+	// enabled it requires a valid session that currently holds admin
+	// privileges, so an authenticated non-admin cannot reach privileged
+	// operations (e.g. user management). With auth disabled (single-user
+	// mode) the handler is served directly.
+	adminWrap := func(handler http.HandlerFunc) http.HandlerFunc {
 		if useAuth {
-			return s.config.Auth.JWTMiddleware(handler)
+			return s.config.Auth.AdminMiddleware(handler)
 		}
 		return handler
 	}
@@ -1166,14 +1176,14 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 		}
 	})
 
-	mux.HandleFunc("/api/server-info", authWrap(adminHandler.GetServerInfo))
-	mux.HandleFunc("/api/stats", authWrap(adminHandler.GetStats))
-	mux.HandleFunc("/api/logs", authWrap(adminHandler.GetBootLogs))
-	mux.HandleFunc("/api/scan", authWrap(adminHandler.ScanImages))
-	mux.HandleFunc("/api/images/upload", authWrap(adminHandler.UploadImage))
-	mux.HandleFunc("/api/assign-images", authWrap(adminHandler.AssignImages))
+	mux.HandleFunc("/api/server-info", adminWrap(adminHandler.GetServerInfo))
+	mux.HandleFunc("/api/stats", adminWrap(adminHandler.GetStats))
+	mux.HandleFunc("/api/logs", adminWrap(adminHandler.GetBootLogs))
+	mux.HandleFunc("/api/scan", adminWrap(adminHandler.ScanImages))
+	mux.HandleFunc("/api/images/upload", adminWrap(adminHandler.UploadImage))
+	mux.HandleFunc("/api/assign-images", adminWrap(adminHandler.AssignImages))
 
-	mux.HandleFunc("/api/clients", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/clients", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			id := r.URL.Query().Get("id")
@@ -1194,7 +1204,7 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 		}
 	}))
 
-	mux.HandleFunc("/api/images", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/images", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			id := r.URL.Query().Get("id")
@@ -1212,52 +1222,52 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 		}
 	}))
 
-	mux.HandleFunc("/api/clients/wake", authWrap(adminHandler.WakeClient))
-	mux.HandleFunc("/api/clients/next-boot", authWrap(adminHandler.SetNextBootImage))
-	mux.HandleFunc("/api/clients/promote", authWrap(adminHandler.PromoteClient))
-	mux.HandleFunc("/api/clients/inventory", authWrap(adminHandler.GetClientInventory))
-	mux.HandleFunc("/api/clients/inventory/history", authWrap(adminHandler.GetClientInventoryHistory))
+	mux.HandleFunc("/api/clients/wake", adminWrap(adminHandler.WakeClient))
+	mux.HandleFunc("/api/clients/next-boot", adminWrap(adminHandler.SetNextBootImage))
+	mux.HandleFunc("/api/clients/promote", adminWrap(adminHandler.PromoteClient))
+	mux.HandleFunc("/api/clients/inventory", adminWrap(adminHandler.GetClientInventory))
+	mux.HandleFunc("/api/clients/inventory/history", adminWrap(adminHandler.GetClientInventoryHistory))
 
-	mux.HandleFunc("/api/bootloaders", authWrap(adminHandler.ListBootloaders))
-	mux.HandleFunc("/api/bootloaders/create", authWrap(adminHandler.CreateBootloaderSet))
-	mux.HandleFunc("/api/bootloaders/upload", authWrap(adminHandler.UploadBootloader))
-	mux.HandleFunc("/api/bootloaders/delete", authWrap(adminHandler.DeleteBootloader))
-	mux.HandleFunc("/api/bootloaders/select", authWrap(adminHandler.SelectBootloader))
+	mux.HandleFunc("/api/bootloaders", adminWrap(adminHandler.ListBootloaders))
+	mux.HandleFunc("/api/bootloaders/create", adminWrap(adminHandler.CreateBootloaderSet))
+	mux.HandleFunc("/api/bootloaders/upload", adminWrap(adminHandler.UploadBootloader))
+	mux.HandleFunc("/api/bootloaders/delete", adminWrap(adminHandler.DeleteBootloader))
+	mux.HandleFunc("/api/bootloaders/select", adminWrap(adminHandler.SelectBootloader))
 
-	mux.HandleFunc("/api/tools", authWrap(adminHandler.ListTools))
-	mux.HandleFunc("/api/tools/toggle", authWrap(adminHandler.ToggleTool))
-	mux.HandleFunc("/api/tools/download", authWrap(adminHandler.DownloadTool))
-	mux.HandleFunc("/api/tools/delete", authWrap(adminHandler.DeleteTool))
-	mux.HandleFunc("/api/tools/progress", authWrap(adminHandler.ToolProgress))
-	mux.HandleFunc("/api/tools/url", authWrap(adminHandler.UpdateToolURL))
-	mux.HandleFunc("/api/tools/custom", authWrap(adminHandler.CreateCustomTool))
-	mux.HandleFunc("/api/tools/custom/delete", authWrap(adminHandler.DeleteCustomTool))
-	mux.HandleFunc("/api/tools/update", authWrap(adminHandler.UpdateTools))
+	mux.HandleFunc("/api/tools", adminWrap(adminHandler.ListTools))
+	mux.HandleFunc("/api/tools/toggle", adminWrap(adminHandler.ToggleTool))
+	mux.HandleFunc("/api/tools/download", adminWrap(adminHandler.DownloadTool))
+	mux.HandleFunc("/api/tools/delete", adminWrap(adminHandler.DeleteTool))
+	mux.HandleFunc("/api/tools/progress", adminWrap(adminHandler.ToolProgress))
+	mux.HandleFunc("/api/tools/url", adminWrap(adminHandler.UpdateToolURL))
+	mux.HandleFunc("/api/tools/custom", adminWrap(adminHandler.CreateCustomTool))
+	mux.HandleFunc("/api/tools/custom/delete", adminWrap(adminHandler.DeleteCustomTool))
+	mux.HandleFunc("/api/tools/update", adminWrap(adminHandler.UpdateTools))
 
-	mux.HandleFunc("/api/images/extract", authWrap(adminHandler.ExtractImage))
-	mux.HandleFunc("/api/images/extract-progress", authWrap(adminHandler.ExtractProgress))
-	mux.HandleFunc("/api/images/redetect", authWrap(adminHandler.RedetectImage))
-	mux.HandleFunc("/api/images/patch-smb", authWrap(adminHandler.PatchImageSMB))
-	mux.HandleFunc("/api/autoinstall-files", authWrap(adminHandler.ListAutoInstallFiles))
-	mux.HandleFunc("/api/autoinstall-files/get", authWrap(adminHandler.GetAutoInstallFile))
-	mux.HandleFunc("/api/autoinstall-files/save", authWrap(adminHandler.SaveAutoInstallFile))
-	mux.HandleFunc("/api/autoinstall-files/upload", authWrap(adminHandler.UploadAutoInstallFile))
-	mux.HandleFunc("/api/autoinstall-files/download", authWrap(adminHandler.DownloadAutoInstallFile))
-	mux.HandleFunc("/api/autoinstall-files/delete", authWrap(adminHandler.DeleteAutoInstallFile))
+	mux.HandleFunc("/api/images/extract", adminWrap(adminHandler.ExtractImage))
+	mux.HandleFunc("/api/images/extract-progress", adminWrap(adminHandler.ExtractProgress))
+	mux.HandleFunc("/api/images/redetect", adminWrap(adminHandler.RedetectImage))
+	mux.HandleFunc("/api/images/patch-smb", adminWrap(adminHandler.PatchImageSMB))
+	mux.HandleFunc("/api/autoinstall-files", adminWrap(adminHandler.ListAutoInstallFiles))
+	mux.HandleFunc("/api/autoinstall-files/get", adminWrap(adminHandler.GetAutoInstallFile))
+	mux.HandleFunc("/api/autoinstall-files/save", adminWrap(adminHandler.SaveAutoInstallFile))
+	mux.HandleFunc("/api/autoinstall-files/upload", adminWrap(adminHandler.UploadAutoInstallFile))
+	mux.HandleFunc("/api/autoinstall-files/download", adminWrap(adminHandler.DownloadAutoInstallFile))
+	mux.HandleFunc("/api/autoinstall-files/delete", adminWrap(adminHandler.DeleteAutoInstallFile))
 
-	mux.HandleFunc("/api/profiles", authWrap(adminHandler.ListDistroProfiles))
-	mux.HandleFunc("/api/profiles/save", authWrap(adminHandler.SaveDistroProfile))
-	mux.HandleFunc("/api/profiles/delete", authWrap(adminHandler.DeleteDistroProfile))
-	mux.HandleFunc("/api/profiles/update", authWrap(adminHandler.UpdateDistroProfiles))
-	mux.HandleFunc("/api/iso-catalog", authWrap(adminHandler.GetISOCatalog))
-	mux.HandleFunc("/api/images/boot-method", authWrap(adminHandler.SetBootMethod))
+	mux.HandleFunc("/api/profiles", adminWrap(adminHandler.ListDistroProfiles))
+	mux.HandleFunc("/api/profiles/save", adminWrap(adminHandler.SaveDistroProfile))
+	mux.HandleFunc("/api/profiles/delete", adminWrap(adminHandler.DeleteDistroProfile))
+	mux.HandleFunc("/api/profiles/update", adminWrap(adminHandler.UpdateDistroProfiles))
+	mux.HandleFunc("/api/iso-catalog", adminWrap(adminHandler.GetISOCatalog))
+	mux.HandleFunc("/api/images/boot-method", adminWrap(adminHandler.SetBootMethod))
 
-	mux.HandleFunc("/api/active-sessions", authWrap(s.handleActiveSessions))
+	mux.HandleFunc("/api/active-sessions", adminWrap(s.handleActiveSessions))
 
-	mux.HandleFunc("/api/logs/stream", authWrap(s.handleLogsStream))
-	mux.HandleFunc("/api/logs/buffer", authWrap(s.handleLogsBuffer))
+	mux.HandleFunc("/api/logs/stream", adminWrap(s.handleLogsStream))
+	mux.HandleFunc("/api/logs/buffer", adminWrap(s.handleLogsBuffer))
 
-	mux.HandleFunc("/api/users", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/users", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			adminHandler.ListUsers(w, r)
@@ -1271,15 +1281,15 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
-	mux.HandleFunc("/api/users/reset-password", authWrap(adminHandler.ResetUserPassword))
+	mux.HandleFunc("/api/users/reset-password", adminWrap(adminHandler.ResetUserPassword))
 
-	mux.HandleFunc("/api/images/download", authWrap(adminHandler.DownloadISO))
-	mux.HandleFunc("/api/downloads", authWrap(adminHandler.ListDownloads))
-	mux.HandleFunc("/api/downloads/progress", authWrap(adminHandler.GetDownloadProgress))
+	mux.HandleFunc("/api/images/download", adminWrap(adminHandler.DownloadISO))
+	mux.HandleFunc("/api/downloads", adminWrap(adminHandler.ListDownloads))
+	mux.HandleFunc("/api/downloads/progress", adminWrap(adminHandler.GetDownloadProgress))
 
-	mux.HandleFunc("/api/images/netboot/download", authWrap(adminHandler.DownloadNetboot))
+	mux.HandleFunc("/api/images/netboot/download", adminWrap(adminHandler.DownloadNetboot))
 
-	mux.HandleFunc("/api/images/autoinstall", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/images/autoinstall", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			adminHandler.GetAutoInstallScript(w, r)
@@ -1290,7 +1300,7 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 		}
 	}))
 
-	mux.HandleFunc("/api/files", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/files", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			if r.URL.Query().Get("id") != "" {
@@ -1302,11 +1312,11 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
-	mux.HandleFunc("/api/files/upload", authWrap(adminHandler.UploadCustomFile))
-	mux.HandleFunc("/api/files/update", authWrap(adminHandler.UpdateCustomFile))
-	mux.HandleFunc("/api/files/delete", authWrap(adminHandler.DeleteCustomFile))
+	mux.HandleFunc("/api/files/upload", adminWrap(adminHandler.UploadCustomFile))
+	mux.HandleFunc("/api/files/update", adminWrap(adminHandler.UpdateCustomFile))
+	mux.HandleFunc("/api/files/delete", adminWrap(adminHandler.DeleteCustomFile))
 
-	mux.HandleFunc("/api/drivers", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/drivers", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			adminHandler.ListDriverPacks(w, r)
@@ -1314,11 +1324,11 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
-	mux.HandleFunc("/api/drivers/upload", authWrap(adminHandler.UploadDriverPack))
-	mux.HandleFunc("/api/drivers/delete", authWrap(adminHandler.DeleteDriverPack))
-	mux.HandleFunc("/api/drivers/rebuild", authWrap(adminHandler.RebuildImageBootWim))
+	mux.HandleFunc("/api/drivers/upload", adminWrap(adminHandler.UploadDriverPack))
+	mux.HandleFunc("/api/drivers/delete", adminWrap(adminHandler.DeleteDriverPack))
+	mux.HandleFunc("/api/drivers/rebuild", adminWrap(adminHandler.RebuildImageBootWim))
 
-	mux.HandleFunc("/api/groups", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/groups", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			adminHandler.ListImageGroups(w, r)
@@ -1328,13 +1338,13 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
-	mux.HandleFunc("/api/groups/update", authWrap(adminHandler.UpdateImageGroup))
-	mux.HandleFunc("/api/groups/delete", authWrap(adminHandler.DeleteImageGroup))
+	mux.HandleFunc("/api/groups/update", adminWrap(adminHandler.UpdateImageGroup))
+	mux.HandleFunc("/api/groups/delete", adminWrap(adminHandler.DeleteImageGroup))
 
-	mux.HandleFunc("/api/clients/import", authWrap(adminHandler.ImportClientsCSV))
-	mux.HandleFunc("/api/backup/export", authWrap(adminHandler.ExportBackup))
+	mux.HandleFunc("/api/clients/import", adminWrap(adminHandler.ImportClientsCSV))
+	mux.HandleFunc("/api/backup/export", adminWrap(adminHandler.ExportBackup))
 
-	mux.HandleFunc("/api/webhook", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/webhook", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			adminHandler.GetWebhookConfig(w, r)
@@ -1344,9 +1354,9 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
-	mux.HandleFunc("/api/webhook/test", authWrap(adminHandler.TestWebhook))
+	mux.HandleFunc("/api/webhook/test", adminWrap(adminHandler.TestWebhook))
 
-	mux.HandleFunc("/api/client-groups", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/client-groups", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			adminHandler.ListClientGroups(w, r)
@@ -1356,15 +1366,15 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
-	mux.HandleFunc("/api/client-groups/get", authWrap(adminHandler.GetClientGroup))
-	mux.HandleFunc("/api/client-groups/update", authWrap(adminHandler.UpdateClientGroup))
-	mux.HandleFunc("/api/client-groups/delete", authWrap(adminHandler.DeleteClientGroup))
-	mux.HandleFunc("/api/client-groups/membership", authWrap(adminHandler.SetClientGroupMembership))
-	mux.HandleFunc("/api/client-groups/wake", authWrap(adminHandler.WakeClientGroup))
-	mux.HandleFunc("/api/client-groups/next-boot", authWrap(adminHandler.SetNextBootForClientGroup))
-	mux.HandleFunc("/api/client-groups/power", authWrap(adminHandler.PowerClientGroup))
+	mux.HandleFunc("/api/client-groups/get", adminWrap(adminHandler.GetClientGroup))
+	mux.HandleFunc("/api/client-groups/update", adminWrap(adminHandler.UpdateClientGroup))
+	mux.HandleFunc("/api/client-groups/delete", adminWrap(adminHandler.DeleteClientGroup))
+	mux.HandleFunc("/api/client-groups/membership", adminWrap(adminHandler.SetClientGroupMembership))
+	mux.HandleFunc("/api/client-groups/wake", adminWrap(adminHandler.WakeClientGroup))
+	mux.HandleFunc("/api/client-groups/next-boot", adminWrap(adminHandler.SetNextBootForClientGroup))
+	mux.HandleFunc("/api/client-groups/power", adminWrap(adminHandler.PowerClientGroup))
 
-	mux.HandleFunc("/api/scheduled-tasks", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/scheduled-tasks", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			adminHandler.ListScheduledTasks(w, r)
@@ -1374,14 +1384,14 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
-	mux.HandleFunc("/api/scheduled-tasks/update", authWrap(adminHandler.UpdateScheduledTask))
-	mux.HandleFunc("/api/scheduled-tasks/delete", authWrap(adminHandler.DeleteScheduledTask))
-	mux.HandleFunc("/api/scheduled-tasks/run", authWrap(adminHandler.RunScheduledTask))
+	mux.HandleFunc("/api/scheduled-tasks/update", adminWrap(adminHandler.UpdateScheduledTask))
+	mux.HandleFunc("/api/scheduled-tasks/delete", adminWrap(adminHandler.DeleteScheduledTask))
+	mux.HandleFunc("/api/scheduled-tasks/run", adminWrap(adminHandler.RunScheduledTask))
 
-	mux.HandleFunc("/api/clients/power", authWrap(adminHandler.PowerClient))
-	mux.HandleFunc("/api/clients/power/status", authWrap(adminHandler.PowerStatusClient))
+	mux.HandleFunc("/api/clients/power", adminWrap(adminHandler.PowerClient))
+	mux.HandleFunc("/api/clients/power/status", adminWrap(adminHandler.PowerStatusClient))
 
-	mux.HandleFunc("/api/theme", authWrap(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/theme", adminWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			adminHandler.GetMenuTheme(w, r)
@@ -1392,11 +1402,11 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 		}
 	}))
 
-	mux.HandleFunc("/api/usb", authWrap(adminHandler.ListUSBImages))
-	mux.HandleFunc("/api/usb/download", authWrap(adminHandler.DownloadUSBImage))
+	mux.HandleFunc("/api/usb", adminWrap(adminHandler.ListUSBImages))
+	mux.HandleFunc("/api/usb/download", adminWrap(adminHandler.DownloadUSBImage))
 
-	mux.HandleFunc("/api/images/files", authWrap(adminHandler.ListImageFiles))
-	mux.HandleFunc("/api/images/files/delete", authWrap(adminHandler.DeleteImageFile))
+	mux.HandleFunc("/api/images/files", adminWrap(adminHandler.ListImageFiles))
+	mux.HandleFunc("/api/images/files/delete", adminWrap(adminHandler.DeleteImageFile))
 }
 
 func (s *Server) handleActiveSessions(w http.ResponseWriter, r *http.Request) {
