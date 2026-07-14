@@ -338,6 +338,7 @@ func (mb *MenuBuilder) resolveBootParams(img *models.Image, baseURL, encodedFile
 	params = strings.ReplaceAll(params, "{{BASE_URL}}", baseURL)
 	params = strings.ReplaceAll(params, "{{CACHE_DIR}}", cacheDir)
 	params = strings.ReplaceAll(params, "{{FILENAME}}", encodedFilename)
+	params = strings.ReplaceAll(params, "{{MAC}}", mb.macAddress)
 	if img.SquashfsPath != "" {
 		params = strings.ReplaceAll(params, "{{SQUASHFS}}", fmt.Sprintf("%s/boot/%s/%s", baseURL, cacheDir, img.SquashfsPath))
 	}
