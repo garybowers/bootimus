@@ -364,7 +364,7 @@ bootimus serve --disable-remote-profiles
 # or via env:           BOOTIMUS_DISABLE_REMOTE_PROFILES=true
 ```
 
-Voir le [Guide des profils de distro](distro-profiles.md#remote-updates--privacy) pour tous les détails.
+Voir le [Guide des profils de distro](distro-profiles.md#mises-à-jour-distantes-et-confidentialité) pour tous les détails.
 
 ## Déploiement en production
 
