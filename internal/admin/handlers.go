@@ -2815,10 +2815,18 @@ func (h *Handler) downloadISO(url, filename, destPath, description string) {
 		}
 
 		if img, err := h.storage.GetImage(filename); err == nil {
+			changed := false
+			if description != "" {
+				img.Description = description
+				changed = true
+			}
 			h.detectAndSetDistro(img)
 			if img.Distro != "" {
+				changed = true
+			}
+			if changed {
 				if err := h.storage.UpdateImage(filename, img); err != nil {
-					log.Printf("Failed to save detected distro for %s: %v", filename, err)
+					log.Printf("Failed to save image metadata for %s: %v", filename, err)
 				}
 			}
 		}
