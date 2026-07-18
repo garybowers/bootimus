@@ -307,16 +307,8 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 
 	switch img.Distro {
 	case "windows", "windows7":
-		// wimboot's command line only takes its own flags — kernel parameters
-		// and the generic iso-url fallback are meaningless here and make it
-		// abort with "Unrecognised argument" (the UI locks the field for the
-		// same reason). Only the legacy windows7 profile passes flags (rawbcd).
-		wimbootArgs := ""
-		if img.Distro == "windows7" {
-			wimbootArgs = bootParams
-		}
 		sb.WriteString("echo Loading Windows boot files via wimboot...\n")
-		sb.WriteString(fmt.Sprintf("kernel %s/wimboot%s\n", baseURL, wimbootArgs))
+		sb.WriteString(fmt.Sprintf("kernel %s/wimboot%s\n", baseURL, bootParams))
 		// Ship only boot.wim and let wimboot synthesize the ramdisk BCD +
 		// boot.sdi (the documented minimal setup). Feeding the ISO's DVD BCD
 		// hangs 24H2/25H2 media on a black screen after the loading bar.
@@ -340,7 +332,7 @@ func (mb *MenuBuilder) resolveBootParams(img *models.Image, baseURL, encodedFile
 		params = mb.profileManager.GetBootParams(img.Distro, hasSquashfs)
 	}
 
-	if params == "" {
+	if params == "" && !strings.HasPrefix(img.Distro, "windows") {
 		params = fmt.Sprintf("iso-url=%s/isos/%s ip=dhcp", baseURL, encodedFilename)
 	}
 
@@ -352,7 +344,7 @@ func (mb *MenuBuilder) resolveBootParams(img *models.Image, baseURL, encodedFile
 		params = strings.ReplaceAll(params, "{{SQUASHFS}}", fmt.Sprintf("%s/boot/%s/%s", baseURL, cacheDir, img.SquashfsPath))
 	}
 
-	return strings.TrimSpace(params)
+	return params
 }
 
 func (mb *MenuBuilder) buildFooter() string {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -131,7 +132,20 @@ func (m *Manager) PatchStartnetCmd(wimPath, content string) error {
 		"add %s /Windows/System32/startnet.cmd\nadd %s /Windows/System32/winpeshl.ini\n",
 		startnetTmp, winpeshlTmp,
 	)
-	cmd := exec.Command(m.wimlibPath, "update", wimPath, "2", "--rebuild")
+
+	imageCount, err := m.GetImageCount(wimPath)
+	if err != nil {
+		return fmt.Errorf("failed to get WIM image count: %w", err)
+	}
+
+	// Validate that we have one or two images.
+	// NB In Windows PE ISO boot.wim: only one image (index 1) is present.
+	// NB In Windows Setup ISO boot.wim: two images (index 1 and 2) are present.
+	if imageCount < 1 || imageCount > 2 {
+		return fmt.Errorf("unexpected WIM image count: %d (expected 1 or 2)", imageCount)
+	}
+
+	cmd := exec.Command(m.wimlibPath, "update", wimPath, strconv.Itoa(imageCount), "--rebuild")
 	cmd.Stdin = strings.NewReader(script)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("wimlib-imagex update failed: %w\nOutput: %s", err, string(output))
