@@ -26,6 +26,7 @@ Bootimus uses MAC address-based access control to manage which clients can boot 
 - **Assigned Images**: When a client has images assigned, it sees **only those images** (not the full public list)
 - **Show Public Images**: When enabled alongside assigned images, client sees both assigned and public images
 - **Next Boot Action**: A one-time boot image override that auto-clears after use
+- **Bootloader Set**: An optional initial bootloader override for this client
 
 ### Client Auto-Discovery
 
@@ -85,6 +86,22 @@ Bootimus accepts MAC addresses in these formats:
 All formats are normalized to colon-separated lowercase.
 
 ## Client Permissions
+
+### Select a Bootloader Set
+
+The bootloader set used for the initial PXE download is resolved in this order:
+
+1. Client bootloader set
+2. Client-group bootloader set
+3. Globally active bootloader set
+
+Select a set in the client's edit dialog, or leave **Default (global setting)**
+to inherit from its group and then the global setting.
+
+Per-client and client-group selection requires Bootimus's built-in proxyDHCP
+server, because it uses the PXE request's MAC address to advertise a
+set-qualified boot filename. External DHCP servers continue to advertise their
+statically configured filename and therefore use the globally active set.
 
 ### Assign Images to Client
 

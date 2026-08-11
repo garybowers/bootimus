@@ -160,6 +160,12 @@ Bootimus ships with embedded iPXE bootloaders for UEFI (x86_64, ARM64) and Legac
 
 The built-in set is always available as a fallback. Files not present in the active custom set are served from the built-in set automatically.
 
+When the built-in proxyDHCP server is enabled, clients can override the global
+set from the **Clients** page. Client settings take precedence over client-group
+settings, which take precedence over the globally active set. External DHCP
+servers cannot apply MAC-specific Bootimus settings and continue to use the
+globally active set.
+
 ## Supported Distributions
 
 ### Arch-based
