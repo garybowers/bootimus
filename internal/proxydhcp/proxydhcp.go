@@ -26,7 +26,11 @@ type Config struct {
 	BootfileBIOS  string
 	BootfileUEFI  string
 	BootfileARM64 string
-	Bootfiles     func(clientHWAddr net.HardwareAddr) (bios, uefi, arm64 string)
+	// Bootfiles, when set, is consulted on every request with the client's
+	// hardware address; any non-empty value it returns overrides the static
+	// Bootfile* fields. This lets the server switch global or client-specific
+	// bootloader sets at runtime without restarting proxyDHCP.
+	Bootfiles func(clientHWAddr net.HardwareAddr) (bios, uefi, arm64 string)
 }
 
 type Server struct {

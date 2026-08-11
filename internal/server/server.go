@@ -401,8 +401,9 @@ func (s *Server) bootloaderSetManifest(setName string) *bootloaders.Manifest {
 	return m
 }
 
-// activeSetManifest loads manifest.json for the active bootloader set — from
-// the on-disk set directory when present, otherwise from the embedded sets.
+// activeSetManifest loads manifest.json for the globally active bootloader set —
+// from the on-disk set directory when present, otherwise from the embedded sets.
+// Client-specific selections are loaded through bootloaderSetManifest.
 func (s *Server) activeSetManifest() *bootloaders.Manifest {
 	return s.bootloaderSetManifest(s.GetActiveBootloaderSet())
 }
