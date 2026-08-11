@@ -5095,6 +5095,8 @@ function getDefaultBootParams(img) {
             return 'archiso_http_srv={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ ip=dhcp';
         case 'nixos':
             return 'ip=dhcp';
+        case 'alma':
+            return 'initrd=initrd ip=dhcp rd.neednet=1 inst.stage2={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/';
         case 'fedora':
         case 'centos':
             return 'root=live:{{BASE_URL}}/isos/{{FILENAME}} rd.live.image inst.repo={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ inst.stage2={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ rd.neednet=1 ip=dhcp';
