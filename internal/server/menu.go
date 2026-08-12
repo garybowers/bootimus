@@ -91,6 +91,11 @@ func (mb *MenuBuilder) Build() string {
 	var sb strings.Builder
 
 	sb.WriteString("#!ipxe\n\n")
+	if groupID, ok := mb.nextBootGroupID(); ok {
+		// A grouped image is not an item on the root menu. Enter its containing
+		// menu first so iPXE can display that menu with the image pre-selected.
+		sb.WriteString(fmt.Sprintf("goto group%d\n\n", groupID))
+	}
 	sb.WriteString(mb.buildMainMenu())
 	sb.WriteString(mb.buildGroupMenus())
 	sb.WriteString(mb.buildImageBootSections())
@@ -109,9 +114,42 @@ func (mb *MenuBuilder) menuTimeoutMs() int {
 	return 30000
 }
 
+func (mb *MenuBuilder) effectiveMenuTimeoutMs() int {
+	timeoutMs := mb.menuTimeoutMs()
+	if mb.nextBootImageID > 0 && timeoutMs == 0 {
+		return 10000 // one-shot selections must not wait forever
+	}
+	return timeoutMs
+}
+
+func (mb *MenuBuilder) nextBootImage() *models.Image {
+	if mb.nextBootImageID == 0 {
+		return nil
+	}
+	for i := range mb.images {
+		if mb.images[i].Enabled && mb.images[i].ID == mb.nextBootImageID {
+			return &mb.images[i]
+		}
+	}
+	return nil
+}
+
+func (mb *MenuBuilder) nextBootGroupID() (uint, bool) {
+	img := mb.nextBootImage()
+	if img == nil || img.GroupID == nil {
+		return 0, false
+	}
+	for _, group := range mb.groups {
+		if group.ID == *img.GroupID && group.Enabled && mb.groupHasImages(group.ID) {
+			return group.ID, true
+		}
+	}
+	return 0, false
+}
+
 func (mb *MenuBuilder) resolveDefaultItem(visibleGroups []*models.ImageGroup, ungroupedImages []models.Image) string {
-	if mb.nextBootImageID > 0 {
-		return fmt.Sprintf("iso%d", mb.nextBootImageID)
+	if img := mb.nextBootImage(); img != nil && img.GroupID == nil {
+		return fmt.Sprintf("iso%d", img.ID)
 	}
 	if mb.forceLocalDefault {
 		return "local"
@@ -144,6 +182,18 @@ func encodePathSegments(path string) string {
 		segments[i] = url.PathEscape(seg)
 	}
 	return strings.Join(segments, "/")
+}
+
+// bootFileURL preserves the client identity while iPXE fetches a kernel or
+// initrd. The /boot/ handler uses this MAC to attribute a boot to the correct
+// client and update its boot count. Keep URLs without a query string for menu
+// builders that do not have a client identity (for example, static previews).
+func (mb *MenuBuilder) bootFileURL(baseURL, cacheDir, filename string) string {
+	bootURL := fmt.Sprintf("%s/boot/%s/%s", baseURL, cacheDir, filename)
+	if mb.macAddress == "" {
+		return bootURL
+	}
+	return bootURL + "?mac=" + url.QueryEscape(mb.macAddress)
 }
 
 func (mb *MenuBuilder) buildMainMenu() string {
@@ -192,10 +242,7 @@ func (mb *MenuBuilder) buildMainMenu() string {
 	sb.WriteString("item reboot Reboot\n")
 	defaultItem := mb.resolveDefaultItem(visibleGroups, ungroupedImages)
 
-	timeoutMs := mb.menuTimeoutMs()
-	if mb.nextBootImageID > 0 && timeoutMs == 0 {
-		timeoutMs = 10000 // 10s override when next boot is set but global timeout is disabled
-	}
+	timeoutMs := mb.effectiveMenuTimeoutMs()
 
 	if timeoutMs > 0 {
 		sb.WriteString(fmt.Sprintf("choose --default %s --timeout %d selected || goto start\n", defaultItem, timeoutMs))
@@ -257,10 +304,14 @@ func (mb *MenuBuilder) buildGroupMenus() string {
 		sb.WriteString("item local Boot from Local Disk\n")
 		sb.WriteString("item shell Drop to iPXE shell\n")
 		sb.WriteString("item reboot Reboot\n")
-		if timeoutMs := mb.menuTimeoutMs(); timeoutMs > 0 {
-			sb.WriteString(fmt.Sprintf("choose --timeout %d selected || goto group%d\n", timeoutMs, group.ID))
+		defaultOption := ""
+		if img := mb.nextBootImage(); img != nil && img.GroupID != nil && *img.GroupID == group.ID {
+			defaultOption = fmt.Sprintf(" --default iso%d", img.ID)
+		}
+		if timeoutMs := mb.effectiveMenuTimeoutMs(); timeoutMs > 0 {
+			sb.WriteString(fmt.Sprintf("choose%s --timeout %d selected || goto group%d\n", defaultOption, timeoutMs, group.ID))
 		} else {
-			sb.WriteString(fmt.Sprintf("choose selected || goto group%d\n", group.ID))
+			sb.WriteString(fmt.Sprintf("choose%s selected || goto group%d\n", defaultOption, group.ID))
 		}
 		sb.WriteString("goto ${selected}\n\n")
 	}
@@ -293,8 +344,9 @@ func (mb *MenuBuilder) buildImageBootSections() string {
 		case "nfs":
 			sb.WriteString("echo Using NFS root (streamed, low memory)...\n")
 			nfsPath := strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename))
-			sb.WriteString(fmt.Sprintf("kernel http://%s:%d/boot/%s/vmlinuz initrd=initrd root=/dev/nfs boot=casper netboot=nfs nfsroot=%s:/%s/iso,vers=3,tcp,port=%d,mountport=%d,nolock ip=dhcp\n", mb.serverAddr, mb.httpPort, cacheDir, mb.serverAddr, nfsPath, mb.nfsPort, mb.nfsPort))
-			sb.WriteString(fmt.Sprintf("initrd http://%s:%d/boot/%s/initrd\n", mb.serverAddr, mb.httpPort, cacheDir))
+			bootURL := fmt.Sprintf("http://%s:%d", mb.serverAddr, mb.httpPort)
+			sb.WriteString(fmt.Sprintf("kernel %s initrd=initrd root=/dev/nfs boot=casper netboot=nfs nfsroot=%s:/%s/iso,vers=3,tcp,port=%d,mountport=%d,nolock ip=dhcp\n", mb.bootFileURL(bootURL, cacheDir, "vmlinuz"), mb.serverAddr, nfsPath, mb.nfsPort, mb.nfsPort))
+			sb.WriteString(fmt.Sprintf("initrd %s\n", mb.bootFileURL(bootURL, cacheDir, "initrd")))
 			sb.WriteString("boot || goto failed\n")
 
 		case "kernel":
@@ -362,8 +414,8 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 			initrdPath = encodePathSegments(img.InitrdOverride)
 			initrdName = " initrd"
 		}
-		sb.WriteString(fmt.Sprintf("kernel %s/boot/%s/%s%s%s\n", baseURL, cacheDir, kernelPath, autoInstallParam, bootParams))
-		sb.WriteString(fmt.Sprintf("initrd %s/boot/%s/%s%s\n", baseURL, cacheDir, initrdPath, initrdName))
+		sb.WriteString(fmt.Sprintf("kernel %s%s%s\n", mb.bootFileURL(baseURL, cacheDir, kernelPath), autoInstallParam, bootParams))
+		sb.WriteString(fmt.Sprintf("initrd %s%s\n", mb.bootFileURL(baseURL, cacheDir, initrdPath), initrdName))
 		sb.WriteString("boot || goto failed\n")
 	}
 

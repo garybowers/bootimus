@@ -2,6 +2,7 @@ package profiles
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"bootimus/internal/models"
@@ -62,6 +63,34 @@ func TestMatchProfile_CaseInsensitive(t *testing.T) {
 	}
 	if got.ProfileID != "ubuntu" {
 		t.Errorf("got %s, want ubuntu", got.ProfileID)
+	}
+}
+
+func TestAlmaProfileUsesAnacondaStage2(t *testing.T) {
+	profiles := loadEmbeddedForTest(t)
+
+	var alma *models.DistroProfile
+	for _, profile := range profiles {
+		if profile.ProfileID == "alma" {
+			alma = profile
+			break
+		}
+	}
+	if alma == nil {
+		t.Fatal("embedded AlmaLinux profile not found")
+	}
+
+	params := alma.DefaultBootParams
+	if strings.Contains(params, "root=live:") || strings.Contains(params, "rd.live.image") {
+		t.Fatalf("AlmaLinux installer profile must not use a live root: %q", params)
+	}
+	if strings.Contains(params, "inst.repo=") {
+		t.Fatalf("AlmaLinux Boot ISO profile must leave package sources to Kickstart: %q", params)
+	}
+	for _, required := range []string{"initrd=initrd", "ip=dhcp", "rd.neednet=1", "inst.stage2="} {
+		if !strings.Contains(params, required) {
+			t.Errorf("AlmaLinux installer profile missing %q in %q", required, params)
+		}
 	}
 }
 

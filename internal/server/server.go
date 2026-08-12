@@ -325,6 +325,8 @@ type bootloaderConfigFile struct {
 	ActiveSet string `json:"active_set"`
 }
 
+const bootloaderSetRequestPrefix = "bootloader-sets/"
+
 func (s *Server) loadBootloaderConfig() {
 	data, err := os.ReadFile(s.bootloaderConfigPath())
 	if err != nil {
@@ -368,12 +370,21 @@ func (s *Server) SetActiveBootloaderSet(name string) {
 	log.Printf("Bootloader set %q active: PXE bootfiles BIOS=%s UEFI=%s ARM64=%s", display, bios, uefi, arm64)
 }
 
-// activeSetManifest loads manifest.json for the active bootloader set — from
-// the on-disk set directory when present, otherwise from the embedded sets.
-func (s *Server) activeSetManifest() *bootloaders.Manifest {
-	setName := s.GetActiveBootloaderSet()
+func normalizedBootloaderSetName(setName string) string {
+	setName = strings.TrimSpace(setName)
 	if setName == "" {
-		setName = bootloaders.DefaultSet
+		return bootloaders.DefaultSet
+	}
+	if strings.ContainsAny(setName, `/\`) || setName != path.Base(setName) || setName == "." || setName == ".." {
+		return ""
+	}
+	return setName
+}
+
+func (s *Server) bootloaderSetManifest(setName string) *bootloaders.Manifest {
+	setName = normalizedBootloaderSetName(setName)
+	if setName == "" {
+		return nil
 	}
 	if s.config.BootDir != "" {
 		diskPath := filepath.Join(s.config.BootDir, setName, "manifest.json")
@@ -388,6 +399,13 @@ func (s *Server) activeSetManifest() *bootloaders.Manifest {
 		return nil
 	}
 	return m
+}
+
+// activeSetManifest loads manifest.json for the globally active bootloader set —
+// from the on-disk set directory when present, otherwise from the embedded sets.
+// Client-specific selections are loaded through bootloaderSetManifest.
+func (s *Server) activeSetManifest() *bootloaders.Manifest {
+	return s.bootloaderSetManifest(s.GetActiveBootloaderSet())
 }
 
 // proxyDHCPBootfiles returns the bootfile names proxyDHCP should advertise.
@@ -412,12 +430,117 @@ func (s *Server) proxyDHCPBootfiles() (bios, uefi, arm64 string) {
 	return bios, uefi, arm64
 }
 
-func (s *Server) resolveBootloaderFile(filename string) string {
-	setName := s.GetActiveBootloaderSet()
+func (s *Server) effectiveBootloaderSet(clientHWAddr net.HardwareAddr) (string, bool) {
+	globalSet := normalizedBootloaderSetName(s.GetActiveBootloaderSet())
+	if globalSet == "" {
+		globalSet = bootloaders.DefaultSet
+	}
+	if len(clientHWAddr) == 0 || s.config.Storage == nil {
+		return globalSet, false
+	}
+
+	mac := strings.ToLower(clientHWAddr.String())
+	client, err := s.config.Storage.GetClient(mac)
+	if err != nil {
+		return globalSet, false
+	}
+	if configuredSet := strings.TrimSpace(client.BootloaderSet); configuredSet != "" {
+		if setName := normalizedBootloaderSetName(configuredSet); setName != "" {
+			return setName, true
+		}
+	}
+	if client.ClientGroupID != nil {
+		group, err := s.config.Storage.GetClientGroup(*client.ClientGroupID)
+		if err == nil {
+			if configuredSet := strings.TrimSpace(group.BootloaderSet); configuredSet != "" {
+				if setName := normalizedBootloaderSetName(configuredSet); setName != "" {
+					return setName, true
+				}
+			}
+		}
+	}
+	return globalSet, false
+}
+
+func qualifyBootloaderSetRequest(setName, filename string) string {
+	setName = normalizedBootloaderSetName(setName)
+	filename = path.Clean(strings.TrimPrefix(filename, "/"))
+	if setName == "" || strings.Contains(filename, `\`) || filename == "." || filename == ".." || strings.HasPrefix(filename, "../") {
+		return ""
+	}
+	return path.Join(bootloaderSetRequestPrefix, setName, filename)
+}
+
+func (s *Server) proxyDHCPBootfilesForClient(clientHWAddr net.HardwareAddr) (bios, uefi, arm64 string) {
+	setName, overridden := s.effectiveBootloaderSet(clientHWAddr)
+	if !overridden {
+		return s.proxyDHCPBootfiles()
+	}
+
+	bios = s.config.ProxyDHCPBootfileBIOS
+	if bios == "" {
+		bios = proxydhcp.DefaultBootfileBIOS
+	}
+	uefi = s.config.ProxyDHCPBootfileUEFI
+	if uefi == "" {
+		uefi = proxydhcp.DefaultBootfileUEFI
+	}
+	arm64 = s.config.ProxyDHCPBootfileARM
+	if arm64 == "" {
+		arm64 = proxydhcp.DefaultBootfileARM64
+	}
+	if manifest := s.bootloaderSetManifest(setName); manifest != nil {
+		if (bios == "" || bios == proxydhcp.DefaultBootfileBIOS) && manifest.Bootfiles.BIOS != "" {
+			bios = manifest.Bootfiles.BIOS
+		}
+		if (uefi == "" || uefi == proxydhcp.DefaultBootfileUEFI) && manifest.Bootfiles.UEFI != "" {
+			uefi = manifest.Bootfiles.UEFI
+		}
+		if (arm64 == "" || arm64 == proxydhcp.DefaultBootfileARM64) && manifest.Bootfiles.ARM64 != "" {
+			arm64 = manifest.Bootfiles.ARM64
+		}
+	}
+	return qualifyBootloaderSetRequest(setName, bios),
+		qualifyBootloaderSetRequest(setName, uefi),
+		qualifyBootloaderSetRequest(setName, arm64)
+}
+
+func (s *Server) resolveBootloaderRequest(requestPath string) (setName, filename string, err error) {
+	if strings.Contains(requestPath, `\`) {
+		return "", "", fmt.Errorf("invalid bootloader path: %s", requestPath)
+	}
+	cleanPath := path.Clean(strings.TrimPrefix(requestPath, "/"))
+	if cleanPath == "." || cleanPath == ".." || strings.HasPrefix(cleanPath, "../") {
+		return "", "", fmt.Errorf("invalid bootloader path: %s", requestPath)
+	}
+	if !strings.HasPrefix(cleanPath, bootloaderSetRequestPrefix) {
+		return normalizedBootloaderSetName(s.GetActiveBootloaderSet()), cleanPath, nil
+	}
+
+	relativePath := strings.TrimPrefix(cleanPath, bootloaderSetRequestPrefix)
+	separator := strings.IndexByte(relativePath, '/')
+	if separator <= 0 || separator == len(relativePath)-1 {
+		return "", "", fmt.Errorf("invalid qualified bootloader path: %s", requestPath)
+	}
+	setName = normalizedBootloaderSetName(relativePath[:separator])
+	filename = path.Clean(relativePath[separator+1:])
+	if setName == "" || filename == "." || filename == ".." || strings.HasPrefix(filename, "../") {
+		return "", "", fmt.Errorf("invalid qualified bootloader path: %s", requestPath)
+	}
+	return setName, filename, nil
+}
+
+func (s *Server) resolveBootloaderFile(setName, filename string) string {
+	setName = normalizedBootloaderSetName(setName)
 	if setName == "" || s.config.BootDir == "" {
 		return ""
 	}
-	fullPath := filepath.Join(s.config.BootDir, setName, filename)
+	setDir := filepath.Join(s.config.BootDir, setName)
+	fullPath := filepath.Join(setDir, filepath.FromSlash(filename))
+	relativePath, err := filepath.Rel(setDir, fullPath)
+	if err != nil || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) {
+		return ""
+	}
 	if _, err := os.Stat(fullPath); err == nil {
 		return fullPath
 	}
@@ -596,7 +719,7 @@ func (s *Server) Start() error {
 			BootfileBIOS:  s.config.ProxyDHCPBootfileBIOS,
 			BootfileUEFI:  s.config.ProxyDHCPBootfileUEFI,
 			BootfileARM64: s.config.ProxyDHCPBootfileARM,
-			Bootfiles:     s.proxyDHCPBootfiles,
+			Bootfiles:     s.proxyDHCPBootfilesForClient,
 		})
 		if err != nil {
 			log.Printf("proxyDHCP: failed to construct server: %v", err)
@@ -787,10 +910,7 @@ func (s *Server) startTFTPServer() error {
 
 	server := tftp.NewServer(
 		func(filename string, rf io.ReaderFrom) error {
-			cleanPath := filepath.Clean(filename)
-			if filepath.IsAbs(cleanPath) {
-				cleanPath = filepath.Base(cleanPath)
-			}
+			cleanPath := path.Clean(strings.TrimPrefix(filename, "/"))
 
 			remote := tftpRemote(rf)
 			start := time.Now()
@@ -837,11 +957,16 @@ goto dhcp
 				return nil
 			}
 
-			if customPath := s.resolveBootloaderFile(cleanPath); customPath != "" {
+			setName, bootloaderFilename, err := s.resolveBootloaderRequest(cleanPath)
+			if err != nil {
+				return err
+			}
+
+			if customPath := s.resolveBootloaderFile(setName, bootloaderFilename); customPath != "" {
 				file, err := os.Open(customPath)
 				if err == nil {
 					defer file.Close()
-					log.Printf("TFTP: Serving from set '%s': %s", s.GetActiveBootloaderSet(), cleanPath)
+					log.Printf("TFTP: Serving from set '%s': %s", setName, bootloaderFilename)
 
 					fileInfo, err := file.Stat()
 					if err != nil {
@@ -863,9 +988,9 @@ goto dhcp
 				}
 			}
 
-			data, resolvedSet, err := bootloaders.Resolve(s.GetActiveBootloaderSet(), cleanPath)
+			data, resolvedSet, err := bootloaders.Resolve(setName, bootloaderFilename)
 			if err == nil {
-				log.Printf("TFTP: Serving embedded bootloader from set '%s': %s", resolvedSet, cleanPath)
+				log.Printf("TFTP: Serving embedded bootloader from set '%s': %s", resolvedSet, bootloaderFilename)
 
 				if rfs, ok := rf.(interface{ SetSize(int64) error }); ok {
 					rfs.SetSize(int64(len(data)))
@@ -925,9 +1050,15 @@ func (s *Server) startHTTPServer() error {
 			return
 		}
 
-		if customPath := s.resolveBootloaderFile(cleanPath); customPath != "" {
-			log.Printf("HTTP: Serving from set '%s': %s", s.GetActiveBootloaderSet(), cleanPath)
-			ext := filepath.Ext(cleanPath)
+		setName, bootloaderFilename, err := s.resolveBootloaderRequest(cleanPath)
+		if err != nil {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+
+		if customPath := s.resolveBootloaderFile(setName, bootloaderFilename); customPath != "" {
+			log.Printf("HTTP: Serving from set '%s': %s", setName, bootloaderFilename)
+			ext := filepath.Ext(bootloaderFilename)
 			if ext == ".efi" || ext == ".img" || ext == ".iso" || ext == ".kpxe" || ext == ".usb" {
 				w.Header().Set("Content-Type", "application/octet-stream")
 			}
@@ -935,9 +1066,9 @@ func (s *Server) startHTTPServer() error {
 			return
 		}
 
-		data, resolvedSet, err := bootloaders.Resolve(s.GetActiveBootloaderSet(), cleanPath)
+		data, resolvedSet, err := bootloaders.Resolve(setName, bootloaderFilename)
 		if err == nil {
-			log.Printf("HTTP: Serving embedded bootloader from set '%s': %s", resolvedSet, cleanPath)
+			log.Printf("HTTP: Serving embedded bootloader from set '%s': %s", resolvedSet, bootloaderFilename)
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.Write(data)
 			return

@@ -16,6 +16,16 @@ func testMenuBuilder(types map[uint]string) *MenuBuilder {
 	}
 }
 
+func TestBuildMissingNextBootFallsBackToMenu(t *testing.T) {
+	mb := testMenuBuilder(nil)
+	mb.nextBootImageID = 99
+
+	out := mb.Build()
+	if !strings.Contains(out, ":start\nmenu ") {
+		t.Fatalf("expected an unavailable next boot image to fall back to the menu, got:\n%s", out)
+	}
+}
+
 func TestBuildKernelBootSectionAutoInstallParams(t *testing.T) {
 	img := &models.Image{
 		ID:         7,
@@ -58,6 +68,19 @@ func TestBuildKernelBootSectionNoAutoInstall(t *testing.T) {
 	}
 }
 
+func TestBuildKernelBootSectionAttributesBootFilesToClient(t *testing.T) {
+	mb := testMenuBuilder(nil)
+	img := &models.Image{ID: 7, Filename: "test.iso", Enabled: true, BootMethod: "kernel"}
+
+	out := mb.buildKernelBootSection(img, "test.iso", "test")
+	if !strings.Contains(out, "kernel http://10.0.0.1:8080/boot/test/vmlinuz?mac=aa%3Abb%3Acc%3Add%3Aee%3Aff") {
+		t.Errorf("expected kernel request to include the client MAC, got:\n%s", out)
+	}
+	if !strings.Contains(out, "initrd http://10.0.0.1:8080/boot/test/initrd?mac=aa%3Abb%3Acc%3Add%3Aee%3Aff") {
+		t.Errorf("expected initrd request to include the client MAC, got:\n%s", out)
+	}
+}
+
 func TestBuildKernelBootSectionStripsBareNocloudParam(t *testing.T) {
 	img := &models.Image{
 		ID:         7,
@@ -91,5 +114,61 @@ func TestResolveBootParamsPlaceholders(t *testing.T) {
 	want := "url=http://10.0.0.1:8080 host=10.0.0.1 file=test.iso legacy=test.iso cache=test mac=aa:bb:cc:dd:ee:ff"
 	if got != want {
 		t.Errorf("expected %q, got %q", want, got)
+	}
+}
+
+func TestGroupedNextBootStartsInContainingMenuAndSelectsImage(t *testing.T) {
+	rootID := uint(10)
+	childID := uint(20)
+	root := &models.ImageGroup{ID: rootID, Name: "Linux", Enabled: true}
+	child := &models.ImageGroup{ID: childID, Name: "Alma", ParentID: &rootID, Parent: root, Enabled: true}
+	mb := testMenuBuilder(nil)
+	mb.groups = []*models.ImageGroup{root, child}
+	mb.images = []models.Image{{
+		ID:       42,
+		Name:     "AlmaLinux",
+		Filename: "linux/alma/AlmaLinux.iso",
+		Enabled:  true,
+		GroupID:  &childID,
+	}}
+	mb.nextBootImageID = 42
+
+	out := mb.Build()
+	if !strings.HasPrefix(out, "#!ipxe\n\ngoto group20\n\n:start\n") {
+		t.Fatalf("expected grouped next boot to enter its containing menu first:\n%s", out)
+	}
+	if !strings.Contains(out, ":group20\nmenu Bootimus - Boot Menu - Alma") {
+		t.Fatalf("expected target group menu to be present:\n%s", out)
+	}
+	if !strings.Contains(out, "choose --default iso42 --timeout 30000 selected || goto group20") {
+		t.Fatalf("expected grouped image to be the timed default in its menu:\n%s", out)
+	}
+}
+
+func TestGroupedNextBootUsesTimeoutWhenMenusNormallyWaitForever(t *testing.T) {
+	groupID := uint(10)
+	mb := testMenuBuilder(nil)
+	mb.theme = &models.MenuTheme{MenuTimeout: 0}
+	mb.groups = []*models.ImageGroup{{ID: groupID, Name: "Alma", Enabled: true}}
+	mb.images = []models.Image{{ID: 42, Name: "AlmaLinux", Filename: "alma/AlmaLinux.iso", Enabled: true, GroupID: &groupID}}
+	mb.nextBootImageID = 42
+
+	out := mb.Build()
+	if !strings.Contains(out, "choose --default iso42 --timeout 10000 selected || goto group10") {
+		t.Fatalf("expected one-shot grouped image to receive the 10-second timeout override:\n%s", out)
+	}
+}
+
+func TestUngroupedNextBootRemainsSelectedOnRootMenu(t *testing.T) {
+	mb := testMenuBuilder(nil)
+	mb.images = []models.Image{{ID: 42, Name: "AlmaLinux", Filename: "AlmaLinux.iso", Enabled: true}}
+	mb.nextBootImageID = 42
+
+	out := mb.Build()
+	if strings.HasPrefix(out, "#!ipxe\n\ngoto group") {
+		t.Fatalf("did not expect an ungrouped image to enter a group menu:\n%s", out)
+	}
+	if !strings.Contains(out, "choose --default iso42 --timeout 30000 selected || goto start") {
+		t.Fatalf("expected ungrouped image to remain the root-menu default:\n%s", out)
 	}
 }

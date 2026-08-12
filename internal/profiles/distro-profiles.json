@@ -212,7 +212,7 @@
       "kernel_paths": ["/images/pxeboot/vmlinuz"],
       "initrd_paths": ["/images/pxeboot/initrd.img"],
       "squashfs_paths": ["/LiveOS/squashfs.img"],
-      "default_boot_params": "initrd=initrd root=live:{{BASE_URL}}/isos/{{FILENAME}} rd.live.image inst.repo={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ inst.stage2={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/ rd.neednet=1",
+      "default_boot_params": "initrd=initrd ip=dhcp rd.neednet=1 inst.stage2={{BASE_URL}}/boot/{{CACHE_DIR}}/iso/",
       "auto_install_type": "kickstart",
       "boot_method": "kernel",
       "mirrors": [

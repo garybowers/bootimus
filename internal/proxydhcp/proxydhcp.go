@@ -26,10 +26,11 @@ type Config struct {
 	BootfileBIOS  string
 	BootfileUEFI  string
 	BootfileARM64 string
-	// Bootfiles, when set, is consulted on every request; any non-empty value
-	// it returns overrides the static Bootfile* fields. This lets the server
-	// switch bootloader sets at runtime without restarting proxyDHCP.
-	Bootfiles func() (bios, uefi, arm64 string)
+	// Bootfiles, when set, is consulted on every request with the client's
+	// hardware address; any non-empty value it returns overrides the static
+	// Bootfile* fields. This lets the server switch global or client-specific
+	// bootloader sets at runtime without restarting proxyDHCP.
+	Bootfiles func(clientHWAddr net.HardwareAddr) (bios, uefi, arm64 string)
 }
 
 type Server struct {
@@ -86,7 +87,7 @@ func (s *Server) Start() error {
 	}
 	s.conn4011 = conn4011
 
-	bios, uefi, arm64 := s.effectiveBootfiles()
+	bios, uefi, arm64 := s.effectiveBootfiles(nil)
 	log.Printf("proxyDHCP: listening on UDP/67 + UDP/4011, advertising next-server=%s (BIOS=%s, UEFI=%s, ARM64=%s)",
 		s.cfg.ServerIP, bios, uefi, arm64)
 
@@ -193,10 +194,10 @@ func pxeVendorOptions() []byte {
 	}
 }
 
-func (s *Server) effectiveBootfiles() (bios, uefi, arm64 string) {
+func (s *Server) effectiveBootfiles(clientHWAddr net.HardwareAddr) (bios, uefi, arm64 string) {
 	bios, uefi, arm64 = s.cfg.BootfileBIOS, s.cfg.BootfileUEFI, s.cfg.BootfileARM64
 	if s.cfg.Bootfiles != nil {
-		overrideBIOS, overrideUEFI, overrideARM64 := s.cfg.Bootfiles()
+		overrideBIOS, overrideUEFI, overrideARM64 := s.cfg.Bootfiles(clientHWAddr)
 		if overrideBIOS != "" {
 			bios = overrideBIOS
 		}
@@ -211,7 +212,7 @@ func (s *Server) effectiveBootfiles() (bios, uefi, arm64 string) {
 }
 
 func (s *Server) bootfileFor(req *dhcpv4.DHCPv4) string {
-	bios, uefi, arm64 := s.effectiveBootfiles()
+	bios, uefi, arm64 := s.effectiveBootfiles(req.ClientHWAddr)
 	switch clientArch(req) {
 	case iana.EFI_IA32, iana.EFI_X86_64, iana.EFI_BC:
 		return uefi
