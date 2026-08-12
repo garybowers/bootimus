@@ -91,6 +91,11 @@ func (mb *MenuBuilder) Build() string {
 	var sb strings.Builder
 
 	sb.WriteString("#!ipxe\n\n")
+	if groupID, ok := mb.nextBootGroupID(); ok {
+		// A grouped image is not an item on the root menu. Enter its containing
+		// menu first so iPXE can display that menu with the image pre-selected.
+		sb.WriteString(fmt.Sprintf("goto group%d\n\n", groupID))
+	}
 	sb.WriteString(mb.buildMainMenu())
 	sb.WriteString(mb.buildGroupMenus())
 	sb.WriteString(mb.buildImageBootSections())
@@ -109,9 +114,42 @@ func (mb *MenuBuilder) menuTimeoutMs() int {
 	return 30000
 }
 
+func (mb *MenuBuilder) effectiveMenuTimeoutMs() int {
+	timeoutMs := mb.menuTimeoutMs()
+	if mb.nextBootImageID > 0 && timeoutMs == 0 {
+		return 10000 // one-shot selections must not wait forever
+	}
+	return timeoutMs
+}
+
+func (mb *MenuBuilder) nextBootImage() *models.Image {
+	if mb.nextBootImageID == 0 {
+		return nil
+	}
+	for i := range mb.images {
+		if mb.images[i].Enabled && mb.images[i].ID == mb.nextBootImageID {
+			return &mb.images[i]
+		}
+	}
+	return nil
+}
+
+func (mb *MenuBuilder) nextBootGroupID() (uint, bool) {
+	img := mb.nextBootImage()
+	if img == nil || img.GroupID == nil {
+		return 0, false
+	}
+	for _, group := range mb.groups {
+		if group.ID == *img.GroupID && group.Enabled && mb.groupHasImages(group.ID) {
+			return group.ID, true
+		}
+	}
+	return 0, false
+}
+
 func (mb *MenuBuilder) resolveDefaultItem(visibleGroups []*models.ImageGroup, ungroupedImages []models.Image) string {
-	if mb.nextBootImageID > 0 {
-		return fmt.Sprintf("iso%d", mb.nextBootImageID)
+	if img := mb.nextBootImage(); img != nil && img.GroupID == nil {
+		return fmt.Sprintf("iso%d", img.ID)
 	}
 	if mb.forceLocalDefault {
 		return "local"
@@ -192,10 +230,7 @@ func (mb *MenuBuilder) buildMainMenu() string {
 	sb.WriteString("item reboot Reboot\n")
 	defaultItem := mb.resolveDefaultItem(visibleGroups, ungroupedImages)
 
-	timeoutMs := mb.menuTimeoutMs()
-	if mb.nextBootImageID > 0 && timeoutMs == 0 {
-		timeoutMs = 10000 // 10s override when next boot is set but global timeout is disabled
-	}
+	timeoutMs := mb.effectiveMenuTimeoutMs()
 
 	if timeoutMs > 0 {
 		sb.WriteString(fmt.Sprintf("choose --default %s --timeout %d selected || goto start\n", defaultItem, timeoutMs))
@@ -257,10 +292,14 @@ func (mb *MenuBuilder) buildGroupMenus() string {
 		sb.WriteString("item local Boot from Local Disk\n")
 		sb.WriteString("item shell Drop to iPXE shell\n")
 		sb.WriteString("item reboot Reboot\n")
-		if timeoutMs := mb.menuTimeoutMs(); timeoutMs > 0 {
-			sb.WriteString(fmt.Sprintf("choose --timeout %d selected || goto group%d\n", timeoutMs, group.ID))
+		defaultOption := ""
+		if img := mb.nextBootImage(); img != nil && img.GroupID != nil && *img.GroupID == group.ID {
+			defaultOption = fmt.Sprintf(" --default iso%d", img.ID)
+		}
+		if timeoutMs := mb.effectiveMenuTimeoutMs(); timeoutMs > 0 {
+			sb.WriteString(fmt.Sprintf("choose%s --timeout %d selected || goto group%d\n", defaultOption, timeoutMs, group.ID))
 		} else {
-			sb.WriteString(fmt.Sprintf("choose selected || goto group%d\n", group.ID))
+			sb.WriteString(fmt.Sprintf("choose%s selected || goto group%d\n", defaultOption, group.ID))
 		}
 		sb.WriteString("goto ${selected}\n\n")
 	}
