@@ -16,6 +16,16 @@ func testMenuBuilder(types map[uint]string) *MenuBuilder {
 	}
 }
 
+func TestBuildMissingNextBootFallsBackToMenu(t *testing.T) {
+	mb := testMenuBuilder(nil)
+	mb.nextBootImageID = 99
+
+	out := mb.Build()
+	if !strings.Contains(out, ":start\nmenu ") {
+		t.Fatalf("expected an unavailable next boot image to fall back to the menu, got:\n%s", out)
+	}
+}
+
 func TestBuildKernelBootSectionAutoInstallParams(t *testing.T) {
 	img := &models.Image{
 		ID:         7,
