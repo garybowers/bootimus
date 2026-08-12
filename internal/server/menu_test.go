@@ -68,6 +68,19 @@ func TestBuildKernelBootSectionNoAutoInstall(t *testing.T) {
 	}
 }
 
+func TestBuildKernelBootSectionAttributesBootFilesToClient(t *testing.T) {
+	mb := testMenuBuilder(nil)
+	img := &models.Image{ID: 7, Filename: "test.iso", Enabled: true, BootMethod: "kernel"}
+
+	out := mb.buildKernelBootSection(img, "test.iso", "test")
+	if !strings.Contains(out, "kernel http://10.0.0.1:8080/boot/test/vmlinuz?mac=aa%3Abb%3Acc%3Add%3Aee%3Aff") {
+		t.Errorf("expected kernel request to include the client MAC, got:\n%s", out)
+	}
+	if !strings.Contains(out, "initrd http://10.0.0.1:8080/boot/test/initrd?mac=aa%3Abb%3Acc%3Add%3Aee%3Aff") {
+		t.Errorf("expected initrd request to include the client MAC, got:\n%s", out)
+	}
+}
+
 func TestBuildKernelBootSectionStripsBareNocloudParam(t *testing.T) {
 	img := &models.Image{
 		ID:         7,

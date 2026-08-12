@@ -184,6 +184,18 @@ func encodePathSegments(path string) string {
 	return strings.Join(segments, "/")
 }
 
+// bootFileURL preserves the client identity while iPXE fetches a kernel or
+// initrd. The /boot/ handler uses this MAC to attribute a boot to the correct
+// client and update its boot count. Keep URLs without a query string for menu
+// builders that do not have a client identity (for example, static previews).
+func (mb *MenuBuilder) bootFileURL(baseURL, cacheDir, filename string) string {
+	bootURL := fmt.Sprintf("%s/boot/%s/%s", baseURL, cacheDir, filename)
+	if mb.macAddress == "" {
+		return bootURL
+	}
+	return bootURL + "?mac=" + url.QueryEscape(mb.macAddress)
+}
+
 func (mb *MenuBuilder) buildMainMenu() string {
 	var sb strings.Builder
 
@@ -332,8 +344,9 @@ func (mb *MenuBuilder) buildImageBootSections() string {
 		case "nfs":
 			sb.WriteString("echo Using NFS root (streamed, low memory)...\n")
 			nfsPath := strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename))
-			sb.WriteString(fmt.Sprintf("kernel http://%s:%d/boot/%s/vmlinuz initrd=initrd root=/dev/nfs boot=casper netboot=nfs nfsroot=%s:/%s/iso,vers=3,tcp,port=%d,mountport=%d,nolock ip=dhcp\n", mb.serverAddr, mb.httpPort, cacheDir, mb.serverAddr, nfsPath, mb.nfsPort, mb.nfsPort))
-			sb.WriteString(fmt.Sprintf("initrd http://%s:%d/boot/%s/initrd\n", mb.serverAddr, mb.httpPort, cacheDir))
+			bootURL := fmt.Sprintf("http://%s:%d", mb.serverAddr, mb.httpPort)
+			sb.WriteString(fmt.Sprintf("kernel %s initrd=initrd root=/dev/nfs boot=casper netboot=nfs nfsroot=%s:/%s/iso,vers=3,tcp,port=%d,mountport=%d,nolock ip=dhcp\n", mb.bootFileURL(bootURL, cacheDir, "vmlinuz"), mb.serverAddr, nfsPath, mb.nfsPort, mb.nfsPort))
+			sb.WriteString(fmt.Sprintf("initrd %s\n", mb.bootFileURL(bootURL, cacheDir, "initrd")))
 			sb.WriteString("boot || goto failed\n")
 
 		case "kernel":
@@ -401,8 +414,8 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 			initrdPath = encodePathSegments(img.InitrdOverride)
 			initrdName = " initrd"
 		}
-		sb.WriteString(fmt.Sprintf("kernel %s/boot/%s/%s%s%s\n", baseURL, cacheDir, kernelPath, autoInstallParam, bootParams))
-		sb.WriteString(fmt.Sprintf("initrd %s/boot/%s/%s%s\n", baseURL, cacheDir, initrdPath, initrdName))
+		sb.WriteString(fmt.Sprintf("kernel %s%s%s\n", mb.bootFileURL(baseURL, cacheDir, kernelPath), autoInstallParam, bootParams))
+		sb.WriteString(fmt.Sprintf("initrd %s%s\n", mb.bootFileURL(baseURL, cacheDir, initrdPath), initrdName))
 		sb.WriteString("boot || goto failed\n")
 	}
 
