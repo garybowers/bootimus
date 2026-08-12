@@ -1990,13 +1990,6 @@ func (s *Server) handleIPXEMenu(w http.ResponseWriter, r *http.Request) {
 	}
 
 	menu := s.generateIPXEMenuWithGroups(images, macAddress, nextBootImageID)
-	if nextBootImageID > 0 {
-		// A one-shot next-boot assignment is an automation contract, not an
-		// interactive preference.  Jump straight to the selected image so a
-		// headless Redfish restart cannot remain parked at the boot menu.
-		menu = fmt.Sprintf("#!ipxe\n\ngoto iso%d\n\n%s", nextBootImageID,
-			strings.TrimPrefix(menu, "#!ipxe\n\n"))
-	}
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(menu))
 }
