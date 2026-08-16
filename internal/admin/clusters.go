@@ -66,7 +66,7 @@ func (h *Handler) clusterFromQuery(w http.ResponseWriter, r *http.Request) (*mod
 	return cluster, true
 }
 
-func normalizeMAC(mac string) string {
+func normaliseMAC(mac string) string {
 	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(mac), "-", ":"))
 }
 
@@ -433,7 +433,7 @@ func (h *Handler) AssignNode(w http.ResponseWriter, r *http.Request) {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid JSON body"})
 		return
 	}
-	mac := normalizeMAC(req.MAC)
+	mac := normaliseMAC(req.MAC)
 	if mac == "" {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing mac"})
 		return
@@ -498,7 +498,7 @@ func (h *Handler) enrollmentStateAction(w http.ResponseWriter, r *http.Request, 
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid JSON body"})
 		return
 	}
-	mac := normalizeMAC(req.MAC)
+	mac := normaliseMAC(req.MAC)
 	if mac == "" {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing mac"})
 		return

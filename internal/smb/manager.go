@@ -124,7 +124,7 @@ func (m *Manager) Stop() {
 	}
 }
 
-func SanitizeShareName(isoBase string) string {
+func SanitiseShareName(isoBase string) string {
 	var sb strings.Builder
 	for _, r := range isoBase {
 		switch {

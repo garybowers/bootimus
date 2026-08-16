@@ -891,9 +891,9 @@ func (e *Extractor) extractDirectory(dir *iso9660.File, destPath, isoPath string
 		childISOPath := filepath.Join(isoPath, name)
 		childDestPath := filepath.Join(destPath, name)
 
-		safeName := sanitizeFilename(name)
+		safeName := sanitiseFilename(name)
 		if safeName != name {
-			log.Printf("Warning: sanitized filename from '%s' to '%s'", name, safeName)
+			log.Printf("Warning: sanitised filename from '%s' to '%s'", name, safeName)
 			childDestPath = filepath.Join(destPath, safeName)
 		}
 
@@ -944,7 +944,7 @@ func (e *Extractor) extractFile(extents []*iso9660.File, destPath, isoPath strin
 	return nil
 }
 
-func sanitizeFilename(name string) string {
+func sanitiseFilename(name string) string {
 	invalid := []string{"\x00", "<", ">", ":", "\"", "|", "?", "*"}
 	result := name
 	for _, char := range invalid {
@@ -1077,9 +1077,9 @@ func findFile(img *iso9660.Image, path string) (*iso9660.File, error) {
 					found = true
 					break
 				}
-				normalizedChild := strings.ToUpper(strings.ReplaceAll(cleanName, ".", "_"))
-				normalizedPart := strings.ToUpper(strings.ReplaceAll(part, ".", "_"))
-				if normalizedChild == normalizedPart {
+				normalisedChild := strings.ToUpper(strings.ReplaceAll(cleanName, ".", "_"))
+				normalisedPart := strings.ToUpper(strings.ReplaceAll(part, ".", "_"))
+				if normalisedChild == normalisedPart {
 					current = child
 					found = true
 					break
@@ -1388,8 +1388,8 @@ func (e *Extractor) ApplyDriverPacks(bootWimPath string, driverPackPaths []strin
 		return fmt.Errorf("failed to inject drivers: %w", err)
 	}
 
-	if err := wimManager.OptimizeWIM(bootWimPath); err != nil {
-		log.Printf("Warning: Failed to optimize WIM: %v", err)
+	if err := wimManager.OptimiseWIM(bootWimPath); err != nil {
+		log.Printf("Warning: Failed to optimise WIM: %v", err)
 	}
 
 	return nil

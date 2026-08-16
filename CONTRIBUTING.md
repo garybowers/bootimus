@@ -35,6 +35,12 @@ Cross-compile targets are in the [Makefile](Makefile). The Go toolchain version 
 - **Wrap errors with `%w`** in sentence form: `fmt.Errorf("listen UDP/67: %w", err)`. Lowercase, no trailing punctuation.
 - **Logging** uses the standard `log` package. Lowercase messages, no trailing punctuation.
 
+## Language
+
+- **British English throughout** — documentation, user-facing strings, log messages, commit messages, and identifiers (`normalise`, `colour`, `behaviour`, `initialise`).
+- Spellings fixed by an external standard stay as the standard writes them: the HTTP `Authorization` header, `authorized_keys`, CSS properties, and upstream API and library names (`cobra.OnInitialize`, wimlib's `optimize` subcommand).
+- Existing URL paths keep their current spelling (`/api/iso-catalog`) — renaming an endpoint is a breaking change, not a spelling fix.
+
 ## Tests
 
 We're building test coverage incrementally — there's no expectation that every PR ships with tests, but contributions that add them are appreciated.

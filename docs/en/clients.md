@@ -82,7 +82,7 @@ Bootimus accepts MAC addresses in these formats:
 - `00-11-22-33-44-55` (dash-separated, auto-converted)
 - `001122334455` (no separators, auto-converted)
 
-All formats are normalized to colon-separated lowercase.
+All formats are normalised to colon-separated lowercase.
 
 ## Client Permissions
 

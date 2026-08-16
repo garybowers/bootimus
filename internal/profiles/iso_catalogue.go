@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-type ISOCatalog struct {
+type ISOCatalogue struct {
 	Version string     `json:"version"`
 	Distros []ISOEntry `json:"distros"`
 }
@@ -28,7 +28,7 @@ type ISORelease struct {
 	SizeHint string `json:"size_hint,omitempty"`
 }
 
-func LoadISOCatalog() (*ISOCatalog, error) {
+func LoadISOCatalogue() (*ISOCatalogue, error) {
 	data, err := embeddedProfiles.ReadFile("distro-profiles.json")
 	if err != nil {
 		return nil, fmt.Errorf("read distro-profiles: %w", err)
@@ -49,5 +49,5 @@ func LoadISOCatalog() (*ISOCatalog, error) {
 			Releases: p.Releases,
 		})
 	}
-	return &ISOCatalog{Version: pf.Version, Distros: distros}, nil
+	return &ISOCatalogue{Version: pf.Version, Distros: distros}, nil
 }

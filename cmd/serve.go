@@ -67,7 +67,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	log.Printf("Data directory structure initialized at: %s", dataDir)
+	log.Printf("Data directory structure initialised at: %s", dataDir)
 	log.Printf("  - ISOs: %s", isoDir)
 	log.Printf("  - Bootloaders: %s", bootloadersDir)
 
@@ -131,14 +131,14 @@ func runServe(cmd *cobra.Command, args []string) {
 		log.Printf("No PostgreSQL configuration found, using local SQLite database")
 		store, err = storage.NewSQLiteStore(dataDir)
 		if err != nil {
-			log.Fatalf("Failed to initialize SQLite store: %v", err)
+			log.Fatalf("Failed to initialise SQLite store: %v", err)
 		}
 
 		if err := store.AutoMigrate(); err != nil {
 			log.Fatalf("Failed to run database migrations: %v", err)
 		}
 
-		log.Printf("Local database initialized at %s/bootimus.db (SQLite)", dataDir)
+		log.Printf("Local database initialised at %s/bootimus.db (SQLite)", dataDir)
 	}
 
 	if resetAdminPassword {

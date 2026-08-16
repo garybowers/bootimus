@@ -631,7 +631,7 @@ func (s *Server) preloadSMBShares(mgr *smb.Manager) {
 		if _, err := os.Stat(sharePath); err != nil {
 			continue
 		}
-		mgr.AddShare(smb.SanitizeShareName(isoBase), sharePath)
+		mgr.AddShare(smb.SanitiseShareName(isoBase), sharePath)
 		added++
 	}
 	if added > 0 {
@@ -1294,7 +1294,7 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/profiles/save", adminWrap(adminHandler.SaveDistroProfile))
 	mux.HandleFunc("/api/profiles/delete", adminWrap(adminHandler.DeleteDistroProfile))
 	mux.HandleFunc("/api/profiles/update", adminWrap(adminHandler.UpdateDistroProfiles))
-	mux.HandleFunc("/api/iso-catalog", adminWrap(adminHandler.GetISOCatalog))
+	mux.HandleFunc("/api/iso-catalog", adminWrap(adminHandler.GetISOCatalogue))
 	mux.HandleFunc("/api/images/boot-method", adminWrap(adminHandler.SetBootMethod))
 
 	mux.HandleFunc("/api/active-sessions", adminWrap(s.handleActiveSessions))

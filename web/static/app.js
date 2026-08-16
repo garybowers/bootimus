@@ -256,7 +256,7 @@ function showNotification(message, type = 'info') {
         animation: slideIn 0.3s ease-out;
     `;
 
-    // Set background color based on type
+    // Set background colour based on type
     if (type === 'success') {
         notification.style.background = 'linear-gradient(135deg, #10b981, #059669)';
     } else if (type === 'error') {
@@ -305,11 +305,11 @@ function showNotification(message, type = 'info') {
     }, 4000);
 }
 
-let appInitialized = false;
+let appInitialised = false;
 
 function initApp() {
-    if (appInitialized) return;
-    appInitialized = true;
+    if (appInitialised) return;
+    appInitialised = true;
 
     loadCurrentUser();
     loadStats();
@@ -344,7 +344,7 @@ function initApp() {
     setInterval(loadActiveSessions, 3000);
 }
 
-// Initialize
+// Initialise
 document.addEventListener('DOMContentLoaded', () => {
     loadSavedTheme();
     setupTabs();
@@ -2812,14 +2812,14 @@ const API_REFERENCE = [
         { method: 'POST',   path: '/api/tools/url?name={tool}',    desc: 'Body: <code>{url}</code>. Override download URL.' },
         { method: 'POST',   path: '/api/tools/custom',             desc: 'Body: <code>{name, display_name, ...}</code>. Create custom tool.' },
         { method: 'DELETE', path: '/api/tools/custom/delete?name={tool}', desc: 'Delete custom tool.' },
-        { method: 'POST',   path: '/api/tools/update',             desc: 'Refresh tools catalog from remote.' },
+        { method: 'POST',   path: '/api/tools/update',             desc: 'Refresh tools catalogue from remote.' },
     ]},
     { category: 'Distro Profiles', endpoints: [
         { method: 'GET',    path: '/api/profiles',                 desc: 'List distro profiles.' },
         { method: 'POST',   path: '/api/profiles/save',            desc: 'Create/update custom profile.' },
         { method: 'DELETE', path: '/api/profiles/delete?id={profile_id}', desc: 'Delete custom profile.' },
         { method: 'POST',   path: '/api/profiles/update',          desc: 'Refresh built-in profiles from remote.' },
-        { method: 'GET',    path: '/api/iso-catalog',              desc: 'Curated catalog of popular distros + mirror URLs (drives the Get Images modal).' },
+        { method: 'GET',    path: '/api/iso-catalog',              desc: 'Curated catalogue of popular distros + mirror URLs (drives the Get Images modal).' },
     ]},
     { category: 'Auto-Install Files', endpoints: [
         { method: 'GET',    path: '/api/autoinstall-files',        desc: 'List files.' },
@@ -4240,11 +4240,11 @@ async function showGetImagesModal() {
             if (data.success) {
                 isoCatalog = data.data;
             } else {
-                showAlert(data.error || 'Failed to load ISO catalog', 'error');
+                showAlert(data.error || 'Failed to load ISO catalogue', 'error');
                 return;
             }
         } catch (e) {
-            showAlert('Failed to load ISO catalog', 'error');
+            showAlert('Failed to load ISO catalogue', 'error');
             return;
         }
     }

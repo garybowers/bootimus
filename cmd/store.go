@@ -39,7 +39,7 @@ func openStore() storage.Storage {
 	} else {
 		store, err = storage.NewSQLiteStore(dataDir)
 		if err != nil {
-			log.Fatalf("Failed to initialize SQLite store: %v", err)
+			log.Fatalf("Failed to initialise SQLite store: %v", err)
 		}
 	}
 

@@ -138,7 +138,7 @@ func (h *Handler) patchWindowsBootWim(isoFilename string) bool {
 		return false
 	}
 
-	shareName := smb.SanitizeShareName(isoBase)
+	shareName := smb.SanitiseShareName(isoBase)
 	autoInstall := false
 	if img, err := h.storage.GetImage(isoFilename); err == nil && img != nil && img.AutoInstallEnabled {
 		if content := h.resolveImageAutoInstallContent(img); content != "" {
@@ -1066,7 +1066,7 @@ func (h *Handler) DeleteImage(w http.ResponseWriter, r *http.Request) {
 
 	if h.smbManager != nil {
 		isoBase := strings.TrimSuffix(filename, filepath.Ext(filename))
-		shareName := smb.SanitizeShareName(isoBase)
+		shareName := smb.SanitiseShareName(isoBase)
 		if h.smbManager.HasShare(shareName) {
 			h.smbManager.RemoveShare(shareName)
 			if err := h.smbManager.Reload(); err != nil {
@@ -1643,17 +1643,17 @@ func (h *Handler) DeleteDistroProfile(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Profile deleted"})
 }
 
-func (h *Handler) GetISOCatalog(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetISOCatalogue(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
 		return
 	}
-	catalog, err := profiles.LoadISOCatalog()
+	catalogue, err := profiles.LoadISOCatalogue()
 	if err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
 	}
-	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: catalog})
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: catalogue})
 }
 
 func (h *Handler) UpdateDistroProfiles(w http.ResponseWriter, r *http.Request) {

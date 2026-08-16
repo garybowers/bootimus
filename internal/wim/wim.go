@@ -169,11 +169,11 @@ func writeTempCRLF(pattern, content string) (string, error) {
 	return f.Name(), nil
 }
 
-func (m *Manager) OptimizeWIM(wimPath string) error {
-	log.Printf("Optimizing WIM file: %s", wimPath)
+func (m *Manager) OptimiseWIM(wimPath string) error {
+	log.Printf("Optimising WIM file: %s", wimPath)
 	cmd := exec.Command(m.wimlibPath, "optimize", wimPath)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to optimize WIM: %w\nOutput: %s", err, string(output))
+		return fmt.Errorf("failed to optimise WIM: %w\nOutput: %s", err, string(output))
 	}
 	return nil
 }
