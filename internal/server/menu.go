@@ -359,6 +359,17 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 
 	switch img.Distro {
 	case "windows", "windows7":
+		fields := strings.Fields(bootParams)
+		flags := fields[:0]
+		for _, f := range fields {
+			if !strings.Contains(f, "/") {
+				flags = append(flags, f)
+			}
+		}
+		bootParams = strings.Join(flags, " ")
+		if bootParams != "" {
+			bootParams = " " + bootParams
+		}
 		sb.WriteString("echo Loading Windows boot files via wimboot...\n")
 		sb.WriteString(fmt.Sprintf("kernel %s/wimboot%s\n", baseURL, bootParams))
 		// Ship only boot.wim and let wimboot synthesize the ramdisk BCD +

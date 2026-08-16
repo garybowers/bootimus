@@ -34,6 +34,7 @@ type BootFiles struct {
 	Kernel          string
 	Initrd          string
 	BootParams      string
+	BootWim         string
 	Distro          string
 	ExtractedDir    string
 	SquashfsPath    string
@@ -797,10 +798,10 @@ func (e *Extractor) detectWindows(img *iso9660.Image) (*BootFiles, error) {
 	if bcdPath != "" && bootSdiPath != "" && bootWimPath != "" {
 		log.Printf("Detected Windows ISO - BCD: %s, boot.sdi: %s, boot.wim: %s", bcdPath, bootSdiPath, bootWimPath)
 		return &BootFiles{
-			Kernel:     bcdPath,
-			Initrd:     bootSdiPath,
-			Distro:     "windows",
-			BootParams: bootWimPath,
+			Kernel:  bcdPath,
+			Initrd:  bootSdiPath,
+			Distro:  "windows",
+			BootWim: bootWimPath,
 		}, nil
 	}
 
@@ -829,10 +830,10 @@ func (e *Extractor) cacheBootFiles(files *BootFiles, img *iso9660.Image, isoPath
 		files.Initrd = bootSdiDest
 
 		bootWimDest := filepath.Join(bootFilesDir, "boot.wim")
-		if err := e.extractNamedFile(img, files.BootParams, bootWimDest); err != nil {
+		if err := e.extractNamedFile(img, files.BootWim, bootWimDest); err != nil {
 			return fmt.Errorf("failed to extract boot.wim: %w", err)
 		}
-		files.BootParams = bootWimDest
+		files.BootWim = bootWimDest
 
 		log.Printf("Extracted Windows boot files: BCD, boot.sdi, boot.wim to %s", bootFilesDir)
 		return nil

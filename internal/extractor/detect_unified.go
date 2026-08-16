@@ -509,7 +509,7 @@ func (e *Extractor) detectWindowsUnified(reader FileSystemReader) (*BootFiles, e
 			Kernel:     bcdPath,
 			Initrd:     bootSdiPath,
 			Distro:     "windows",
-			BootParams: bootWimPath,
+			BootWim:    bootWimPath,
 			InstallWim: installWimPath,
 		}, nil
 	}
@@ -544,8 +544,8 @@ func (e *Extractor) cacheBootFilesUnified(files *BootFiles, reader FileSystemRea
 		bootSdiDest := filepath.Join(extractedDir, strings.TrimPrefix(files.Initrd, "/"))
 		files.Initrd = bootSdiDest
 
-		bootWimDest := filepath.Join(extractedDir, strings.TrimPrefix(files.BootParams, "/"))
-		files.BootParams = bootWimDest
+		bootWimDest := filepath.Join(extractedDir, strings.TrimPrefix(files.BootWim, "/"))
+		files.BootWim = bootWimDest
 
 		if files.InstallWim != "" {
 			installDest := filepath.Join(extractedDir, strings.TrimPrefix(files.InstallWim, "/"))

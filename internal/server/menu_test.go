@@ -131,3 +131,42 @@ func TestResolveBootParamsPlaceholders(t *testing.T) {
 		t.Errorf("expected %q, got %q", want, got)
 	}
 }
+
+func TestBuildWindowsBootSectionDropsPathTokens(t *testing.T) {
+	mb := testMenuBuilder(nil)
+	img := &models.Image{
+		ID:         9,
+		Filename:   "Win11_25H2.iso",
+		Enabled:    true,
+		BootMethod: "kernel",
+		Distro:     "windows",
+		BootParams: "rawbcd /opt/bootimus/data/isos/Win11_25H2/iso/sources/boot.wim quiet",
+	}
+
+	out := mb.buildKernelBootSection(img, "Win11_25H2.iso", "Win11_25H2")
+	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot rawbcd quiet\n") {
+		t.Errorf("expected path tokens stripped from the wimboot line, got:\n%s", out)
+	}
+	if strings.Contains(out, "/opt/bootimus") {
+		t.Errorf("server filesystem path leaked into the menu:\n%s", out)
+	}
+	if !strings.Contains(out, "initrd http://10.0.0.1:8080/boot/Win11_25H2/iso/sources/boot.wim boot.wim") {
+		t.Errorf("expected boot.wim initrd line, got:\n%s", out)
+	}
+}
+
+func TestBuildWindowsBootSectionBareWimboot(t *testing.T) {
+	mb := testMenuBuilder(nil)
+	img := &models.Image{
+		ID:         9,
+		Filename:   "Win11_25H2.iso",
+		Enabled:    true,
+		BootMethod: "kernel",
+		Distro:     "windows",
+	}
+
+	out := mb.buildKernelBootSection(img, "Win11_25H2.iso", "Win11_25H2")
+	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot\n") {
+		t.Errorf("expected a bare wimboot kernel line, got:\n%s", out)
+	}
+}
