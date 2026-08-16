@@ -269,7 +269,7 @@ header {
     display: flex; flex-direction: column;
     overflow: hidden;
 }
-.sidebar-nav { flex: 1; padding: 16px 0; }
+.sidebar-nav { flex: 1; padding: 16px 0; overflow-y: auto; min-height: 0; scrollbar-width: thin; }
 .nav-group { margin-bottom: 12px; }
 .nav-group-label {
     display: block; padding: 8px 16px 6px; font-size: 11px; font-weight: 600;
