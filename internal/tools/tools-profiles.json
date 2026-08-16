@@ -42,7 +42,7 @@
       "version": "0.1.72",
       "download_url": "https://fastly-cdn.system-rescue.org/releases/13.00/systemrescue-13.00-amd64.iso",
       "kernel_path": "sysresccd/boot/x86_64/vmlinuz",
-      "initrd_path": "sysresccd/boot/intel_ucode.img",
+      "initrd_path": "sysresccd/boot/x86_64/sysresccd.img",
       "boot_params": "archisobasedir=sysresccd archiso_http_srv={{HTTP_URL}}/tools/systemrescue/ checksum ip=dhcp",
       "archive_type": "iso"
     },

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"bootimus/internal/extractor"
 	"bootimus/internal/models"
 	"bootimus/internal/storage"
 )
@@ -357,11 +358,11 @@ func (m *Manager) Download(name string, progressCh chan<- string) error {
 			return fmt.Errorf("failed to copy binary: %w", err)
 		}
 	case "iso":
-		isoPath := filepath.Join(toolDir, name+".iso")
-		if err := copyFile(tmpPath, isoPath); err != nil {
+		if err := extractor.ExtractTree(tmpPath, toolDir); err != nil {
 			m.setProgress(name, &DownloadProgress{Status: "error", Error: err.Error()})
-			return fmt.Errorf("failed to copy ISO: %w", err)
+			return fmt.Errorf("iso extraction failed: %w", err)
 		}
+		os.Remove(filepath.Join(toolDir, name+".iso"))
 	default:
 		m.setProgress(name, &DownloadProgress{Status: "error", Error: "unknown archive type: " + archiveType})
 		return fmt.Errorf("unknown archive type: %s", archiveType)
