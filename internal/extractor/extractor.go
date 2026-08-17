@@ -517,9 +517,13 @@ func (e *Extractor) detectUbuntuDebian(img *iso9660.Image) (*BootFiles, error) {
 				Distro:     p.distro,
 				BootParams: p.bootParams,
 			}
-			if p.distro == "debian" && (strings.Contains(p.kernel, "/install") || strings.Contains(p.kernel, "/install.amd")) {
+			if p.distro == "debian" && strings.Contains(p.kernel, "/install") {
 				bootFiles.NetbootRequired = true
-				bootFiles.NetbootURL = "http://ftp.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/netboot.tar.gz"
+				if strings.Contains(p.kernel, "/install.a64") {
+					bootFiles.NetbootURL = "http://ftp.debian.org/debian/dists/trixie/main/installer-arm64/current/images/netboot/netboot.tar.gz"
+				} else {
+					bootFiles.NetbootURL = "http://ftp.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/netboot.tar.gz"
+				}
 			}
 			if p.distro == "ubuntu-installer" && (strings.Contains(p.kernel, "/install") || strings.Contains(p.kernel, "/install.amd")) {
 				bootFiles.Distro = "ubuntu"
