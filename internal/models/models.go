@@ -245,6 +245,7 @@ type Image struct {
 	InitrdPath            string         `json:"initrd_path,omitempty"`
 	BootParams            string         `json:"boot_params,omitempty"`
 	SquashfsPath          string         `json:"squashfs_path,omitempty"`
+	ShimPath              string         `json:"shim_path,omitempty"`
 	KernelOverride        string         `json:"kernel_override,omitempty"`
 	InitrdOverride        string         `json:"initrd_override,omitempty"`
 	ExtractionError       string         `json:"extraction_error,omitempty"`

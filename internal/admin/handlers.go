@@ -1362,6 +1362,7 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	image.KernelPath = bootFiles.Kernel
 	image.InitrdPath = bootFiles.Initrd
 	image.SquashfsPath = bootFiles.SquashfsPath
+	image.ShimPath = bootFiles.ShimPath
 
 	if h.profileManager != nil && bootFiles.Distro != "" {
 		hasSquashfs := bootFiles.SquashfsPath != ""
@@ -5032,6 +5033,7 @@ func (h *Handler) DeleteImageFile(w http.ResponseWriter, r *http.Request) {
 		image.KernelPath = ""
 		image.InitrdPath = ""
 		image.SquashfsPath = ""
+		image.ShimPath = ""
 		image.Distro = ""
 		image.NetbootAvailable = false
 		image.NetbootRequired = false

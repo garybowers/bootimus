@@ -38,6 +38,7 @@ type BootFiles struct {
 	Distro          string
 	ExtractedDir    string
 	SquashfsPath    string
+	ShimPath        string
 	NetbootRequired bool
 	NetbootURL      string
 	InstallWim      string
@@ -59,6 +60,15 @@ func (e *Extractor) SetProgress(p *ProgressReporter) {
 }
 
 func (e *Extractor) Extract(isoPath string) (*BootFiles, error) {
+	bootFiles, err := e.extract(isoPath)
+	if err != nil {
+		return nil, err
+	}
+	e.detectShim(isoPath, bootFiles)
+	return bootFiles, nil
+}
+
+func (e *Extractor) extract(isoPath string) (*BootFiles, error) {
 	isUDF, err := detectISOFormat(isoPath)
 	if err != nil {
 		log.Printf("Warning: failed to detect ISO format, will try both methods: %v", err)
@@ -96,6 +106,26 @@ func (e *Extractor) Extract(isoPath string) (*BootFiles, error) {
 		return nil, fmt.Errorf("all extraction methods failed (ISO9660, UDF, bsdtar): %w", bsdtarErr)
 	}
 	return bootFiles, nil
+}
+
+func (e *Extractor) detectShim(isoPath string, files *BootFiles) {
+	if files == nil || strings.HasPrefix(files.Distro, "windows") {
+		return
+	}
+	bootFilesDir := filepath.Join(e.dataDir, relativeISOBase(e.dataDir, isoPath))
+	files.ShimPath = DetectShim(bootFilesDir)
+	if files.ShimPath != "" {
+		log.Printf("Detected Secure Boot shim in extracted ISO: %s", files.ShimPath)
+	}
+}
+
+func DetectShim(bootFilesDir string) string {
+	for _, name := range []string{"bootx64.efi", "bootaa64.efi"} {
+		if rel := resolveExtractedRelPath(bootFilesDir, "EFI/BOOT/"+name); rel != "" {
+			return rel
+		}
+	}
+	return ""
 }
 
 func relativeISOBase(dataDir, isoPath string) string {
@@ -977,6 +1007,7 @@ func (e *Extractor) GetCachedBootFiles(isoFilename string) (*BootFiles, error) {
 	metadataPath := filepath.Join(bootFilesDir, "metadata.txt")
 	distro := "unknown"
 	bootParams := ""
+	shimPath := ""
 
 	if data, err := os.ReadFile(metadataPath); err == nil {
 		lines := strings.Split(string(data), "\n")
@@ -987,6 +1018,9 @@ func (e *Extractor) GetCachedBootFiles(isoFilename string) (*BootFiles, error) {
 			if strings.HasPrefix(line, "boot_params=") {
 				bootParams = strings.TrimPrefix(line, "boot_params=")
 			}
+			if strings.HasPrefix(line, "shim_path=") {
+				shimPath = strings.TrimPrefix(line, "shim_path=")
+			}
 		}
 	}
 
@@ -995,6 +1029,7 @@ func (e *Extractor) GetCachedBootFiles(isoFilename string) (*BootFiles, error) {
 		Initrd:       initrdPath,
 		Distro:       distro,
 		BootParams:   bootParams,
+		ShimPath:     shimPath,
 		ExtractedDir: extractedDir,
 	}, nil
 }
@@ -1004,7 +1039,7 @@ func (e *Extractor) SaveMetadata(isoFilename string, files *BootFiles) error {
 	bootFilesDir := filepath.Join(e.dataDir, isoBase)
 	metadataPath := filepath.Join(bootFilesDir, "metadata.txt")
 
-	metadata := fmt.Sprintf("distro=%s\nboot_params=%s\n", files.Distro, files.BootParams)
+	metadata := fmt.Sprintf("distro=%s\nboot_params=%s\nshim_path=%s\n", files.Distro, files.BootParams, files.ShimPath)
 	return os.WriteFile(metadataPath, []byte(metadata), 0644)
 }
 

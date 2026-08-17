@@ -391,6 +391,9 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 		}
 		sb.WriteString(fmt.Sprintf("kernel %s/boot/%s/%s%s%s\n", baseURL, cacheDir, kernelPath, autoInstallParam, bootParams))
 		sb.WriteString(fmt.Sprintf("initrd %s/boot/%s/%s%s\n", baseURL, cacheDir, initrdPath, initrdName))
+		if img.ShimPath != "" {
+			sb.WriteString(fmt.Sprintf("iseq ${platform} efi && shim %s/boot/%s/%s ||\n", baseURL, cacheDir, encodePathSegments(img.ShimPath)))
+		}
 		sb.WriteString("boot || goto failed\n")
 	}
 
