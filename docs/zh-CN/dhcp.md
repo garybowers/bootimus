@@ -452,6 +452,8 @@ OPNsense 是 pfSense 的分支,具有现代化的界面。
 4. 点击 **Save**
 5. 点击 **Apply Changes**
 
+> **ARM64 / Raspberry Pi:** OPNsense 的 GUI 没有 ARM64 文件名字段,也无法表达 Raspberry Pi 固件的厂商选项。对于 Raspberry Pi 或混合架构的设备群,请在 OPNsense 之外同时启用 Bootimus 内建的 proxyDHCP — 由它自行应答这些客户端。参见 [Raspberry Pi 指南](raspberry-pi.md)。
+
 ### 高级配置
 
 1. 进入 **Services > DHCPv4 > [Interface]**

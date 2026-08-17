@@ -452,6 +452,8 @@ OPNsense is a pfSense fork with a modern interface.
 4. Click **Save**
 5. Click **Apply Changes**
 
+> **ARM64 / Raspberry Pi:** the OPNsense GUI has no ARM64 filename field and cannot express the Raspberry Pi firmware's vendor option. For Raspberry Pi or mixed-architecture fleets, enable Bootimus's built-in proxyDHCP alongside OPNsense — it answers those clients itself. See the [Raspberry Pi guide](raspberry-pi.md).
+
 ### Advanced Configuration
 
 1. Navigate to **Services > DHCPv4 > [Interface]**

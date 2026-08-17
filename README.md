@@ -32,6 +32,7 @@ I've used Claude CLI to help with some parts of this project - mostly making the
 - **JWT authentication**: Secure token-based auth with a dedicated login page
 - **LDAP/Active Directory**: Optional LDAP backend with group-based admin access - local accounts always work as fallback
 - **Swappable bootloaders**: Ship with embedded iPXE, or bring your own custom bootloader sets
+- **Raspberry Pi netboot**: Pi 3 and Pi 4 boards boot with no SD card — embedded UEFI firmware served over TFTP
 - **Modern admin UI**: Sidebar navigation, consistent toolbars, real-time colour-coded logs, REST API
 - **Multi-database**: SQLite out of the box, PostgreSQL for production
 - **Docker and bare metal**: Multi-arch images (amd64/arm64) or a single static binary
