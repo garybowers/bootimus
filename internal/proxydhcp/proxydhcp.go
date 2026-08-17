@@ -9,6 +9,7 @@ import (
 
 	"bootimus/internal/metrics"
 	"bootimus/internal/netbind"
+	"bootimus/raspberrypi"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/iana"
@@ -154,13 +155,17 @@ func (s *Server) handle(conn *net.UDPConn, src *net.UDPAddr, req *dhcpv4.DHCPv4,
 	}
 
 	bootfile := s.bootfileFor(req)
+	vendorOpts := pxeVendorOptions()
+	if raspberrypi.IsRaspberryPiMAC(req.ClientHWAddr) {
+		vendorOpts = []byte("Raspberry Pi Boot")
+	}
 	modifiers := []dhcpv4.Modifier{
 		dhcpv4.WithMessageType(respType),
 		dhcpv4.WithServerIP(s.cfg.ServerIP),
 		dhcpv4.WithOption(dhcpv4.OptServerIdentifier(s.cfg.ServerIP)),
 		dhcpv4.WithOption(dhcpv4.OptClassIdentifier("PXEClient")),
 		dhcpv4.WithOption(dhcpv4.OptTFTPServerName(s.cfg.ServerIP.String())),
-		dhcpv4.WithOption(dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, pxeVendorOptions())),
+		dhcpv4.WithOption(dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, vendorOpts)),
 	}
 	if !s.cfg.NoBootfileption {
 		modifiers = append(modifiers, dhcpv4.WithOption(dhcpv4.OptBootFileName(bootfile)))

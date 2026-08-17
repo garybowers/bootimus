@@ -10,6 +10,7 @@ COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY web/ ./web/
 COPY bootloaders/ ./bootloaders/
+COPY raspberrypi/ ./raspberrypi/
 COPY main.go .
 
 ARG VERSION=dev
