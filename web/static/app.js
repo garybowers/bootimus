@@ -2406,7 +2406,7 @@ function updateImagePropsProgress(filename) {
     const percent = document.getElementById('image-props-progress-percent');
     const p = extractionProgress[filename];
 
-    const actionBtns = ['image-props-extract-btn', 'image-props-patch-smb-btn', 'image-props-netboot-btn', 'image-props-download-btn', 'image-props-delete-btn'];
+    const actionBtns = ['image-props-extract-btn', 'image-props-patch-smb-btn', 'image-props-unpatch-smb-btn', 'image-props-netboot-btn', 'image-props-download-btn', 'image-props-delete-btn'];
 
     if (p) {
         container.style.display = '';
@@ -2417,6 +2417,8 @@ function updateImagePropsProgress(filename) {
     } else {
         container.style.display = 'none';
         actionBtns.forEach(id => { const b = document.getElementById(id); if (b) b.disabled = false; });
+        const unpatchBtn = document.getElementById('image-props-unpatch-smb-btn');
+        if (unpatchBtn && _imagePropsState) unpatchBtn.disabled = !_imagePropsState.img.smb_unpatch_available;
     }
 }
 
@@ -2779,6 +2781,7 @@ const API_REFERENCE = [
         { method: 'POST',   path: '/api/images/redetect?filename={fn}', desc: 'Re-run distro detection and boot-param resolution.' },
         { method: 'GET',    path: '/api/images/boot-candidates?filename={fn}', desc: 'List kernel/initrd files found in the extracted ISO for override selection.' },
         { method: 'POST',   path: '/api/images/patch-smb?filename={fn}', desc: 'Patch boot.wim for Windows SMB install.' },
+        { method: 'POST',   path: '/api/images/unpatch-smb?filename={fn}', desc: 'Restore the original boot.wim, removing the SMB patch.' },
         { method: 'POST',   path: '/api/images/boot-method?filename={fn}', desc: 'Body: <code>{method}</code> (sanboot/kernel/nbd/nfs).' },
         { method: 'POST',   path: '/api/images/netboot/download?filename={fn}', desc: 'Fetch netboot kernel/initrd from distro mirror.' },
         { method: 'GET',    path: '/api/images/autoinstall?filename={fn}', desc: 'Get auto-install script for image.' },
@@ -5196,6 +5199,14 @@ async function showImagePropertiesModal(filename, opts) {
     patchSmbBtn.style.display = smbEligible ? 'inline-block' : 'none';
     patchSmbBtn.textContent = img.smb_install_enabled ? t('props.action.re_patch_smb') : t('props.action.patch_smb');
 
+    const unpatchSmbBtn = document.getElementById('image-props-unpatch-smb-btn');
+    const unpatchVisible = img.extracted && img.distro === 'windows' && img.smb_install_enabled;
+    unpatchSmbBtn.style.display = unpatchVisible ? 'inline-block' : 'none';
+    unpatchSmbBtn.textContent = t('props.action.unpatch_smb');
+    unpatchSmbBtn.disabled = !img.smb_unpatch_available;
+    unpatchSmbBtn.style.opacity = img.smb_unpatch_available ? '' : '0.5';
+    unpatchSmbBtn.title = img.smb_unpatch_available ? t('props.action.unpatch_smb_tip') : t('props.action.unpatch_smb_unavailable');
+
     // Stash state used by the live warnings so onChange handlers can re-evaluate.
     _imagePropsState = {
         img: img,
@@ -5322,6 +5333,26 @@ async function patchSmbFromProperties() {
     } finally {
         btn.disabled = false;
         btn.textContent = t('props.action.patch_smb');
+    }
+}
+
+async function unpatchSmbFromProperties() {
+    const filename = document.getElementById('image-props-filename').value;
+    const btn = document.getElementById('image-props-unpatch-smb-btn');
+    btn.disabled = true;
+    btn.textContent = t('props.action.unpatching');
+    try {
+        const res = await authFetch(`${API_BASE}/images/unpatch-smb?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || t('props.notify.unpatch_failed'));
+        showNotification(t('props.notify.unpatch_success'), 'success');
+        await loadImages();
+        refreshImagePropsIfOpenFor(filename);
+    } catch (err) {
+        showNotification(t('props.notify.unpatch_failed') + ': ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = t('props.action.unpatch_smb');
     }
 }
 

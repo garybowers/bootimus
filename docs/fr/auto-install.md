@@ -218,6 +218,8 @@ Sans fichier autounattend par image, Setup tourne en interactif comme avant.
 
 **Résilience au redémarrage.** WinPE redémarre en plein milieu de l'installation et se reconnecte depuis la même IP client. La config Samba embarquée définit `reset on zero vc = yes` et désactive les oplocks pour que le second `net use` ne se vautre pas sur un état de session périmé. Si tu as remplacé `data/smb/smb.conf` par le tien, miroite ces réglages.
 
+**Annuler le patch.** Le premier patch SMB conserve une copie intacte de `boot.wim` sous le nom `boot.wim.orig` à côté. **Images** → **Retirer le patch SMB** restaure l'original et supprime le partage SMB de l'image — l'ISO boote alors exactement comme à l'upload. Les images patchées par d'anciennes versions de Bootimus n'ont pas de sauvegarde : ré-extrais d'abord l'image (ce qui produit une copie intacte fraîche), puis retire le patch.
+
 ## API REST
 
 Tout ce qu'il y a dans l'UI est aussi un appel REST.

@@ -218,6 +218,8 @@ Windows 安装由 SMB 驱动。当某个镜像挂载了 autounattend 文件时,B
 
 **重启韧性。** WinPE 在安装中途会重启并从同一个客户端 IP 重新连接。内置的 Samba 配置设置了 `reset on zero vc = yes` 并禁用了 oplocks,这样第二次 `net use` 不会被陈旧的会话状态卡住。如果你用自己的 `data/smb/smb.conf` 替换了默认配置,请同步这些设置。
 
+**撤销补丁。** 第一次打 SMB 补丁时,会在旁边保留一份原始的 `boot.wim`,命名为 `boot.wim.orig`。**Images** → **移除 SMB 补丁** 会恢复原始文件并删除该镜像的 SMB 共享——之后 ISO 的引导行为与刚上传时完全一致。由旧版 Bootimus 打补丁的镜像没有备份:请先重新提取镜像(会生成一份新的原始副本),再移除补丁。
+
 ## REST API
 
 UI 里的每件事也都是一次 REST 调用。

@@ -495,6 +495,7 @@ func (e *Extractor) detectUbuntuDebian(img *iso9660.Image) (*BootFiles, error) {
 		{"/install.amd/vmlinuz", "/install.amd/initrd.gz", "ubuntu-installer", ""},
 		{"/install/vmlinuz", "/install/initrd.gz", "debian", ""},
 		{"/install.amd/vmlinuz", "/install.amd/initrd.gz", "debian", ""},
+		{"/install.a64/vmlinuz", "/install.a64/initrd.gz", "debian", ""},
 		{"/live/vmlinuz", "/live/initrd.img", "debian", ""},
 		{"/live/vmlinuz1", "/live/initrd1.img", "debian", ""},
 		{"/live/vmlinuz-*", "/live/initrd.img-*", "debian", ""},

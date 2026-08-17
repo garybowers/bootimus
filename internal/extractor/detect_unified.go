@@ -178,6 +178,7 @@ func (e *Extractor) detectUbuntuDebianUnified(reader FileSystemReader) (*BootFil
 		{"/casper/vmlinuz.efi", "/casper/initrd.gz", "ubuntu", "", false, ""},
 		{"/install/vmlinuz", "/install/initrd.gz", "debian", "", true, "http://ftp.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/netboot.tar.gz"},
 		{"/install.amd/vmlinuz", "/install.amd/initrd.gz", "debian", "", true, "http://ftp.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/netboot.tar.gz"},
+		{"/install.a64/vmlinuz", "/install.a64/initrd.gz", "debian", "", true, "http://ftp.debian.org/debian/dists/trixie/main/installer-arm64/current/images/netboot/netboot.tar.gz"},
 		{"/live/vmlinuz", "/live/initrd.img", "debian", "", false, ""},
 		{"/live/vmlinuz1", "/live/initrd1.img", "debian", "", false, ""},
 		{"/vmlinuz", "/initrd.img", "debian", "", false, ""},

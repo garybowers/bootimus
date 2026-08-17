@@ -1336,6 +1336,7 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/images/redetect", adminWrap(adminHandler.RedetectImage))
 	mux.HandleFunc("/api/images/boot-candidates", adminWrap(adminHandler.BootFileCandidates))
 	mux.HandleFunc("/api/images/patch-smb", adminWrap(adminHandler.PatchImageSMB))
+	mux.HandleFunc("/api/images/unpatch-smb", adminWrap(adminHandler.UnpatchImageSMB))
 	mux.HandleFunc("/api/autoinstall-files", adminWrap(adminHandler.ListAutoInstallFiles))
 	mux.HandleFunc("/api/autoinstall-files/get", adminWrap(adminHandler.GetAutoInstallFile))
 	mux.HandleFunc("/api/autoinstall-files/save", adminWrap(adminHandler.SaveAutoInstallFile))

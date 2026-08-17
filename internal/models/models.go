@@ -262,6 +262,7 @@ type Image struct {
 	SMBInstallEnabled     bool           `gorm:"default:false" json:"smb_install_enabled"`
 	SMBPatchFingerprint   string         `json:"smb_patch_fingerprint,omitempty"`
 	SMBNeedsRepatch       bool           `gorm:"-" json:"smb_needs_repatch"`
+	SMBUnpatchAvailable   bool           `gorm:"-" json:"smb_unpatch_available"`
 
 	AutoInstallFile string `json:"auto_install_file,omitempty"`
 }
