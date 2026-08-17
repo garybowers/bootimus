@@ -3250,60 +3250,93 @@ async function loadTools() {
         }
 
         container.innerHTML = html;
+
+        for (const tool of toolsList) {
+            if (!tool.downloaded) resumeToolProgress(tool.name);
+        }
     } catch (err) {
         document.getElementById('tools-list').innerHTML = `<p class="alert alert-error">Failed to load tools: ${err.message}</p>`;
     }
 }
 
+const toolProgressIntervals = new Map();
+
 async function downloadTool(name) {
     try {
         const res = await authFetch(`${API_BASE}/tools/download?name=${encodeURIComponent(name)}`, { method: 'POST' });
         const data = await res.json();
+        if (res.status === 409) {
+            showNotification(data.error || 'Download already in progress', 'info');
+            showToolProgress(name);
+            return;
+        }
         if (!data.success) {
             showNotification(data.error || 'Download failed', 'error');
             return;
         }
-
-        // Show progress bar, hide button
-        const btn = document.getElementById(`tool-dl-btn-${name}`);
-        const wrap = document.getElementById(`tool-progress-wrap-${name}`);
-        if (btn) btn.style.display = 'none';
-        if (wrap) wrap.style.display = 'block';
-
-        // Poll progress
-        const poll = setInterval(async () => {
-            try {
-                const r = await authFetch(`${API_BASE}/tools/progress?name=${encodeURIComponent(name)}`);
-                const d = await r.json();
-                if (!d.success) return;
-
-                const p = d.data;
-                const bar = document.getElementById(`tool-progress-${name}`);
-                const text = document.getElementById(`tool-progress-text-${name}`);
-                if (!bar || !text) return;
-
-                if (p.status === 'downloading') {
-                    bar.style.width = p.percent.toFixed(0) + '%';
-                    const dlMB = (p.downloaded / 1048576).toFixed(1);
-                    const totalMB = p.total > 0 ? (p.total / 1048576).toFixed(1) : '?';
-                    text.textContent = `Downloading... ${dlMB} MB / ${totalMB} MB (${p.percent.toFixed(0)}%)`;
-                } else if (p.status === 'extracting') {
-                    bar.style.width = '100%';
-                    text.textContent = 'Extracting...';
-                } else if (p.status === 'done') {
-                    clearInterval(poll);
-                    showNotification('Download complete', 'success');
-                    loadTools();
-                } else if (p.status === 'error') {
-                    clearInterval(poll);
-                    showNotification('Download failed: ' + (p.error || 'unknown error'), 'error');
-                    loadTools();
-                }
-            } catch (e) { /* ignore poll errors */ }
-        }, 1000);
+        showToolProgress(name);
     } catch (err) {
         showNotification('Download failed: ' + err.message, 'error');
     }
+}
+
+function showToolProgress(name) {
+    const btn = document.getElementById(`tool-dl-btn-${name}`);
+    const wrap = document.getElementById(`tool-progress-wrap-${name}`);
+    if (btn) btn.style.display = 'none';
+    if (wrap) wrap.style.display = 'block';
+    startToolProgressPolling(name);
+}
+
+async function resumeToolProgress(name) {
+    try {
+        const r = await authFetch(`${API_BASE}/tools/progress?name=${encodeURIComponent(name)}`);
+        const d = await r.json();
+        if (!d.success || !d.data) return;
+        const s = d.data.status;
+        if (s === 'starting' || s === 'downloading' || s === 'extracting') {
+            showToolProgress(name);
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function startToolProgressPolling(name) {
+    const existing = toolProgressIntervals.get(name);
+    if (existing) clearInterval(existing);
+
+    const poll = setInterval(async () => {
+        try {
+            const r = await authFetch(`${API_BASE}/tools/progress?name=${encodeURIComponent(name)}`);
+            const d = await r.json();
+            if (!d.success) return;
+
+            const p = d.data;
+            const bar = document.getElementById(`tool-progress-${name}`);
+            const text = document.getElementById(`tool-progress-text-${name}`);
+            if (!bar || !text) return;
+
+            if (p.status === 'downloading') {
+                bar.style.width = p.percent.toFixed(0) + '%';
+                const dlMB = (p.downloaded / 1048576).toFixed(1);
+                const totalMB = p.total > 0 ? (p.total / 1048576).toFixed(1) : '?';
+                text.textContent = `Downloading... ${dlMB} MB / ${totalMB} MB (${p.percent.toFixed(0)}%)`;
+            } else if (p.status === 'extracting') {
+                bar.style.width = '100%';
+                text.textContent = 'Extracting...';
+            } else if (p.status === 'done') {
+                clearInterval(poll);
+                toolProgressIntervals.delete(name);
+                showNotification('Download complete', 'success');
+                loadTools();
+            } else if (p.status === 'error') {
+                clearInterval(poll);
+                toolProgressIntervals.delete(name);
+                showNotification('Download failed: ' + (p.error || 'unknown error'), 'error');
+                loadTools();
+            }
+        } catch (e) { /* ignore poll errors */ }
+    }, 1000);
+    toolProgressIntervals.set(name, poll);
 }
 
 async function toggleTool(name, enabled) {
@@ -4325,7 +4358,10 @@ async function downloadFromGetISO(rowKey, distroName, releaseLabel) {
             body: JSON.stringify({ url, description: `${distroName} ${releaseLabel}` }),
         });
         const data = await res.json();
-        if (data.success && data.data && data.data.filename) {
+        if (res.status === 409 && data.data && data.data.filename) {
+            showNotification('Download already in progress — resuming progress display', 'info');
+            startGetISOProgressPolling(rowKey, data.data.filename, distroName, releaseLabel);
+        } else if (data.success && data.data && data.data.filename) {
             startGetISOProgressPolling(rowKey, data.data.filename, distroName, releaseLabel);
         } else {
             renderGetISOError(rowKey, data.error || 'Failed to start download', distroName, releaseLabel);
@@ -4450,12 +4486,17 @@ document.getElementById('download-form').addEventListener('submit', function(e) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(downloadData)
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
+    .then(response => response.json().then(data => ({ status: response.status, data })))
+    .then(({ status, data }) => {
+        if (status === 409 && data.data && data.data.filename) {
+            showNotification('Download already in progress — resuming progress display', 'info');
+            const filename = data.data.filename;
+            downloadProgressInterval = setInterval(() => {
+                checkDownloadProgress(filename);
+            }, 1000);
+        } else if (data.success) {
             showNotification('Download started: ' + data.data.filename, 'success');
 
-            // Start polling for progress
             const filename = data.data.filename;
             downloadProgressInterval = setInterval(() => {
                 checkDownloadProgress(filename);

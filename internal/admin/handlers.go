@@ -2458,6 +2458,11 @@ func (h *Handler) DownloadTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.toolsManager.InProgress(name) {
+		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: fmt.Sprintf("%s is already downloading", def.DisplayName)})
+		return
+	}
+
 	go func() {
 		if err := h.toolsManager.Download(name, nil); err != nil {
 			log.Printf("Tool download failed for %s: %v", name, err)
@@ -2889,6 +2894,21 @@ var downloadMgr = &DownloadManager{
 	downloads: make(map[string]*DownloadProgress),
 }
 
+func (dm *DownloadManager) TryBegin(url, filename string) bool {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	if p, ok := dm.downloads[filename]; ok && p.Status == "downloading" {
+		return false
+	}
+	dm.downloads[filename] = &DownloadProgress{
+		URL:       url,
+		Filename:  filename,
+		Status:    "downloading",
+		StartTime: time.Now(),
+	}
+	return true
+}
+
 func (dm *DownloadManager) Add(url, filename string, totalBytes int64) {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
@@ -2996,6 +3016,15 @@ func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 	destPath := filepath.Join(h.isoDir, filename)
 	if _, err := os.Stat(destPath); err == nil {
 		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "File already exists"})
+		return
+	}
+
+	if !downloadMgr.TryBegin(req.URL, filename) {
+		h.sendJSON(w, http.StatusConflict, Response{
+			Success: false,
+			Error:   "Download already in progress",
+			Data:    map[string]string{"filename": filename},
+		})
 		return
 	}
 

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -85,6 +86,27 @@ func (m *Manager) GetProgress(name string) DownloadProgress {
 		return *p
 	}
 	return DownloadProgress{Status: "idle"}
+}
+
+func activeStatus(status string) bool {
+	return status == "starting" || status == "downloading" || status == "extracting"
+}
+
+func (m *Manager) InProgress(name string) bool {
+	m.progressMu.RLock()
+	defer m.progressMu.RUnlock()
+	p, ok := m.progress[name]
+	return ok && activeStatus(p.Status)
+}
+
+func (m *Manager) beginDownload(name string) error {
+	m.progressMu.Lock()
+	defer m.progressMu.Unlock()
+	if p, ok := m.progress[name]; ok && activeStatus(p.Status) {
+		return ErrDownloadInProgress
+	}
+	m.progress[name] = &DownloadProgress{Status: "starting"}
+	return nil
 }
 
 func (m *Manager) setProgress(name string, p *DownloadProgress) {
@@ -237,7 +259,20 @@ func (m *Manager) IsDownloaded(name string) bool {
 	return true
 }
 
+var ErrDownloadInProgress = errors.New("download already in progress")
+
 func (m *Manager) Download(name string, progressCh chan<- string) error {
+	if err := m.beginDownload(name); err != nil {
+		return err
+	}
+	if err := m.download(name, progressCh); err != nil {
+		m.setProgress(name, &DownloadProgress{Status: "error", Error: err.Error()})
+		return err
+	}
+	return nil
+}
+
+func (m *Manager) download(name string, progressCh chan<- string) error {
 	tool, err := m.store.GetBootTool(name)
 	if err != nil {
 		return fmt.Errorf("tool not found in database: %w", err)
