@@ -138,6 +138,15 @@ func (h *Handler) patchWindowsBootWim(isoFilename string) bool {
 		return false
 	}
 
+	origPath := bootWimPath + ".orig"
+	if _, err := os.Stat(origPath); os.IsNotExist(err) {
+		log.Printf("Windows SMB: backing up pristine boot.wim to %s", origPath)
+		if err := copyFile(bootWimPath, origPath); err != nil {
+			log.Printf("Windows SMB: skipping boot.wim patch - failed to back up pristine boot.wim: %v", err)
+			return false
+		}
+	}
+
 	shareName := smb.SanitiseShareName(isoBase)
 	autoInstall := false
 	if img, err := h.storage.GetImage(isoFilename); err == nil && img != nil && img.AutoInstallEnabled {
@@ -182,6 +191,28 @@ func findExtractedBootWim(extractedISODir string) string {
 		}
 	}
 	return ""
+}
+
+func (h *Handler) extractedBootWimPath(isoFilename string) string {
+	isoBase := strings.TrimSuffix(isoFilename, filepath.Ext(isoFilename))
+	return findExtractedBootWim(filepath.Join(h.isoDir, isoBase, "iso"))
+}
+
+func (h *Handler) discardStaleBootWimBackup(isoFilename string) {
+	if bootWimPath := h.extractedBootWimPath(isoFilename); bootWimPath != "" {
+		if err := os.Remove(bootWimPath + ".orig"); err == nil {
+			log.Printf("Windows SMB: discarded stale boot.wim backup for %s", isoFilename)
+		}
+	}
+}
+
+func (h *Handler) smbUnpatchAvailable(isoFilename string) bool {
+	bootWimPath := h.extractedBootWimPath(isoFilename)
+	if bootWimPath == "" {
+		return false
+	}
+	_, err := os.Stat(bootWimPath + ".orig")
+	return err == nil
 }
 
 func buildStartnetScript(serverAddr, shareName string, smbPort, httpPort int, isoFilename string, autoInstall bool) string {
@@ -814,6 +845,9 @@ func (h *Handler) ListImages(w http.ResponseWriter, r *http.Request) {
 		if img.SMBInstallEnabled && img.SMBPatchFingerprint != "" {
 			img.SMBNeedsRepatch = h.computeSMBPatchFingerprint(img) != img.SMBPatchFingerprint
 		}
+		if img.SMBInstallEnabled {
+			img.SMBUnpatchAvailable = h.smbUnpatchAvailable(img.Filename)
+		}
 	}
 
 	log.Printf("ListImages returning %d images", len(images))
@@ -843,6 +877,9 @@ func (h *Handler) GetImage(w http.ResponseWriter, r *http.Request) {
 
 	if image.SMBInstallEnabled && image.SMBPatchFingerprint != "" {
 		image.SMBNeedsRepatch = h.computeSMBPatchFingerprint(image) != image.SMBPatchFingerprint
+	}
+	if image.SMBInstallEnabled {
+		image.SMBUnpatchAvailable = h.smbUnpatchAvailable(image.Filename)
 	}
 
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: image})
@@ -1362,6 +1399,7 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	image.KernelPath = bootFiles.Kernel
 	image.InitrdPath = bootFiles.Initrd
 	image.SquashfsPath = bootFiles.SquashfsPath
+	image.ShimPath = bootFiles.ShimPath
 
 	if h.profileManager != nil && bootFiles.Distro != "" {
 		hasSquashfs := bootFiles.SquashfsPath != ""
@@ -1384,6 +1422,7 @@ func (h *Handler) ExtractImage(w http.ResponseWriter, r *http.Request) {
 	image.InstallWimPath = bootFiles.InstallWim
 
 	if bootFiles.Distro == "windows" {
+		h.discardStaleBootWimBackup(filename)
 		image.SMBInstallEnabled = h.patchWindowsBootWim(filename)
 		if image.SMBInstallEnabled {
 			image.SMBPatchFingerprint = h.computeSMBPatchFingerprint(image)
@@ -1487,6 +1526,67 @@ func (h *Handler) PatchImageSMB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "boot.wim patched for SMB auto-install", Data: image})
+}
+
+func (h *Handler) UnpatchImageSMB(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Missing filename parameter"})
+		return
+	}
+
+	image, err := h.storage.GetImage(filename)
+	if err != nil {
+		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Image not found"})
+		return
+	}
+	if image.Distro != "windows" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Not a Windows image"})
+		return
+	}
+
+	bootWimPath := h.extractedBootWimPath(filename)
+	if bootWimPath == "" {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "No extracted boot.wim found for this image"})
+		return
+	}
+
+	origPath := bootWimPath + ".orig"
+	if _, err := os.Stat(origPath); err != nil {
+		h.sendJSON(w, http.StatusPreconditionFailed, Response{Success: false, Error: "No pristine backup of boot.wim exists — this image was patched before backups were kept. Re-extract the image, then unpatch."})
+		return
+	}
+
+	if err := os.Rename(origPath, bootWimPath); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: fmt.Sprintf("Failed to restore original boot.wim: %v", err)})
+		return
+	}
+	log.Printf("Windows SMB: restored pristine boot.wim for %s", filename)
+
+	if h.smbManager != nil {
+		isoBase := strings.TrimSuffix(filename, filepath.Ext(filename))
+		shareName := smb.SanitiseShareName(isoBase)
+		if h.smbManager.HasShare(shareName) {
+			h.smbManager.RemoveShare(shareName)
+			if err := h.smbManager.Reload(); err != nil {
+				log.Printf("Windows SMB: failed to reload smbd after removing share %q: %v", shareName, err)
+			}
+		}
+	}
+
+	image.SMBInstallEnabled = false
+	image.SMBPatchFingerprint = ""
+	if err := h.storage.UpdateImage(filename, image); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
+		return
+	}
+
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Original boot.wim restored", Data: image})
 }
 
 func (h *Handler) RedetectImage(w http.ResponseWriter, r *http.Request) {
@@ -2028,6 +2128,10 @@ func (h *Handler) ListBootloaders(w http.ResponseWriter, r *http.Request) {
 	var sets []BootloaderSet
 
 	embeddedSets, _ := bootloaders.ListSets()
+	embeddedNames := make(map[string]bool, len(embeddedSets))
+	for _, setName := range embeddedSets {
+		embeddedNames[setName] = true
+	}
 	for _, setName := range embeddedSets {
 		entries, err := bootloaders.ListFiles(setName)
 		if err != nil {
@@ -2056,6 +2160,9 @@ func (h *Handler) ListBootloaders(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				setName := entry.Name()
+				if embeddedNames[setName] {
+					continue
+				}
 				setPath := filepath.Join(h.bootDir, setName)
 				fileEntries, err := os.ReadDir(setPath)
 				if err != nil {
@@ -2348,6 +2455,11 @@ func (h *Handler) DownloadTool(w http.ResponseWriter, r *http.Request) {
 	def := tools.GetDefinition(name)
 	if def == nil {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Unknown tool"})
+		return
+	}
+
+	if h.toolsManager.InProgress(name) {
+		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: fmt.Sprintf("%s is already downloading", def.DisplayName)})
 		return
 	}
 
@@ -2782,6 +2894,21 @@ var downloadMgr = &DownloadManager{
 	downloads: make(map[string]*DownloadProgress),
 }
 
+func (dm *DownloadManager) TryBegin(url, filename string) bool {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	if p, ok := dm.downloads[filename]; ok && p.Status == "downloading" {
+		return false
+	}
+	dm.downloads[filename] = &DownloadProgress{
+		URL:       url,
+		Filename:  filename,
+		Status:    "downloading",
+		StartTime: time.Now(),
+	}
+	return true
+}
+
 func (dm *DownloadManager) Add(url, filename string, totalBytes int64) {
 	dm.mu.Lock()
 	defer dm.mu.Unlock()
@@ -2889,6 +3016,15 @@ func (h *Handler) DownloadISO(w http.ResponseWriter, r *http.Request) {
 	destPath := filepath.Join(h.isoDir, filename)
 	if _, err := os.Stat(destPath); err == nil {
 		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "File already exists"})
+		return
+	}
+
+	if !downloadMgr.TryBegin(req.URL, filename) {
+		h.sendJSON(w, http.StatusConflict, Response{
+			Success: false,
+			Error:   "Download already in progress",
+			Data:    map[string]string{"filename": filename},
+		})
 		return
 	}
 
@@ -5032,6 +5168,7 @@ func (h *Handler) DeleteImageFile(w http.ResponseWriter, r *http.Request) {
 		image.KernelPath = ""
 		image.InitrdPath = ""
 		image.SquashfsPath = ""
+		image.ShimPath = ""
 		image.Distro = ""
 		image.NetbootAvailable = false
 		image.NetbootRequired = false

@@ -21,6 +21,8 @@ export const docsNav: DocSection[] = [
     title: 'Configuration',
     items: [
       { slug: 'dhcp',           title: 'DHCP',           description: 'proxyDHCP and external DHCP server config (ISC, Dnsmasq, MikroTik, etc.).' },
+      { slug: 'secure-boot',    title: 'Secure Boot',    description: 'Netboot UEFI Secure Boot machines with the built-in signed bootloader chain.' },
+      { slug: 'raspberry-pi',   title: 'Raspberry Pi',   description: 'SD-card-free netboot for Pi 3 and Pi 4 boards via the embedded UEFI firmware.' },
       { slug: 'authentication', title: 'Authentication', description: 'JWT, LDAP/Active Directory, group-based admin.' },
     ],
   },

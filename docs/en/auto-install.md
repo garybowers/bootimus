@@ -218,6 +218,8 @@ Without the per-image autounattend file, Setup runs interactively as before.
 
 **Reboot resilience.** WinPE reboots mid-install and reconnects from the same client IP. The bundled Samba config sets `reset on zero vc = yes` and disables oplocks so the second `net use` doesn't trip on stale session state. If you've replaced `data/smb/smb.conf` with your own, mirror these settings.
 
+**Undoing the patch.** The first SMB patch keeps a pristine copy of `boot.wim` as `boot.wim.orig` next to it. **Images** → **Unpatch SMB** restores that original and removes the image's SMB share, so the ISO boots exactly as uploaded. Images patched by older Bootimus versions have no backup — re-extract the image first (which produces a fresh pristine copy), then unpatch.
+
 ## REST API
 
 Everything in the UI is also a REST call.

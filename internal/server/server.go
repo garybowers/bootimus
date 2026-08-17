@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"bootimus/bootloaders"
+	"bootimus/raspberrypi"
 	"bootimus/internal/admin"
 	"bootimus/internal/auth"
 	"bootimus/internal/autoinstall"
@@ -411,6 +412,20 @@ func (s *Server) proxyDHCPBootfiles() (bios, uefi, arm64 string) {
 		}
 	}
 	return bios, uefi, arm64
+}
+
+func (s *Server) resolveRaspberryPiOverride(filename string) string {
+	if s.config.DataDir == "" || strings.Contains(filename, "..") {
+		return ""
+	}
+	base := filepath.Join(s.config.DataDir, "raspberrypi")
+	for _, candidate := range []string{filename, raspberrypi.StripSerialPrefix(filename)} {
+		fullPath := filepath.Join(base, candidate)
+		if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
+			return fullPath
+		}
+	}
+	return ""
 }
 
 func (s *Server) resolveBootloaderFile(filename string) string {
@@ -883,6 +898,44 @@ goto dhcp
 				return nil
 			}
 
+			if diskPath := s.resolveRaspberryPiOverride(cleanPath); diskPath != "" {
+				file, err := os.Open(diskPath)
+				if err == nil {
+					defer file.Close()
+					log.Printf("TFTP: Serving Raspberry Pi override from disk: %s", cleanPath)
+
+					fileInfo, err := file.Stat()
+					if err != nil {
+						return err
+					}
+					if rfs, ok := rf.(interface{ SetSize(int64) error }); ok {
+						rfs.SetSize(fileInfo.Size())
+					}
+					n, err := rf.ReadFrom(file)
+					if err != nil {
+						log.Printf("TFTP: Transfer error for %s: %v", filename, err)
+						return err
+					}
+					log.Printf("TFTP: Successfully sent %s (%d bytes)", filename, n)
+					return nil
+				}
+			}
+
+			if data, ok := raspberrypi.Resolve(cleanPath); ok {
+				log.Printf("TFTP: Serving embedded Raspberry Pi boot asset: %s", cleanPath)
+
+				if rfs, ok := rf.(interface{ SetSize(int64) error }); ok {
+					rfs.SetSize(int64(len(data)))
+				}
+				n, err := rf.ReadFrom(bytes.NewReader(data))
+				if err != nil {
+					log.Printf("TFTP: Transfer error for %s: %v", filename, err)
+					return err
+				}
+				log.Printf("TFTP: Successfully sent %s (%d bytes)", filename, n)
+				return nil
+			}
+
 			return fmt.Errorf("file not found: %s", filename)
 		},
 		nil,
@@ -1283,6 +1336,7 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/images/redetect", adminWrap(adminHandler.RedetectImage))
 	mux.HandleFunc("/api/images/boot-candidates", adminWrap(adminHandler.BootFileCandidates))
 	mux.HandleFunc("/api/images/patch-smb", adminWrap(adminHandler.PatchImageSMB))
+	mux.HandleFunc("/api/images/unpatch-smb", adminWrap(adminHandler.UnpatchImageSMB))
 	mux.HandleFunc("/api/autoinstall-files", adminWrap(adminHandler.ListAutoInstallFiles))
 	mux.HandleFunc("/api/autoinstall-files/get", adminWrap(adminHandler.GetAutoInstallFile))
 	mux.HandleFunc("/api/autoinstall-files/save", adminWrap(adminHandler.SaveAutoInstallFile))

@@ -101,6 +101,7 @@ Most modern ISOs support direct HTTP booting via iPXE's `sanboot` command, which
 - **Reduced bandwidth**: Critical for networks with multiple clients
 - **Better compatibility**: Some ISOs don't support `sanboot` properly
 - **Network installation**: Use netboot files for Debian/Ubuntu installers
+- **UEFI Secure Boot**: Extraction detects the ISO's signed shim, letting Secure Boot clients verify the kernel — see the [Secure Boot guide](secure-boot.md)
 
 ### How to Extract
 

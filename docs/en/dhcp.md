@@ -124,7 +124,7 @@ To enable PXE network booting, your DHCP server must be configured to:
 | UEFI (ARM64) | `bootimus-arm64.efi` (or `ipxe-arm64.efi`) | Custom-built iPXE with embedded script |
 | Legacy BIOS | `undionly.kpxe` | Standard PXE bootloader |
 
-> **Secure Boot:** Bootimus does not currently ship Microsoft-signed Secure Boot binaries. If your target machines have Secure Boot enabled, either disable it in firmware, or enrol Bootimus's iPXE build into the firmware's Secure Boot keystore (MOK).
+> **Secure Boot:** for clients with Secure Boot enabled, activate the built-in `secureboot-official` bootloader set and advertise `ipxe-shimx64.efi` (x86_64) or `ipxe-shimaa64.efi` (ARM64) as the UEFI bootfile instead. The built-in proxyDHCP does this automatically when the set is active. See the [Secure Boot guide](secure-boot.md).
 
 ### Boot Flow
 
@@ -451,6 +451,8 @@ OPNsense is a pfSense fork with a modern interface.
    - **UEFI 64-bit Filename**: `ipxe.efi`
 4. Click **Save**
 5. Click **Apply Changes**
+
+> **ARM64 / Raspberry Pi:** the OPNsense GUI has no ARM64 filename field and cannot express the Raspberry Pi firmware's vendor option. For Raspberry Pi or mixed-architecture fleets, enable Bootimus's built-in proxyDHCP alongside OPNsense — it answers those clients itself. See the [Raspberry Pi guide](raspberry-pi.md).
 
 ### Advanced Configuration
 

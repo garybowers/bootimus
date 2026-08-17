@@ -2406,7 +2406,7 @@ function updateImagePropsProgress(filename) {
     const percent = document.getElementById('image-props-progress-percent');
     const p = extractionProgress[filename];
 
-    const actionBtns = ['image-props-extract-btn', 'image-props-patch-smb-btn', 'image-props-netboot-btn', 'image-props-download-btn', 'image-props-delete-btn'];
+    const actionBtns = ['image-props-extract-btn', 'image-props-patch-smb-btn', 'image-props-unpatch-smb-btn', 'image-props-netboot-btn', 'image-props-download-btn', 'image-props-delete-btn'];
 
     if (p) {
         container.style.display = '';
@@ -2417,6 +2417,8 @@ function updateImagePropsProgress(filename) {
     } else {
         container.style.display = 'none';
         actionBtns.forEach(id => { const b = document.getElementById(id); if (b) b.disabled = false; });
+        const unpatchBtn = document.getElementById('image-props-unpatch-smb-btn');
+        if (unpatchBtn && _imagePropsState) unpatchBtn.disabled = !_imagePropsState.img.smb_unpatch_available;
     }
 }
 
@@ -2779,6 +2781,7 @@ const API_REFERENCE = [
         { method: 'POST',   path: '/api/images/redetect?filename={fn}', desc: 'Re-run distro detection and boot-param resolution.' },
         { method: 'GET',    path: '/api/images/boot-candidates?filename={fn}', desc: 'List kernel/initrd files found in the extracted ISO for override selection.' },
         { method: 'POST',   path: '/api/images/patch-smb?filename={fn}', desc: 'Patch boot.wim for Windows SMB install.' },
+        { method: 'POST',   path: '/api/images/unpatch-smb?filename={fn}', desc: 'Restore the original boot.wim, removing the SMB patch.' },
         { method: 'POST',   path: '/api/images/boot-method?filename={fn}', desc: 'Body: <code>{method}</code> (sanboot/kernel/nbd/nfs).' },
         { method: 'POST',   path: '/api/images/netboot/download?filename={fn}', desc: 'Fetch netboot kernel/initrd from distro mirror.' },
         { method: 'GET',    path: '/api/images/autoinstall?filename={fn}', desc: 'Get auto-install script for image.' },
@@ -3247,60 +3250,93 @@ async function loadTools() {
         }
 
         container.innerHTML = html;
+
+        for (const tool of toolsList) {
+            if (!tool.downloaded) resumeToolProgress(tool.name);
+        }
     } catch (err) {
         document.getElementById('tools-list').innerHTML = `<p class="alert alert-error">Failed to load tools: ${err.message}</p>`;
     }
 }
 
+const toolProgressIntervals = new Map();
+
 async function downloadTool(name) {
     try {
         const res = await authFetch(`${API_BASE}/tools/download?name=${encodeURIComponent(name)}`, { method: 'POST' });
         const data = await res.json();
+        if (res.status === 409) {
+            showNotification(data.error || 'Download already in progress', 'info');
+            showToolProgress(name);
+            return;
+        }
         if (!data.success) {
             showNotification(data.error || 'Download failed', 'error');
             return;
         }
-
-        // Show progress bar, hide button
-        const btn = document.getElementById(`tool-dl-btn-${name}`);
-        const wrap = document.getElementById(`tool-progress-wrap-${name}`);
-        if (btn) btn.style.display = 'none';
-        if (wrap) wrap.style.display = 'block';
-
-        // Poll progress
-        const poll = setInterval(async () => {
-            try {
-                const r = await authFetch(`${API_BASE}/tools/progress?name=${encodeURIComponent(name)}`);
-                const d = await r.json();
-                if (!d.success) return;
-
-                const p = d.data;
-                const bar = document.getElementById(`tool-progress-${name}`);
-                const text = document.getElementById(`tool-progress-text-${name}`);
-                if (!bar || !text) return;
-
-                if (p.status === 'downloading') {
-                    bar.style.width = p.percent.toFixed(0) + '%';
-                    const dlMB = (p.downloaded / 1048576).toFixed(1);
-                    const totalMB = p.total > 0 ? (p.total / 1048576).toFixed(1) : '?';
-                    text.textContent = `Downloading... ${dlMB} MB / ${totalMB} MB (${p.percent.toFixed(0)}%)`;
-                } else if (p.status === 'extracting') {
-                    bar.style.width = '100%';
-                    text.textContent = 'Extracting...';
-                } else if (p.status === 'done') {
-                    clearInterval(poll);
-                    showNotification('Download complete', 'success');
-                    loadTools();
-                } else if (p.status === 'error') {
-                    clearInterval(poll);
-                    showNotification('Download failed: ' + (p.error || 'unknown error'), 'error');
-                    loadTools();
-                }
-            } catch (e) { /* ignore poll errors */ }
-        }, 1000);
+        showToolProgress(name);
     } catch (err) {
         showNotification('Download failed: ' + err.message, 'error');
     }
+}
+
+function showToolProgress(name) {
+    const btn = document.getElementById(`tool-dl-btn-${name}`);
+    const wrap = document.getElementById(`tool-progress-wrap-${name}`);
+    if (btn) btn.style.display = 'none';
+    if (wrap) wrap.style.display = 'block';
+    startToolProgressPolling(name);
+}
+
+async function resumeToolProgress(name) {
+    try {
+        const r = await authFetch(`${API_BASE}/tools/progress?name=${encodeURIComponent(name)}`);
+        const d = await r.json();
+        if (!d.success || !d.data) return;
+        const s = d.data.status;
+        if (s === 'starting' || s === 'downloading' || s === 'extracting') {
+            showToolProgress(name);
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function startToolProgressPolling(name) {
+    const existing = toolProgressIntervals.get(name);
+    if (existing) clearInterval(existing);
+
+    const poll = setInterval(async () => {
+        try {
+            const r = await authFetch(`${API_BASE}/tools/progress?name=${encodeURIComponent(name)}`);
+            const d = await r.json();
+            if (!d.success) return;
+
+            const p = d.data;
+            const bar = document.getElementById(`tool-progress-${name}`);
+            const text = document.getElementById(`tool-progress-text-${name}`);
+            if (!bar || !text) return;
+
+            if (p.status === 'downloading') {
+                bar.style.width = p.percent.toFixed(0) + '%';
+                const dlMB = (p.downloaded / 1048576).toFixed(1);
+                const totalMB = p.total > 0 ? (p.total / 1048576).toFixed(1) : '?';
+                text.textContent = `Downloading... ${dlMB} MB / ${totalMB} MB (${p.percent.toFixed(0)}%)`;
+            } else if (p.status === 'extracting') {
+                bar.style.width = '100%';
+                text.textContent = 'Extracting...';
+            } else if (p.status === 'done') {
+                clearInterval(poll);
+                toolProgressIntervals.delete(name);
+                showNotification('Download complete', 'success');
+                loadTools();
+            } else if (p.status === 'error') {
+                clearInterval(poll);
+                toolProgressIntervals.delete(name);
+                showNotification('Download failed: ' + (p.error || 'unknown error'), 'error');
+                loadTools();
+            }
+        } catch (e) { /* ignore poll errors */ }
+    }, 1000);
+    toolProgressIntervals.set(name, poll);
 }
 
 async function toggleTool(name, enabled) {
@@ -4322,7 +4358,10 @@ async function downloadFromGetISO(rowKey, distroName, releaseLabel) {
             body: JSON.stringify({ url, description: `${distroName} ${releaseLabel}` }),
         });
         const data = await res.json();
-        if (data.success && data.data && data.data.filename) {
+        if (res.status === 409 && data.data && data.data.filename) {
+            showNotification('Download already in progress — resuming progress display', 'info');
+            startGetISOProgressPolling(rowKey, data.data.filename, distroName, releaseLabel);
+        } else if (data.success && data.data && data.data.filename) {
             startGetISOProgressPolling(rowKey, data.data.filename, distroName, releaseLabel);
         } else {
             renderGetISOError(rowKey, data.error || 'Failed to start download', distroName, releaseLabel);
@@ -4447,12 +4486,17 @@ document.getElementById('download-form').addEventListener('submit', function(e) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(downloadData)
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
+    .then(response => response.json().then(data => ({ status: response.status, data })))
+    .then(({ status, data }) => {
+        if (status === 409 && data.data && data.data.filename) {
+            showNotification('Download already in progress — resuming progress display', 'info');
+            const filename = data.data.filename;
+            downloadProgressInterval = setInterval(() => {
+                checkDownloadProgress(filename);
+            }, 1000);
+        } else if (data.success) {
             showNotification('Download started: ' + data.data.filename, 'success');
 
-            // Start polling for progress
             const filename = data.data.filename;
             downloadProgressInterval = setInterval(() => {
                 checkDownloadProgress(filename);
@@ -5196,6 +5240,14 @@ async function showImagePropertiesModal(filename, opts) {
     patchSmbBtn.style.display = smbEligible ? 'inline-block' : 'none';
     patchSmbBtn.textContent = img.smb_install_enabled ? t('props.action.re_patch_smb') : t('props.action.patch_smb');
 
+    const unpatchSmbBtn = document.getElementById('image-props-unpatch-smb-btn');
+    const unpatchVisible = img.extracted && img.distro === 'windows' && img.smb_install_enabled;
+    unpatchSmbBtn.style.display = unpatchVisible ? 'inline-block' : 'none';
+    unpatchSmbBtn.textContent = t('props.action.unpatch_smb');
+    unpatchSmbBtn.disabled = !img.smb_unpatch_available;
+    unpatchSmbBtn.style.opacity = img.smb_unpatch_available ? '' : '0.5';
+    unpatchSmbBtn.title = img.smb_unpatch_available ? t('props.action.unpatch_smb_tip') : t('props.action.unpatch_smb_unavailable');
+
     // Stash state used by the live warnings so onChange handlers can re-evaluate.
     _imagePropsState = {
         img: img,
@@ -5322,6 +5374,26 @@ async function patchSmbFromProperties() {
     } finally {
         btn.disabled = false;
         btn.textContent = t('props.action.patch_smb');
+    }
+}
+
+async function unpatchSmbFromProperties() {
+    const filename = document.getElementById('image-props-filename').value;
+    const btn = document.getElementById('image-props-unpatch-smb-btn');
+    btn.disabled = true;
+    btn.textContent = t('props.action.unpatching');
+    try {
+        const res = await authFetch(`${API_BASE}/images/unpatch-smb?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || t('props.notify.unpatch_failed'));
+        showNotification(t('props.notify.unpatch_success'), 'success');
+        await loadImages();
+        refreshImagePropsIfOpenFor(filename);
+    } catch (err) {
+        showNotification(t('props.notify.unpatch_failed') + ': ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = t('props.action.unpatch_smb');
     }
 }
 

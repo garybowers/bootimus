@@ -1,0 +1,10 @@
+{
+  "name": "secureboot-official",
+  "description": "Zero-enrollment UEFI Secure Boot: release-paired Microsoft-signed shim + official iPXE v2.0.0 binaries signed by the iPXE Secure Boot CA. No embedded script — relies on autoexec.ipxe over TFTP (iPXE >= 2.0).",
+  "shim_version": "bundled-v2.0.0",
+  "bootfiles": {
+    "bios": "undionly.kpxe",
+    "uefi": "ipxe-shimx64.efi",
+    "arm64": "ipxe-shimaa64.efi"
+  }
+}

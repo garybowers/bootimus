@@ -66,7 +66,7 @@ sync
 ## 注意事项与权衡
 
 - **仅支持有线网络。** 不内置 WiFi 驱动固件。通过 WiFi 提供 PXE 本来就是个糟糕主意(广播泛滥 + 延迟)。
-- **不支持 UEFI Secure Boot** — 内置 iPXE 未签名(和常规 bootimus 安装一样,因为在 v0.2.x 中移除了 Secure Boot shim 链)。开启 Secure Boot 的目标机器要么关闭它,要么把 iPXE 二进制做 MOK 注册。
+- **支持 UEFI Secure Boot** — 选择内置的 `secureboot-official` bootloader 集,开启了 Secure Boot 的目标机器无需改动固件即可网络引导,和常规 bootimus 安装一样。相关限制见 [Secure Boot 指南](secure-boot.md)(NBD/NFS 引导和未签名的发行版仍需关闭 Secure Boot)。
 - **单分区。** ISO 和 Alpine 共享同一个根分区。32 GB U 盘大约能放 29 GB 的 ISO。要更大的库,在首次启动后手动扩展根分区(`resize2fs /dev/sda1`),或者用 `IMAGE_SIZE=16G make appliance` 重新构建。
 - **proxyDHCP 共存。** 如果你接入的局域网已经有 dnsmasq/ISC proxyDHCP 在广播 PXE,两个 proxy 会打架。禁掉一个:要么在 `/etc/conf.d/bootimus` 中设置 `BOOTIMUS_PROXY_DHCP_ENABLED=false`,要么关掉另一个。
 - **设备镜像有状态。** U 盘就是服务器本身。ISO、客户端、计划任务和设置都持久化在上面。如果部署到一半 U 盘挂了,你会希望有备份(`make appliance` 产出可复现构建,但你的*数据*在 U 盘上 — 定期使用 Settings 里的 "Download Backup" 按钮)。

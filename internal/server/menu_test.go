@@ -119,6 +119,31 @@ func TestBuildKernelBootSectionStripsBareNocloudParam(t *testing.T) {
 	}
 }
 
+func TestBuildKernelBootSectionShimChain(t *testing.T) {
+	img := &models.Image{
+		ID:         7,
+		Filename:   "fedora.iso",
+		Enabled:    true,
+		BootMethod: "kernel",
+		Distro:     "fedora",
+		BootParams: "ip=dhcp",
+		ShimPath:   "iso/EFI/BOOT/BOOTX64.EFI",
+	}
+	mb := testMenuBuilder(nil)
+
+	out := mb.buildKernelBootSection(img, "fedora.iso", "fedora")
+	want := "iseq ${platform} efi && shim http://10.0.0.1:8080/boot/fedora/iso/EFI/BOOT/BOOTX64.EFI ||\nboot || goto failed\n"
+	if !strings.Contains(out, want) {
+		t.Errorf("expected shim chain line before boot, got:\n%s", out)
+	}
+
+	img.ShimPath = ""
+	out = mb.buildKernelBootSection(img, "fedora.iso", "fedora")
+	if strings.Contains(out, "shim ") {
+		t.Errorf("expected no shim line without a detected shim, got:\n%s", out)
+	}
+}
+
 func TestResolveBootParamsPlaceholders(t *testing.T) {
 	img := &models.Image{
 		BootParams: "url={{BASE_URL}} host={{SERVER_ADDR}} file={{IMAGE_FILENAME}} legacy={{FILENAME}} cache={{CACHE_DIR}} mac={{MAC}}",

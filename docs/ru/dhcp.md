@@ -124,7 +124,7 @@ TFTP: Client requesting file: bootimus.efi
 | UEFI (ARM64) | `bootimus-arm64.efi` (или `ipxe-arm64.efi`) | Кастомно собранный iPXE со встроенным скриптом |
 | Legacy BIOS | `undionly.kpxe` | Стандартный PXE-загрузчик |
 
-> **Secure Boot:** Bootimus сейчас не поставляет подписанные Microsoft Secure Boot-бинарники. Если на целевых машинах включён Secure Boot, либо выключите его в прошивке, либо зарегистрируйте сборку iPXE Bootimus в Secure Boot-хранилище ключей прошивки (MOK).
+> **Secure Boot:** для клиентов с включённым Secure Boot активируйте встроенный набор загрузчиков `secureboot-official` и анонсируйте вместо обычного UEFI-bootfile `ipxe-shimx64.efi` (x86_64) или `ipxe-shimaa64.efi` (ARM64). Встроенный proxyDHCP делает это автоматически, когда набор активен. См. [руководство по Secure Boot](secure-boot.md).
 
 ### Поток загрузки
 
@@ -451,6 +451,8 @@ OPNsense — форк pfSense с современным интерфейсом.
    - **UEFI 64-bit Filename**: `ipxe.efi`
 4. Нажмите **Save**
 5. Нажмите **Apply Changes**
+
+> **ARM64 / Raspberry Pi:** в GUI OPNsense нет поля имени файла для ARM64, и он не может выразить vendor-опцию прошивки Raspberry Pi. Для Raspberry Pi или парка со смешанными архитектурами включите встроенный proxyDHCP Bootimus параллельно с OPNsense — он сам отвечает таким клиентам. См. [руководство по Raspberry Pi](raspberry-pi.md).
 
 ### Продвинутая конфигурация
 

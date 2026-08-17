@@ -124,7 +124,7 @@ TFTP: Client requesting file: bootimus.efi
 | UEFI (ARM64) | `bootimus-arm64.efi`(或 `ipxe-arm64.efi`) | 自定义构建的、内嵌脚本的 iPXE |
 | Legacy BIOS | `undionly.kpxe` | 标准 PXE bootloader |
 
-> **Secure Boot:** Bootimus 当前不附带微软签名的 Secure Boot 二进制。如果你的目标机器启用了 Secure Boot,要么在固件中关闭,要么将 Bootimus 的 iPXE 构建注册到固件的 Secure Boot 密钥库(MOK)。
+> **Secure Boot:** 对启用了 Secure Boot 的客户端,请激活内置的 `secureboot-official` bootloader 集,并改为通告 `ipxe-shimx64.efi`(x86_64)或 `ipxe-shimaa64.efi`(ARM64)作为 UEFI bootfile。该集处于激活状态时,内建 proxyDHCP 会自动完成这些。参见 [Secure Boot 指南](secure-boot.md)。
 
 ### 引导流程
 
@@ -451,6 +451,8 @@ OPNsense 是 pfSense 的分支,具有现代化的界面。
    - **UEFI 64-bit Filename**:`ipxe.efi`
 4. 点击 **Save**
 5. 点击 **Apply Changes**
+
+> **ARM64 / Raspberry Pi:** OPNsense 的 GUI 没有 ARM64 文件名字段,也无法表达 Raspberry Pi 固件的厂商选项。对于 Raspberry Pi 或混合架构的设备群,请在 OPNsense 之外同时启用 Bootimus 内建的 proxyDHCP — 由它自行应答这些客户端。参见 [Raspberry Pi 指南](raspberry-pi.md)。
 
 ### 高级配置
 

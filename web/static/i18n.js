@@ -149,6 +149,10 @@ const TRANSLATIONS = {
         'props.action.patch_smb': 'Patch SMB',
         'props.action.re_patch_smb': 'Re-patch SMB',
         'props.action.patching': 'Patching...',
+        'props.action.unpatch_smb': 'Unpatch SMB',
+        'props.action.unpatching': 'Unpatching...',
+        'props.action.unpatch_smb_tip': 'Restore the original boot.wim and remove the SMB share',
+        'props.action.unpatch_smb_unavailable': 'No pristine backup of boot.wim exists — re-extract the image first, then unpatch',
         'props.action.save_and_repatch': 'Save & Re-patch',
         'props.action.redetect': 'Re-detect',
         'props.action.download_iso': 'Download ISO',
@@ -159,6 +163,8 @@ const TRANSLATIONS = {
 
         'props.notify.patch_success': 'boot.wim patched for SMB auto-install',
         'props.notify.patch_failed': 'Patch failed',
+        'props.notify.unpatch_success': 'Original boot.wim restored',
+        'props.notify.unpatch_failed': 'Unpatch failed',
 
         'props.warn.not_extracted': "Not extracted yet. This OS likely won't boot reliably without extraction — kernel and initrd need to be served directly.",
         'props.warn.netboot_required': "Netboot files required. This Debian/Ubuntu DVD ISO ships an installer that needs a separate kernel/initrd bundle from the distro mirror — it can't boot directly from the ISO contents.",
@@ -319,6 +325,10 @@ const TRANSLATIONS = {
         'props.action.patch_smb': 'SMB patchen',
         'props.action.re_patch_smb': 'SMB neu patchen',
         'props.action.patching': 'Wird gepatcht…',
+        'props.action.unpatch_smb': 'SMB-Patch entfernen',
+        'props.action.unpatching': 'Patch wird entfernt…',
+        'props.action.unpatch_smb_tip': 'Originale boot.wim wiederherstellen und die SMB-Freigabe entfernen',
+        'props.action.unpatch_smb_unavailable': 'Keine unveränderte Sicherung der boot.wim vorhanden — Image zuerst neu extrahieren, dann Patch entfernen',
         'props.action.save_and_repatch': 'Speichern & neu patchen',
         'props.action.redetect': 'Neu erkennen',
         'props.action.download_iso': 'ISO herunterladen',
@@ -329,6 +339,8 @@ const TRANSLATIONS = {
 
         'props.notify.patch_success': 'boot.wim für SMB-Auto-Installation gepatcht',
         'props.notify.patch_failed': 'Patch fehlgeschlagen',
+        'props.notify.unpatch_success': 'Originale boot.wim wiederhergestellt',
+        'props.notify.unpatch_failed': 'Entfernen des Patches fehlgeschlagen',
 
         'props.warn.not_extracted': 'Noch nicht extrahiert. Dieses Betriebssystem startet ohne Extraktion vermutlich nicht zuverlässig — Kernel und Initrd müssen direkt ausgeliefert werden.',
         'props.warn.netboot_required': 'Netboot-Dateien erforderlich. Diese Debian-/Ubuntu-DVD-ISO bringt einen Installer mit, der ein eigenes Kernel-/Initrd-Bundle vom Distro-Spiegel benötigt — sie kann nicht direkt aus dem ISO-Inhalt starten.',
@@ -489,6 +501,10 @@ const TRANSLATIONS = {
         'props.action.patch_smb': 'Patcher SMB',
         'props.action.re_patch_smb': 'Re-patcher SMB',
         'props.action.patching': 'Application du patch…',
+        'props.action.unpatch_smb': 'Retirer le patch SMB',
+        'props.action.unpatching': 'Retrait du patch…',
+        'props.action.unpatch_smb_tip': "Restaurer le boot.wim d'origine et supprimer le partage SMB",
+        'props.action.unpatch_smb_unavailable': "Aucune sauvegarde intacte de boot.wim — ré-extrayez d'abord l'image, puis retirez le patch",
         'props.action.save_and_repatch': 'Enregistrer & re-patcher',
         'props.action.redetect': 'Re-détecter',
         'props.action.download_iso': "Télécharger l'ISO",
@@ -499,6 +515,8 @@ const TRANSLATIONS = {
 
         'props.notify.patch_success': "boot.wim patché pour l'installation auto SMB",
         'props.notify.patch_failed': 'Échec du patch',
+        'props.notify.unpatch_success': "boot.wim d'origine restauré",
+        'props.notify.unpatch_failed': 'Échec du retrait du patch',
 
         'props.warn.not_extracted': "Pas encore extraite. Sans extraction, ce système ne démarrera probablement pas correctement — le noyau et l'initrd doivent être servis directement.",
         'props.warn.netboot_required': "Fichiers netboot requis. Cette ISO DVD Debian/Ubuntu embarque un installeur qui nécessite un bundle noyau/initrd séparé depuis le miroir de la distribution — elle ne peut pas démarrer directement à partir du contenu de l'ISO.",
@@ -663,6 +681,10 @@ const TRANSLATIONS = {
         'props.action.patch_smb': 'Патч SMB',
         'props.action.re_patch_smb': 'Перепатчить SMB',
         'props.action.patching': 'Применение патча…',
+        'props.action.unpatch_smb': 'Убрать патч SMB',
+        'props.action.unpatching': 'Удаление патча…',
+        'props.action.unpatch_smb_tip': 'Восстановить исходный boot.wim и удалить общий ресурс SMB',
+        'props.action.unpatch_smb_unavailable': 'Нет нетронутой резервной копии boot.wim — сначала повторно извлеките образ, затем уберите патч',
         'props.action.save_and_repatch': 'Сохранить и перепатчить',
         'props.action.redetect': 'Повторное определение',
         'props.action.download_iso': 'Скачать ISO',
@@ -673,6 +695,8 @@ const TRANSLATIONS = {
 
         'props.notify.patch_success': 'boot.wim пропатчен для автоустановки по SMB',
         'props.notify.patch_failed': 'Не удалось применить патч',
+        'props.notify.unpatch_success': 'Исходный boot.wim восстановлен',
+        'props.notify.unpatch_failed': 'Не удалось убрать патч',
 
         'props.warn.not_extracted': 'Образ ещё не извлечён. Без извлечения эта ОС, скорее всего, не загрузится надёжно — ядро и initrd должны выдаваться напрямую.',
         'props.warn.netboot_required': 'Требуются файлы netboot. Этот DVD-ISO Debian/Ubuntu содержит установщик, которому нужен отдельный комплект ядра/initrd с зеркала дистрибутива — он не может загрузиться непосредственно из содержимого ISO.',
@@ -833,6 +857,10 @@ const TRANSLATIONS = {
         'props.action.patch_smb': '为 SMB 打补丁',
         'props.action.re_patch_smb': '重新为 SMB 打补丁',
         'props.action.patching': '正在打补丁…',
+        'props.action.unpatch_smb': '移除 SMB 补丁',
+        'props.action.unpatching': '正在移除补丁…',
+        'props.action.unpatch_smb_tip': '恢复原始 boot.wim 并移除 SMB 共享',
+        'props.action.unpatch_smb_unavailable': '没有原始 boot.wim 备份 — 请先重新提取镜像，再移除补丁',
         'props.action.save_and_repatch': '保存并重新打补丁',
         'props.action.redetect': '重新检测',
         'props.action.download_iso': '下载 ISO',
@@ -843,6 +871,8 @@ const TRANSLATIONS = {
 
         'props.notify.patch_success': 'boot.wim 已针对 SMB 自动安装完成补丁',
         'props.notify.patch_failed': '补丁应用失败',
+        'props.notify.unpatch_success': '已恢复原始 boot.wim',
+        'props.notify.unpatch_failed': '移除补丁失败',
 
         'props.warn.not_extracted': '此镜像尚未解包。未解包时该系统大多无法可靠引导 — 需要直接提供内核和 initrd。',
         'props.warn.netboot_required': '需要 netboot 文件。该 Debian/Ubuntu DVD ISO 含有安装程序,需要从发行版镜像源获取独立的内核 / initrd 套件 — 无法直接从 ISO 内容引导。',
