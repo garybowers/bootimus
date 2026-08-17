@@ -2029,6 +2029,10 @@ func (h *Handler) ListBootloaders(w http.ResponseWriter, r *http.Request) {
 	var sets []BootloaderSet
 
 	embeddedSets, _ := bootloaders.ListSets()
+	embeddedNames := make(map[string]bool, len(embeddedSets))
+	for _, setName := range embeddedSets {
+		embeddedNames[setName] = true
+	}
 	for _, setName := range embeddedSets {
 		entries, err := bootloaders.ListFiles(setName)
 		if err != nil {
@@ -2057,6 +2061,9 @@ func (h *Handler) ListBootloaders(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				setName := entry.Name()
+				if embeddedNames[setName] {
+					continue
+				}
 				setPath := filepath.Join(h.bootDir, setName)
 				fileEntries, err := os.ReadDir(setPath)
 				if err != nil {
