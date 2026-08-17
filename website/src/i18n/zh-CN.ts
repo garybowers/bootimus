@@ -140,7 +140,7 @@ const zhCN = {
   bootloaders: {
     kicker: '// bootloaders',
     title: '把 iPXE 换成你需要的任何东西。',
-    sub: 'Bootimus 为每种常见架构内嵌了 iPXE。需要 Secure Boot 用的微软签名二进制、定制主题的 iPXE、GRUB、syslinux,或你自家内部 CA 签名的 loader?把文件夹丢到 data/bootloaders/,UI 里勾选,搞定。缺失文件会透明地回退到内嵌套件 — 永远不会引导失败。',
+    sub: 'Bootimus 为每种常见架构内嵌了 iPXE — 包括微软签名的 Secure Boot 引导链。需要定制主题的 iPXE、GRUB、syslinux,或你自家内部 CA 签名的 loader?把文件夹丢到 data/bootloaders/,UI 里勾选,搞定。缺失文件会透明地回退到内嵌套件 — 永远不会引导失败。',
     cards: {
       uefi64: {
         t: 'iPXE · UEFI x86_64',
@@ -158,9 +158,9 @@ const zhCN = {
         tag: '内嵌 · 兜底',
       },
       shim: {
-        t: '微软签名 shim',
-        d: '把签名的 shimx64.efi + grubx64.efi 丢进去 — 适用于强制 Secure Boot 的集群。无需固件 MOK 注册。',
-        tag: '自定义 · BYO',
+        t: 'Secure Boot · 签名 shim',
+        d: 'ipxe-shimx64.efi · 微软签名 shim + 签名 iPXE,适用于强制 Secure Boot 的集群。无需固件 MOK 注册。',
+        tag: '内嵌 · secureboot-official',
       },
       themed: {
         t: '定制主题 iPXE',

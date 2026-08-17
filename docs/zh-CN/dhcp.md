@@ -124,7 +124,7 @@ TFTP: Client requesting file: bootimus.efi
 | UEFI (ARM64) | `bootimus-arm64.efi`(或 `ipxe-arm64.efi`) | 自定义构建的、内嵌脚本的 iPXE |
 | Legacy BIOS | `undionly.kpxe` | 标准 PXE bootloader |
 
-> **Secure Boot:** Bootimus 当前不附带微软签名的 Secure Boot 二进制。如果你的目标机器启用了 Secure Boot,要么在固件中关闭,要么将 Bootimus 的 iPXE 构建注册到固件的 Secure Boot 密钥库(MOK)。
+> **Secure Boot:** 对启用了 Secure Boot 的客户端,请激活内置的 `secureboot-official` bootloader 集,并改为通告 `ipxe-shimx64.efi`(x86_64)或 `ipxe-shimaa64.efi`(ARM64)作为 UEFI bootfile。该集处于激活状态时,内建 proxyDHCP 会自动完成这些。参见 [Secure Boot 指南](secure-boot.md)。
 
 ### 引导流程
 

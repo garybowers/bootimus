@@ -95,12 +95,12 @@ export default {
   bootloaders: {
     kicker: '// bootloaders',
     title: 'Swap iPXE for whatever you need.',
-    sub: 'Bootimus ships with embedded iPXE for every common arch. Need Microsoft-signed binaries for Secure Boot, a custom-themed iPXE, GRUB, syslinux, or your own internal-CA-signed loader? Drop a folder in data/bootloaders/, pick it from the UI, done. Missing files transparently fall back to the embedded set — never a broken boot.',
+    sub: 'Bootimus ships with embedded iPXE for every common arch — including a Microsoft-signed Secure Boot chain. Need a custom-themed iPXE, GRUB, syslinux, or your own internal-CA-signed loader? Drop a folder in data/bootloaders/, pick it from the UI, done. Missing files transparently fall back to the embedded set — never a broken boot.',
     cards: {
       uefi64: { t: 'iPXE · UEFI x86_64', d: 'ipxe.efi · the default. Built from upstream master, embedded in the binary.', tag: 'embedded · fallback' },
       uefiArm: { t: 'iPXE · UEFI ARM64', d: 'ipxe-arm64.efi · for Raspberry Pi 4/5, Apple Silicon hosts, ARM servers.', tag: 'embedded · fallback' },
       bios: { t: 'iPXE · Legacy BIOS', d: 'undionly.kpxe · for old kit that won\'t UEFI. Still relevant in 2026.', tag: 'embedded · fallback' },
-      shim: { t: 'Microsoft-signed shim', d: 'Drop a signed shimx64.efi + grubx64.efi in for Secure-Boot-enforced fleets. No firmware MOK enrolment needed.', tag: 'custom · BYO' },
+      shim: { t: 'Secure Boot · signed shim', d: 'ipxe-shimx64.efi · Microsoft-signed shim + signed iPXE for Secure-Boot-enforced fleets. No firmware MOK enrolment needed.', tag: 'embedded · secureboot-official' },
       themed: { t: 'Custom-themed iPXE', d: 'Compile your own iPXE with branding, custom menu colours, embedded scripts. Drop the .efi in.', tag: 'custom · BYO' },
       grub: { t: 'GRUB / syslinux / pxelinux', d: 'Not iPXE? No problem. Anything that speaks TFTP and HTTP works. Bootimus just serves bytes.', tag: 'custom · BYO' },
     },

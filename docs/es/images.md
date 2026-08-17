@@ -98,6 +98,7 @@ La mayoría de ISOs modernos soportan arranque HTTP directo vía el comando `san
 - **Menor ancho de banda**: Crítico para redes con múltiples clientes
 - **Mejor compatibilidad**: Algunos ISOs no soportan `sanboot` correctamente
 - **Instalación por red**: Usa archivos netboot para los instaladores de Debian/Ubuntu
+- **UEFI Secure Boot**: La extracción detecta el shim firmado del ISO, permitiendo que los clientes con Secure Boot verifiquen el kernel — consulta la [guía de Secure Boot](secure-boot.md)
 
 ### Cómo extraer
 

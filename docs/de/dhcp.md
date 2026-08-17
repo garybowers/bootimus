@@ -124,7 +124,7 @@ Um PXE-Netzwerk-Boot zu aktivieren, muss dein DHCP-Server konfiguriert sein, um:
 | UEFI (ARM64) | `bootimus-arm64.efi` (oder `ipxe-arm64.efi`) | Custom-Build von iPXE mit eingebettetem Skript |
 | Legacy BIOS | `undionly.kpxe` | Standard-PXE-Bootloader |
 
-> **Secure Boot:** Bootimus bringt aktuell keine Microsoft-signierten Secure-Boot-Binaries mit. Wenn deine Zielmaschinen Secure Boot aktiviert haben, deaktiviere es in der Firmware — oder enrole den iPXE-Build von Bootimus in den Secure-Boot-Keystore der Firmware (MOK).
+> **Secure Boot:** aktiviere für Clients mit eingeschaltetem Secure Boot das eingebaute Bootloader-Set `secureboot-official` und advertise stattdessen `ipxe-shimx64.efi` (x86_64) bzw. `ipxe-shimaa64.efi` (ARM64) als UEFI-Bootfile. Das eingebaute proxyDHCP macht das automatisch, wenn das Set aktiv ist. Siehe den [Secure-Boot-Leitfaden](secure-boot.md).
 
 ### Boot-Ablauf
 

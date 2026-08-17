@@ -98,6 +98,7 @@ curl -u admin:password -X POST http://localhost:8081/api/scan
 - **Меньше трафика**: критично для сетей со множеством клиентов
 - **Лучшая совместимость**: некоторые ISO некорректно поддерживают `sanboot`
 - **Сетевая установка**: используйте netboot-файлы для установщиков Debian/Ubuntu
+- **UEFI Secure Boot**: извлечение обнаруживает подписанный shim в ISO, позволяя клиентам с Secure Boot проверить kernel — см. [руководство по Secure Boot](secure-boot.md)
 
 ### Как извлечь
 

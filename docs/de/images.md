@@ -98,6 +98,7 @@ Die meisten modernen ISOs unterstützen direktes HTTP-Booten über iPXEs `sanboo
 - **Geringere Bandbreite**: Kritisch in Netzen mit mehreren Clients
 - **Bessere Kompatibilität**: Manche ISOs unterstützen `sanboot` nicht sauber
 - **Netzwerk-Installation**: Netboot-Dateien für Debian-/Ubuntu-Installer nutzen
+- **UEFI Secure Boot**: Die Extraktion erkennt den signierten shim des ISOs, sodass Secure-Boot-Clients den Kernel verifizieren können — siehe den [Secure-Boot-Leitfaden](secure-boot.md)
 
 ### Wie man extrahiert
 

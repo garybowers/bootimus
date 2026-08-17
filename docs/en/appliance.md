@@ -66,7 +66,7 @@ On macOS/Windows, [Etcher](https://etcher.balena.io) or [Rufus](https://rufus.ie
 ## Caveats and tradeoffs
 
 - **Wired network only.** No WiFi driver firmware is bundled. Serving PXE over WiFi is a terrible idea anyway (broadcast-flooding + latency).
-- **No UEFI Secure Boot** — the bundled iPXE is unsigned (same as the regular bootimus install, since the Secure Boot shim chain was removed in v0.2.x). Target machines with Secure Boot on need it disabled, or MOK-enrol the iPXE binary.
+- **UEFI Secure Boot supported** — select the built-in `secureboot-official` bootloader set and target machines with Secure Boot on netboot without firmware changes, as on a regular bootimus install. See the [Secure Boot guide](secure-boot.md) for limitations (NBD/NFS boots and unsigned distros still need Secure Boot off).
 - **Single partition.** ISOs live on the same root partition as Alpine. A 32 GB stick gives you ~29 GB for ISOs. For a bigger library, extend the root partition manually after first boot (`resize2fs /dev/sda1`) or rebuild with `IMAGE_SIZE=16G make appliance`.
 - **proxyDHCP coexistence.** If the LAN you plug into already has a dnsmasq/ISC proxyDHCP advertising PXE, two proxies will fight. Disable one: either set `BOOTIMUS_PROXY_DHCP_ENABLED=false` in `/etc/conf.d/bootimus` or turn off the other.
 - **Appliance is stateful.** The USB stick IS the server. ISOs, clients, schedules, and settings persist on it. If the stick dies mid-deploy you'll want a backup (`make appliance` produces deterministic builds but your *data* lives on the stick — use the "Download Backup" button in Settings regularly).

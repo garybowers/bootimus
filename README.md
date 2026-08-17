@@ -426,9 +426,9 @@ curl -H "Authorization: Bearer $TOKEN" -X PUT http://localhost:8081/api/images?f
 
 ### UEFI Secure Boot Enabled on Target
 
-Bootimus does not currently ship Microsoft-signed bootloaders. On machines with Secure Boot enabled, PXE boot fails with a signature-verification error.
+Bootimus ships a built-in `secureboot-official` bootloader set — a Microsoft-signed shim chain that stock Secure Boot firmware trusts out of the box, with no certificate enrolment on clients.
 
-**Fix**: disable Secure Boot in the target's firmware, or enrol Bootimus's iPXE EFI binary into the firmware's MOK keystore.
+**Fix**: select the `secureboot-official` set on the Bootloaders page (external DHCP servers must advertise `ipxe-shimx64.efi` to UEFI clients), and use extracted kernel/initrd boot for your images. See the [Secure Boot guide](docs/en/secure-boot.md) for the full walkthrough and limitations (NBD/NFS boots and distros without Secure Boot support still need it disabled).
 
 ### Forgotten Admin Password
 

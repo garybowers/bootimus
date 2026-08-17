@@ -140,7 +140,7 @@ const es = {
   bootloaders: {
     kicker: '// bootloaders',
     title: 'Cambia iPXE por lo que necesites.',
-    sub: 'Bootimus trae iPXE embebido para cada arquitectura común. ¿Necesitas binarios firmados por Microsoft para Secure Boot, un iPXE con branding propio, GRUB, syslinux, o tu loader firmado por tu CA interna? Mete una carpeta en data/bootloaders/, selecciónala en la UI, listo. Los archivos que falten vuelven transparente al set embebido — nunca un arranque roto.',
+    sub: 'Bootimus trae iPXE embebido para cada arquitectura común — incluida una cadena Secure Boot firmada por Microsoft. ¿Necesitas un iPXE con branding propio, GRUB, syslinux, o tu loader firmado por tu CA interna? Mete una carpeta en data/bootloaders/, selecciónala en la UI, listo. Los archivos que falten vuelven transparente al set embebido — nunca un arranque roto.',
     cards: {
       uefi64: {
         t: 'iPXE · UEFI x86_64',
@@ -158,9 +158,9 @@ const es = {
         tag: 'embebido · fallback',
       },
       shim: {
-        t: 'Shim firmado por Microsoft',
-        d: 'Mete un shimx64.efi + grubx64.efi firmados para flotas con Secure Boot obligatorio. No hace falta enrolar MOK en el firmware.',
-        tag: 'custom · BYO',
+        t: 'Secure Boot · shim firmado',
+        d: 'ipxe-shimx64.efi · shim firmado por Microsoft + iPXE firmado para flotas con Secure Boot obligatorio. No hace falta enrolar MOK en el firmware.',
+        tag: 'embebido · secureboot-official',
       },
       themed: {
         t: 'iPXE con branding propio',

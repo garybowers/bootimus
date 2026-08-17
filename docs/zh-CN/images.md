@@ -98,6 +98,7 @@ curl -u admin:password -X POST http://localhost:8081/api/scan
 - **更少的带宽**:对多客户端网络至关重要
 - **更好的兼容性**:某些 ISO 不能正确支持 `sanboot`
 - **网络安装**:为 Debian/Ubuntu 安装器使用 netboot 文件
+- **UEFI Secure Boot**:提取会检测 ISO 的已签名 shim,让 Secure Boot 客户端能够校验 kernel — 参见 [Secure Boot 指南](secure-boot.md)
 
 ### 如何提取
 
