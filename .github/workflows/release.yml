@@ -72,14 +72,7 @@ jobs:
       - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
-Detect Debian-style live ISOs properly: prefer /live/ kernel/initrd over the bundled debian-installer, so Kali Live no longer boots into the installer or asks for netboot files
-Reassemble multi-extent ISO9660 files on extraction — squashfs images over 4 GiB were previously truncated (~283 MB tail extent only)
-Populate and serve the squashfs path so fetch={{SQUASHFS}} resolves correctly in boot parameters
-New kernel/initrd override dropdowns in image properties — choose exactly which files from the extracted ISO are served, with an auto-detected default
-New GET /api/images/boot-candidates endpoint; PUT /api/images accepts validated kernel_override/initrd_override fields
-Overridden initrd is served with an explicit iPXE image name so initrd=initrd parameters still match
-Translations added for all five locales; unit tests for menu generation plus an opt-in integration test (BOOTIMUS_TEST_ISO)
-Verified end-to-end against kali-linux-2026.2-live-a
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
