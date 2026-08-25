@@ -280,7 +280,7 @@ if exist x:\drivers set SETUP_ARGS=!SETUP_ARGS! /installdrivers x:\drivers
 
 if exist Z:\AutoUnattend.xml (
 	copy /Y Z:\AutoUnattend.xml X:\AutoUnattend.xml >nul
- 	set SETUP_ARGS=!SETUP_ARGS! /unattend X:\AutoUnattend.xml
+ 	set SETUP_ARGS=!SETUP_ARGS! /unattend:X:\AutoUnattend.xml
 ) else (
 	echo WARNING: AutoUnattend.xml not on share, running interactive setup.
 )
