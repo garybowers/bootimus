@@ -13,9 +13,10 @@ import (
 )
 
 type Manager struct {
-	dataDir string
-	addr    string
-	port    int
+	dataDir            string
+	addr               string
+	port               int
+	bindInterfacesOnly bool
 
 	mu     sync.RWMutex
 	shares map[string]string
@@ -25,10 +26,11 @@ type Manager struct {
 
 func NewManager(dataDir string, addr string, port int) *Manager {
 	return &Manager{
-		dataDir: dataDir,
-		addr:    addr,
-		port:    port,
-		shares:  make(map[string]string),
+		dataDir:            dataDir,
+		addr:               addr,
+		port:               port,
+		bindInterfacesOnly: os.Getenv("BOOTIMUS_SMB_BIND_INTERFACES_ONLY") != "no",
+		shares:             make(map[string]string),
 	}
 }
 
@@ -162,8 +164,10 @@ workgroup = WORKGROUP
 server role = standalone server
 log level = 1
 log file = {{ .Dir }}/log/smbd.log
+{{- if .BindInterfacesOnly }}
 bind interfaces only = yes
 interfaces = {{ .Addr }}
+{{- end }}
 smb ports = {{ .Port }}
 server min protocol = SMB2
 map to guest = bad user
@@ -210,15 +214,17 @@ browseable = yes
 
 	var buf bytes.Buffer
 	err := configTemplate.Execute(&buf, &struct {
-		Dir    string
-		Addr   string
-		Port   int
-		Shares map[string]string
+		Dir                string
+		Addr               string
+		Port               int
+		BindInterfacesOnly bool
+		Shares             map[string]string
 	}{
-		Dir:    m.smbDir(),
-		Addr:   m.addr,
-		Port:   m.port,
-		Shares: m.shares,
+		Dir:                m.smbDir(),
+		Addr:               m.addr,
+		Port:               m.port,
+		BindInterfacesOnly: m.bindInterfacesOnly,
+		Shares:             m.shares,
 	})
 	if err != nil {
 		return err
