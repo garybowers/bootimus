@@ -230,6 +230,10 @@ func (s *PostgresStore) GetClient(mac string) (*models.Client, error) {
 	return &client, nil
 }
 
+func (s *PostgresStore) GetClientBootloaderSets(mac string) (clientSet, groupSet string, err error) {
+	return getClientBootloaderSets(s.db, mac)
+}
+
 func (s *PostgresStore) CreateClient(client *models.Client) error {
 	return s.db.Create(client).Error
 }

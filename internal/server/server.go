@@ -326,6 +326,8 @@ type bootloaderConfigFile struct {
 	ActiveSet string `json:"active_set"`
 }
 
+const bootloaderSetRequestPrefix = "bootloader-sets/"
+
 func (s *Server) loadBootloaderConfig() {
 	data, err := os.ReadFile(s.bootloaderConfigPath())
 	if err != nil {
@@ -369,12 +371,25 @@ func (s *Server) SetActiveBootloaderSet(name string) {
 	log.Printf("Bootloader set %q active: PXE bootfiles BIOS=%s UEFI=%s ARM64=%s", display, bios, uefi, arm64)
 }
 
-// activeSetManifest loads manifest.json for the active bootloader set — from
-// the on-disk set directory when present, otherwise from the embedded sets.
-func (s *Server) activeSetManifest() *bootloaders.Manifest {
-	setName := s.GetActiveBootloaderSet()
+func normaliseBootloaderSetName(setName string) string {
+	setName = strings.TrimSpace(setName)
+	if setName == "" || strings.ContainsAny(setName, `/\`) || setName != path.Base(setName) || setName == "." || setName == ".." {
+		return ""
+	}
+	return setName
+}
+
+func (s *Server) activeBootloaderSetName() string {
+	if setName := normaliseBootloaderSetName(s.GetActiveBootloaderSet()); setName != "" {
+		return setName
+	}
+	return bootloaders.DefaultSet
+}
+
+func (s *Server) bootloaderSetManifest(setName string) *bootloaders.Manifest {
+	setName = normaliseBootloaderSetName(setName)
 	if setName == "" {
-		setName = bootloaders.DefaultSet
+		return nil
 	}
 	if s.config.BootDir != "" {
 		diskPath := filepath.Join(s.config.BootDir, setName, "manifest.json")
@@ -396,29 +411,126 @@ func (s *Server) activeSetManifest() *bootloaders.Manifest {
 // > active bootloader set manifest > compiled default. Evaluated per DHCP
 // request, so switching sets takes effect without a restart.
 func (s *Server) proxyDHCPBootfiles() (bios, uefi, arm64 string) {
-	bios = s.config.ProxyDHCPBootfileBIOS
-	uefi = s.config.ProxyDHCPBootfileUEFI
-	arm64 = s.config.ProxyDHCPBootfileARM
-	if m := s.activeSetManifest(); m != nil {
-		if (bios == "" || bios == proxydhcp.DefaultBootfileBIOS) && m.Bootfiles.BIOS != "" {
-			bios = m.Bootfiles.BIOS
+	bios, uefi, arm64 = s.bootfilesForSet(s.activeBootloaderSetName())
+	return configuredBootfile(s.config.ProxyDHCPBootfileBIOS, proxydhcp.DefaultBootfileBIOS, bios),
+		configuredBootfile(s.config.ProxyDHCPBootfileUEFI, proxydhcp.DefaultBootfileUEFI, uefi),
+		configuredBootfile(s.config.ProxyDHCPBootfileARM, proxydhcp.DefaultBootfileARM64, arm64)
+}
+
+func configuredBootfile(configured, defaultName, setName string) string {
+	if configured != "" && configured != defaultName {
+		return configured
+	}
+	return setName
+}
+
+func (s *Server) bootfilesForSet(setName string) (bios, uefi, arm64 string) {
+	bios = proxydhcp.DefaultBootfileBIOS
+	uefi = proxydhcp.DefaultBootfileUEFI
+	arm64 = proxydhcp.DefaultBootfileARM64
+	if manifest := s.bootloaderSetManifest(setName); manifest != nil {
+		if manifest.Bootfiles.BIOS != "" {
+			bios = manifest.Bootfiles.BIOS
 		}
-		if (uefi == "" || uefi == proxydhcp.DefaultBootfileUEFI) && m.Bootfiles.UEFI != "" {
-			uefi = m.Bootfiles.UEFI
+		if manifest.Bootfiles.UEFI != "" {
+			uefi = manifest.Bootfiles.UEFI
 		}
-		if (arm64 == "" || arm64 == proxydhcp.DefaultBootfileARM64) && m.Bootfiles.ARM64 != "" {
-			arm64 = m.Bootfiles.ARM64
+		if manifest.Bootfiles.ARM64 != "" {
+			arm64 = manifest.Bootfiles.ARM64
 		}
 	}
 	return bios, uefi, arm64
 }
 
-func (s *Server) resolveBootloaderFile(filename string) string {
-	setName := s.GetActiveBootloaderSet()
-	if setName == "" || s.config.BootDir == "" {
+func (s *Server) effectiveBootloaderSet(clientHWAddr net.HardwareAddr) (string, bool) {
+	globalSet := s.activeBootloaderSetName()
+	if len(clientHWAddr) == 0 || s.config.Storage == nil {
+		return globalSet, false
+	}
+
+	mac := strings.ToLower(clientHWAddr.String())
+	clientSet, groupSet, err := s.config.Storage.GetClientBootloaderSets(mac)
+	if err != nil {
+		return globalSet, false
+	}
+	if setName := normaliseBootloaderSetName(clientSet); setName != "" {
+		return setName, true
+	}
+	if setName := normaliseBootloaderSetName(groupSet); setName != "" {
+		return setName, true
+	}
+	return globalSet, false
+}
+
+func cleanBootloaderPath(filename string) (string, bool) {
+	if strings.Contains(filename, `\`) {
+		return "", false
+	}
+	filename = path.Clean(filename)
+	if filename == "." || filename == ".." || path.IsAbs(filename) || strings.HasPrefix(filename, "../") {
+		return "", false
+	}
+	return filename, true
+}
+
+func qualifyBootloaderSetRequest(setName, filename string) string {
+	setName = normaliseBootloaderSetName(setName)
+	filename, valid := cleanBootloaderPath(filename)
+	if setName == "" || !valid {
 		return ""
 	}
-	fullPath := filepath.Join(s.config.BootDir, setName, filename)
+	return path.Join(bootloaderSetRequestPrefix, setName, filename)
+}
+
+func (s *Server) proxyDHCPBootfilesForClient(clientHWAddr net.HardwareAddr) (bios, uefi, arm64 string) {
+	setName, overridden := s.effectiveBootloaderSet(clientHWAddr)
+	if !overridden {
+		return s.proxyDHCPBootfiles()
+	}
+
+	bios, uefi, arm64 = s.bootfilesForSet(setName)
+	return configuredOrQualifiedBootfile(s.config.ProxyDHCPBootfileBIOS, proxydhcp.DefaultBootfileBIOS, setName, bios),
+		configuredOrQualifiedBootfile(s.config.ProxyDHCPBootfileUEFI, proxydhcp.DefaultBootfileUEFI, setName, uefi),
+		configuredOrQualifiedBootfile(s.config.ProxyDHCPBootfileARM, proxydhcp.DefaultBootfileARM64, setName, arm64)
+}
+
+func configuredOrQualifiedBootfile(configured, defaultName, setName, setFilename string) string {
+	if configured != "" && configured != defaultName {
+		return configured
+	}
+	return qualifyBootloaderSetRequest(setName, setFilename)
+}
+
+func (s *Server) resolveBootloaderRequest(requestPath string) (setName, filename string, err error) {
+	cleanPath, valid := cleanBootloaderPath(requestPath)
+	if !valid {
+		return "", "", fmt.Errorf("invalid bootloader path: %s", requestPath)
+	}
+	if !strings.HasPrefix(cleanPath, bootloaderSetRequestPrefix) {
+		return s.activeBootloaderSetName(), cleanPath, nil
+	}
+
+	relativePath := strings.TrimPrefix(cleanPath, bootloaderSetRequestPrefix)
+	separator := strings.IndexByte(relativePath, '/')
+	if separator <= 0 || separator == len(relativePath)-1 {
+		return "", "", fmt.Errorf("invalid qualified bootloader path: %s", requestPath)
+	}
+	setName = normaliseBootloaderSetName(relativePath[:separator])
+	filename, valid = cleanBootloaderPath(relativePath[separator+1:])
+	if setName == "" || !valid {
+		return "", "", fmt.Errorf("invalid qualified bootloader path: %s", requestPath)
+	}
+	return setName, filename, nil
+}
+
+func (s *Server) resolveBootloaderFile(setName, filename string) string {
+	setName = normaliseBootloaderSetName(setName)
+	filename, valid := cleanBootloaderPath(filename)
+	if setName == "" || !valid || s.config.BootDir == "" {
+		return ""
+	}
+	setDir := filepath.Join(s.config.BootDir, setName)
+	fullPath := filepath.Join(setDir, filepath.FromSlash(filename))
 	if _, err := os.Stat(fullPath); err == nil {
 		return fullPath
 	}
@@ -598,7 +710,7 @@ func (s *Server) Start() error {
 			BootfileUEFI:    s.config.ProxyDHCPBootfileUEFI,
 			BootfileARM64:   s.config.ProxyDHCPBootfileARM,
 			NoBootfileption: s.config.ProxyDHCPNoBootfileOption,
-			Bootfiles:       s.proxyDHCPBootfiles,
+			Bootfiles:       s.proxyDHCPBootfilesForClient,
 		})
 		if err != nil {
 			log.Printf("proxyDHCP: failed to construct server: %v", err)
@@ -784,31 +896,33 @@ func tftpRemote(rf io.ReaderFrom) string {
 	return "?"
 }
 
-func (s *Server) startTFTPServer() error {
-	log.Printf("Starting TFTP server on port %d...", s.config.TFTPPort)
+func (s *Server) serveTFTPFile(filename string, rf io.ReaderFrom) error {
+	cleanPath := filepath.Clean(filename)
+	if filepath.IsAbs(cleanPath) {
+		cleanPath = filepath.Base(cleanPath)
+	}
+	cleanPath = filepath.ToSlash(cleanPath)
 
-	server := tftp.NewServer(
-		func(filename string, rf io.ReaderFrom) error {
-			cleanPath := filepath.Clean(filename)
-			if filepath.IsAbs(cleanPath) {
-				cleanPath = filepath.Base(cleanPath)
-			}
+	remote := tftpRemote(rf)
+	start := time.Now()
+	defer func() {
+		log.Printf("TFTP DEBUG: handler exit %s file=%s elapsed=%s", remote, filename, time.Since(start))
+	}()
+	log.Printf("TFTP DEBUG: handler entry %s file=%s", remote, filename)
+	log.Printf("TFTP: Client requesting file: %s", filename)
+	metrics.TFTPRequests.WithLabelValues(cleanPath).Inc()
 
-			remote := tftpRemote(rf)
-			start := time.Now()
-			defer func() {
-				log.Printf("TFTP DEBUG: handler exit %s file=%s elapsed=%s", remote, filename, time.Since(start))
-			}()
-			log.Printf("TFTP DEBUG: handler entry %s file=%s", remote, filename)
-			log.Printf("TFTP: Client requesting file: %s", filename)
-			metrics.TFTPRequests.WithLabelValues(cleanPath).Inc()
+	setName, bootloaderFilename, err := s.resolveBootloaderRequest(cleanPath)
+	if err != nil {
+		return err
+	}
 
-			if cleanPath == "autoexec.ipxe" {
-				serverAddr := "${next-server}"
-				if s.config.ServerAddr != "" {
-					serverAddr = s.config.ServerAddr
-				}
-				script := fmt.Sprintf(`#!ipxe
+	if bootloaderFilename == "autoexec.ipxe" {
+		serverAddr := "${next-server}"
+		if s.config.ServerAddr != "" {
+			serverAddr = s.config.ServerAddr
+		}
+		script := fmt.Sprintf(`#!ipxe
 
 # Auto-detect server IP and chain to dynamic menu
 dhcp
@@ -822,71 +936,74 @@ echo Press any key to retry...
 prompt
 goto dhcp
 `, serverAddr, s.config.HTTPPort, serverAddr, s.config.HTTPPort)
-				data := []byte(script)
-				log.Printf("TFTP: Serving dynamic autoexec.ipxe (HTTP port: %d)", s.config.HTTPPort)
+		data := []byte(script)
+		log.Printf("TFTP: Serving dynamic autoexec.ipxe (HTTP port: %d)", s.config.HTTPPort)
 
-				if rfs, ok := rf.(interface{ SetSize(int64) error }); ok {
-					rfs.SetSize(int64(len(data)))
-				}
+		if rfs, ok := rf.(interface{ SetSize(int64) error }); ok {
+			rfs.SetSize(int64(len(data)))
+		}
 
-				n, err := rf.ReadFrom(bytes.NewReader(data))
-				if err != nil {
-					log.Printf("TFTP: Transfer error for %s: %v", filename, err)
-					return err
-				}
+		n, err := rf.ReadFrom(bytes.NewReader(data))
+		if err != nil {
+			log.Printf("TFTP: Transfer error for %s: %v", filename, err)
+			return err
+		}
 
-				log.Printf("TFTP: Successfully sent %s (%d bytes)", filename, n)
-				return nil
+		log.Printf("TFTP: Successfully sent %s (%d bytes)", filename, n)
+		return nil
+	}
+
+	if customPath := s.resolveBootloaderFile(setName, bootloaderFilename); customPath != "" {
+		file, err := os.Open(customPath)
+		if err == nil {
+			defer file.Close()
+			log.Printf("TFTP: Serving from set '%s': %s", setName, bootloaderFilename)
+
+			fileInfo, err := file.Stat()
+			if err != nil {
+				return err
 			}
 
-			if customPath := s.resolveBootloaderFile(cleanPath); customPath != "" {
-				file, err := os.Open(customPath)
-				if err == nil {
-					defer file.Close()
-					log.Printf("TFTP: Serving from set '%s': %s", s.GetActiveBootloaderSet(), cleanPath)
-
-					fileInfo, err := file.Stat()
-					if err != nil {
-						return err
-					}
-
-					if rfs, ok := rf.(interface{ SetSize(int64) error }); ok {
-						rfs.SetSize(fileInfo.Size())
-					}
-
-					n, err := rf.ReadFrom(file)
-					if err != nil {
-						log.Printf("TFTP: Transfer error for %s: %v", filename, err)
-						return err
-					}
-
-					log.Printf("TFTP: Successfully sent %s (%d bytes)", filename, n)
-					return nil
-				}
+			if rfs, ok := rf.(interface{ SetSize(int64) error }); ok {
+				rfs.SetSize(fileInfo.Size())
 			}
 
-			data, resolvedSet, err := bootloaders.Resolve(s.GetActiveBootloaderSet(), cleanPath)
-			if err == nil {
-				log.Printf("TFTP: Serving embedded bootloader from set '%s': %s", resolvedSet, cleanPath)
-
-				if rfs, ok := rf.(interface{ SetSize(int64) error }); ok {
-					rfs.SetSize(int64(len(data)))
-				}
-
-				n, err := rf.ReadFrom(bytes.NewReader(data))
-				if err != nil {
-					log.Printf("TFTP: Transfer error for %s: %v", filename, err)
-					return err
-				}
-
-				log.Printf("TFTP: Successfully sent %s (%d bytes)", filename, n)
-				return nil
+			n, err := rf.ReadFrom(file)
+			if err != nil {
+				log.Printf("TFTP: Transfer error for %s: %v", filename, err)
+				return err
 			}
 
-			return fmt.Errorf("file not found: %s", filename)
-		},
-		nil,
-	)
+			log.Printf("TFTP: Successfully sent %s (%d bytes)", filename, n)
+			return nil
+		}
+	}
+
+	data, resolvedSet, err := bootloaders.Resolve(setName, bootloaderFilename)
+	if err == nil {
+		log.Printf("TFTP: Serving embedded bootloader from set '%s': %s", resolvedSet, bootloaderFilename)
+
+		if rfs, ok := rf.(interface{ SetSize(int64) error }); ok {
+			rfs.SetSize(int64(len(data)))
+		}
+
+		n, err := rf.ReadFrom(bytes.NewReader(data))
+		if err != nil {
+			log.Printf("TFTP: Transfer error for %s: %v", filename, err)
+			return err
+		}
+
+		log.Printf("TFTP: Successfully sent %s (%d bytes)", filename, n)
+		return nil
+	}
+
+	return fmt.Errorf("file not found: %s", filename)
+}
+
+func (s *Server) startTFTPServer() error {
+	log.Printf("Starting TFTP server on port %d...", s.config.TFTPPort)
+
+	server := tftp.NewServer(s.serveTFTPFile, nil)
 
 	server.SetTimeout(5 * time.Second)
 	blockSize := s.config.TFTPBlockSize
@@ -927,9 +1044,15 @@ func (s *Server) startHTTPServer() error {
 			return
 		}
 
-		if customPath := s.resolveBootloaderFile(cleanPath); customPath != "" {
-			log.Printf("HTTP: Serving from set '%s': %s", s.GetActiveBootloaderSet(), cleanPath)
-			ext := filepath.Ext(cleanPath)
+		setName, bootloaderFilename, err := s.resolveBootloaderRequest(cleanPath)
+		if err != nil {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+
+		if customPath := s.resolveBootloaderFile(setName, bootloaderFilename); customPath != "" {
+			log.Printf("HTTP: Serving from set '%s': %s", setName, bootloaderFilename)
+			ext := filepath.Ext(bootloaderFilename)
 			if ext == ".efi" || ext == ".img" || ext == ".iso" || ext == ".kpxe" || ext == ".usb" {
 				w.Header().Set("Content-Type", "application/octet-stream")
 			}
@@ -937,9 +1060,9 @@ func (s *Server) startHTTPServer() error {
 			return
 		}
 
-		data, resolvedSet, err := bootloaders.Resolve(s.GetActiveBootloaderSet(), cleanPath)
+		data, resolvedSet, err := bootloaders.Resolve(setName, bootloaderFilename)
 		if err == nil {
-			log.Printf("HTTP: Serving embedded bootloader from set '%s': %s", resolvedSet, cleanPath)
+			log.Printf("HTTP: Serving embedded bootloader from set '%s': %s", resolvedSet, bootloaderFilename)
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.Write(data)
 			return

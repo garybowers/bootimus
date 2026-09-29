@@ -8,6 +8,24 @@ import (
 	"gorm.io/gorm"
 )
 
+type clientBootloaderSelection struct {
+	ClientBootloaderSet string
+	GroupBootloaderSet  string
+}
+
+func getClientBootloaderSets(db *gorm.DB, mac string) (clientSet, groupSet string, err error) {
+	var selection clientBootloaderSelection
+	err = db.Table("clients").
+		Select("clients.bootloader_set AS client_bootloader_set, client_groups.bootloader_set AS group_bootloader_set").
+		Joins("LEFT JOIN client_groups ON client_groups.id = clients.client_group_id AND client_groups.deleted_at IS NULL").
+		Where("clients.mac_address = ? AND clients.deleted_at IS NULL", mac).
+		Take(&selection).Error
+	if err != nil {
+		return "", "", err
+	}
+	return selection.ClientBootloaderSet, selection.GroupBootloaderSet, nil
+}
+
 func hardDeleteClient(db *gorm.DB, client *models.Client) error {
 	if err := db.Exec("DELETE FROM client_images WHERE client_id = ?", client.ID).Error; err != nil {
 		return err

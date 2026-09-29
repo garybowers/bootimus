@@ -54,6 +54,44 @@ func TestDeleteClientMissingMACIsNoop(t *testing.T) {
 	}
 }
 
+func TestGetClientBootloaderSetsSelectsOnlyRequiredColumns(t *testing.T) {
+	store := newTestStore(t)
+	group := &models.ClientGroup{Name: "rack-a", BootloaderSet: "secureboot-official"}
+	if err := store.CreateClientGroup(group); err != nil {
+		t.Fatalf("CreateClientGroup: %v", err)
+	}
+
+	clients := []*models.Client{
+		{MACAddress: "02:00:00:00:10:01", BootloaderSet: "se350", ClientGroupID: &group.ID},
+		{MACAddress: "02:00:00:00:10:02", ClientGroupID: &group.ID},
+		{MACAddress: "02:00:00:00:10:03"},
+	}
+	for _, client := range clients {
+		if err := store.CreateClient(client); err != nil {
+			t.Fatalf("CreateClient(%s): %v", client.MACAddress, err)
+		}
+	}
+
+	tests := []struct {
+		mac        string
+		wantClient string
+		wantGroup  string
+	}{
+		{mac: clients[0].MACAddress, wantClient: "se350", wantGroup: "secureboot-official"},
+		{mac: clients[1].MACAddress, wantGroup: "secureboot-official"},
+		{mac: clients[2].MACAddress},
+	}
+	for _, tt := range tests {
+		clientSet, groupSet, err := store.GetClientBootloaderSets(tt.mac)
+		if err != nil {
+			t.Fatalf("GetClientBootloaderSets(%s): %v", tt.mac, err)
+		}
+		if clientSet != tt.wantClient || groupSet != tt.wantGroup {
+			t.Fatalf("GetClientBootloaderSets(%s) = (%q, %q), want (%q, %q)", tt.mac, clientSet, groupSet, tt.wantClient, tt.wantGroup)
+		}
+	}
+}
+
 func TestDeleteClientDetachesBootLogsAndInventory(t *testing.T) {
 	store := newTestStore(t)
 	mac := "aa:bb:cc:dd:ee:01"

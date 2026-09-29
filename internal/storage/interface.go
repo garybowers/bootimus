@@ -18,6 +18,7 @@ type Storage interface {
 
 	ListClients() ([]*models.Client, error)
 	GetClient(mac string) (*models.Client, error)
+	GetClientBootloaderSets(mac string) (clientSet, groupSet string, err error)
 	CreateClient(client *models.Client) error
 	UpdateClient(mac string, client *models.Client) error
 	DeleteClient(mac string) error

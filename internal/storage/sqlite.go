@@ -76,6 +76,10 @@ func (s *SQLiteStore) GetClient(mac string) (*models.Client, error) {
 	return &client, nil
 }
 
+func (s *SQLiteStore) GetClientBootloaderSets(mac string) (clientSet, groupSet string, err error) {
+	return getClientBootloaderSets(s.db, mac)
+}
+
 func (s *SQLiteStore) CreateClient(client *models.Client) error {
 	return s.db.Create(client).Error
 }
