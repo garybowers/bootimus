@@ -24,6 +24,7 @@ type Manager struct {
 type Claims struct {
 	Username string `json:"username"`
 	IsAdmin  bool   `json:"is_admin"`
+	IsLocal  bool   `json:"is_local"`
 	jwt.RegisteredClaims
 }
 
@@ -37,6 +38,7 @@ type LoginResponse struct {
 	Token    string `json:"token"`
 	Username string `json:"username"`
 	IsAdmin  bool   `json:"is_admin"`
+	IsLocal  bool   `json:"is_local"`
 }
 
 func NewManager(userStore database.UserStore, ldapConfig ...*LDAPConfig) (*Manager, error) {
@@ -81,10 +83,11 @@ func NewManager(userStore database.UserStore, ldapConfig ...*LDAPConfig) (*Manag
 	return m, nil
 }
 
-func (m *Manager) GenerateToken(username string, isAdmin bool) (string, error) {
+func (m *Manager) GenerateToken(username string, isAdmin bool, isLocal bool) (string, error) {
 	claims := &Claims{
 		Username: username,
 		IsAdmin:  isAdmin,
+		IsLocal: isLocal,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -171,6 +174,7 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	var authenticated bool
 	var isAdmin bool
+	var isLocal bool
 
 	method := req.AuthMethod
 	if method == "" {
@@ -192,11 +196,13 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		if ldapOk {
 			authenticated = true
 			isAdmin = ldapAdmin
+			isLocal = false
 		}
 	default:
 		if m.ValidateCredentials(req.Username, req.Password) {
 			authenticated = true
 			isAdmin = m.GetUserAdmin(req.Username)
+			isLocal = true
 		}
 	}
 
@@ -207,7 +213,7 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := m.GenerateToken(req.Username, isAdmin)
+	token, err := m.GenerateToken(req.Username, isAdmin, isLocal)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -224,6 +230,7 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 			Token:    token,
 			Username: req.Username,
 			IsAdmin:  isAdmin,
+			IsLocal: isLocal,
 		},
 	})
 }
@@ -246,15 +253,18 @@ func (m *Manager) authenticate(w http.ResponseWriter, r *http.Request) (*Claims,
 		return nil, false
 	}
 
-	user, err := m.userStore.GetUser(claims.Username)
-	if err != nil || !user.Enabled {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "User account disabled"})
-		return nil, false
+	if claims.IsLocal {
+		user, err := m.userStore.GetUser(claims.Username)
+		if err != nil || !user.Enabled {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "User account disabled"})
+			return nil, false
+		}
+
+		claims.IsAdmin = user.IsAdmin
 	}
 
-	claims.IsAdmin = user.IsAdmin
 	return claims, true
 }
 
