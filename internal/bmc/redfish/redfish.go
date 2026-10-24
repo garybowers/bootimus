@@ -10,17 +10,25 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"bootimus/internal/bmc"
 )
 
-type PowerAction string
+const Name = "redfish"
 
-const (
-	PowerOn               PowerAction = "On"
-	PowerOff              PowerAction = "ForceOff"
-	PowerRestart          PowerAction = "ForceRestart"
-	PowerGracefulShutdown PowerAction = "GracefulShutdown"
-	PowerGracefulRestart  PowerAction = "GracefulRestart"
-)
+type Protocol struct{}
+
+func init() {
+	bmc.RegisterProtocol(Protocol{})
+}
+
+func (Protocol) Name() string {
+	return Name
+}
+
+func (Protocol) New(t bmc.Target) (bmc.Controller, error) {
+	return New(t.Host, t.Port, t.Username, t.Password, t.Insecure), nil
+}
 
 type Client struct {
 	Host     string
@@ -56,7 +64,7 @@ func (c *Client) PowerState(ctx context.Context) (string, error) {
 	return system.PowerState, nil
 }
 
-func (c *Client) SetPower(ctx context.Context, action PowerAction) error {
+func (c *Client) SetPower(ctx context.Context, action bmc.Action) error {
 	system, err := c.firstSystem(ctx)
 	if err != nil {
 		return err

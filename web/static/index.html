@@ -996,13 +996,23 @@
                 </div>
 
                 <details style="margin-bottom: 12px;">
-                    <summary style="cursor: pointer; font-weight: 500; padding: 6px 0;">BMC / Redfish (Power Control)</summary>
+                    <summary style="cursor: pointer; font-weight: 500; padding: 6px 0;">BMC (Power Control)</summary>
                     <p style="color: var(--text-muted); font-size: 12px; margin: 4px 0 10px 0;">
-                        Blank username/password/port inherit from the client group. Host is always per-client (each BMC has its own IP).
+                        Blank protocol/username/password/port inherit from the client group. Host is always per-client (each BMC has its own IP).
                     </p>
-                    <div class="form-group">
-                        <label>BMC Host / IP</label>
-                        <input type="text" name="ipmi_host" placeholder="e.g. 10.0.0.100">
+                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px;">
+                        <div class="form-group">
+                            <label>Protocol</label>
+                            <select name="bmc_protocol" onchange="updateBMCPortPlaceholder(this)">
+                                <option value="">(inherit from group)</option>
+                                <option value="redfish">Redfish</option>
+                                <option value="amt">Intel AMT</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>BMC Host / IP</label>
+                            <input type="text" name="ipmi_host" placeholder="e.g. 10.0.0.100">
+                        </div>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                         <div class="form-group">
@@ -1946,11 +1956,18 @@
                 </div>
 
                 <details style="margin-bottom: 12px;">
-                    <summary style="cursor: pointer; font-weight: 500; padding: 6px 0;">BMC / Redfish Defaults</summary>
+                    <summary style="cursor: pointer; font-weight: 500; padding: 6px 0;">BMC Defaults</summary>
                     <p style="color: var(--text-muted); font-size: 12px; margin: 4px 0 10px 0;">
-                        Shared credentials for group members. Individual clients can override. Host is per-client only.
+                        Shared protocol and credentials for group members. Individual clients can override. Host is per-client only.
                     </p>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div class="form-group">
+                            <label>Protocol</label>
+                            <select name="bmc_protocol" onchange="updateBMCPortPlaceholder(this)">
+                                <option value="redfish">Redfish</option>
+                                <option value="amt">Intel AMT</option>
+                            </select>
+                        </div>
                         <div class="form-group">
                             <label>Port</label>
                             <input type="number" name="ipmi_port" min="1" max="65535" placeholder="443">
@@ -2028,7 +2045,7 @@
                                 <label>Action</label>
                                 <select id="cg-sched-action" onchange="updateScheduleActionHint()">
                                     <option value="wake">Wake All (WOL)</option>
-                                    <option value="power">Power (Redfish)</option>
+                                    <option value="power">Power (BMC)</option>
                                     <option value="next-boot">Set Next Boot Image</option>
                                     <option value="next-boot-clear">Clear Next Boot</option>
                                 </select>

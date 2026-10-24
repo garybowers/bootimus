@@ -97,7 +97,7 @@ Read-only users:
 
 - cannot change anything — the server refuses every write with `403 Your account has read-only access`, and the admin panel hides the buttons
 - cannot see users, webhook settings, backups, the live server log, auto-install files and scripts, or cluster machine configs
-- never receive BMC (IPMI/Redfish) passwords or client config patches — these are removed from every API response sent to them
+- never receive BMC (Redfish/Intel AMT) passwords or client config patches — these are removed from every API response sent to them
 
 A user is an administrator if:
 

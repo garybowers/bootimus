@@ -23,10 +23,12 @@ import (
 	"unicode/utf8"
 
 	"bootimus/bootloaders"
-	"bootimus/raspberrypi"
 	"bootimus/internal/admin"
 	"bootimus/internal/auth"
 	"bootimus/internal/autoinstall"
+	"bootimus/internal/bmc"
+	_ "bootimus/internal/bmc/amt"
+	_ "bootimus/internal/bmc/redfish"
 	"bootimus/internal/imagescan"
 	"bootimus/internal/metrics"
 	"bootimus/internal/models"
@@ -35,13 +37,13 @@ import (
 	"bootimus/internal/nfs"
 	"bootimus/internal/profiles"
 	"bootimus/internal/proxydhcp"
-	"bootimus/internal/redfish"
 	"bootimus/internal/scheduler"
 	"bootimus/internal/smb"
 	"bootimus/internal/storage"
 	"bootimus/internal/tools"
 	"bootimus/internal/webhook"
 	"bootimus/internal/wol"
+	"bootimus/raspberrypi"
 	"bootimus/web"
 
 	"github.com/pin/tftp/v3"
@@ -1670,19 +1672,23 @@ func (s *Server) executeScheduledTask(ctx context.Context, t *models.ScheduledTa
 			if !c.Enabled {
 				continue
 			}
-			host, port, user, pass, insecure := resolveRedfishForClient(c, group)
-			if host == "" || user == "" || pass == "" {
+			target, ok := bmc.Resolve(c, group)
+			if !ok {
+				continue
+			}
+			ctrl, err := bmc.New(target)
+			if err != nil {
+				log.Printf("scheduler power %s on %s skipped: %v", action, c.MACAddress, err)
 				continue
 			}
 			dispatched++
-			go func(mac, host string, port int, user, pass string, insecure bool) {
+			go func(mac string, ctrl bmc.Controller) {
 				rctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				defer cancel()
-				client := redfish.New(host, port, user, pass, insecure)
-				if err := client.SetPower(rctx, redfish.PowerAction(action)); err != nil {
+				if err := ctrl.SetPower(rctx, bmc.Action(action)); err != nil {
 					log.Printf("scheduler power %s on %s failed: %v", action, mac, err)
 				}
-			}(c.MACAddress, host, port, user, pass, insecure)
+			}(c.MACAddress, ctrl)
 			if stagger > 0 {
 				time.Sleep(stagger)
 			}
@@ -1692,29 +1698,6 @@ func (s *Server) executeScheduledTask(ctx context.Context, t *models.ScheduledTa
 	default:
 		return "failed", "unknown action_type: " + t.ActionType
 	}
-}
-
-func resolveRedfishForClient(c *models.Client, g *models.ClientGroup) (host string, port int, user string, pass string, insecure bool) {
-	host = c.IPMIHost
-	port = c.IPMIPort
-	user = c.IPMIUsername
-	pass = c.IPMIPassword
-	insecure = c.IPMIInsecure
-	if g != nil {
-		if port == 0 {
-			port = g.IPMIPort
-		}
-		if user == "" {
-			user = g.IPMIUsername
-		}
-		if pass == "" {
-			pass = g.IPMIPassword
-		}
-		if !insecure {
-			insecure = g.IPMIInsecure
-		}
-	}
-	return
 }
 
 func (s *Server) refreshMetricsGauges() {

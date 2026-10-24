@@ -95,6 +95,7 @@ type Client struct {
 	ClientGroupID    *uint          `gorm:"index" json:"client_group_id,omitempty"`
 	ClientGroup      *ClientGroup   `gorm:"foreignKey:ClientGroupID" json:"client_group,omitempty"`
 
+	BMCProtocol  string `json:"bmc_protocol,omitempty"`
 	IPMIHost     string `json:"ipmi_host,omitempty"`
 	IPMIPort     int    `json:"ipmi_port,omitempty"`
 	IPMIUsername string `json:"ipmi_username,omitempty"`
@@ -209,6 +210,7 @@ type ClientGroup struct {
 	StaggerDelayMillis int            `gorm:"default:0" json:"stagger_delay_millis"`
 	Clients            []Client       `gorm:"foreignKey:ClientGroupID" json:"clients,omitempty"`
 
+	BMCProtocol  string `json:"bmc_protocol,omitempty"`
 	IPMIPort     int    `json:"ipmi_port,omitempty"`
 	IPMIUsername string `json:"ipmi_username,omitempty"`
 	IPMIPassword string `json:"ipmi_password,omitempty"`

@@ -10,6 +10,10 @@ Complete guide for managing network boot clients with MAC-based access control.
 - [Public vs Private Images](#public-vs-private-images)
 - [Client Statistics](#client-statistics)
 - [Bulk Operations](#bulk-operations)
+- [Next Boot Action](#next-boot-action)
+- [Wake-on-LAN](#wake-on-lan)
+- [BMC Power Control](#bmc-power-control)
+- [Hardware Inventory](#hardware-inventory)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
@@ -388,6 +392,50 @@ curl -H "Authorization: Bearer $TOKEN" -X POST "http://localhost:8081/api/client
   -H "Content-Type: application/json" \
   -d '{"broadcast_addr":"192.168.1.255"}'
 ```
+
+## BMC Power Control
+
+Clients with a baseboard management controller can be powered on, off and restarted from the client edit dialog, from the client group bulk actions and from scheduled tasks. Two protocols are supported:
+
+| Protocol | Typical hardware | Default port | Notes |
+|---|---|---|---|
+| **Redfish** (default) | Servers with iDRAC, iLO, XClarity, OpenBMC or any other DMTF Redfish BMC | 443 | HTTPS with basic authentication |
+| **Intel AMT** | Business desktops and mini PCs with Intel vPro, such as the Dell OptiPlex Micro range | 16992 (16993 with TLS) | HTTP digest authentication; AMT must be provisioned in the firmware setup (MEBx) first |
+
+The BMC host is always set per client, because every BMC has its own address. The protocol, port, username, password and *Skip TLS verify* flag can be set per client or inherited from the client group, so a fleet of identical machines only needs the credentials entered once.
+
+For Intel AMT the port chooses the transport: leave it blank or set 16992 for plain HTTP, or set 16993 for TLS. Tick *Skip TLS verify* when the machine uses its self-signed certificate.
+
+### Power actions
+
+The same action names work for both protocols:
+
+| Action | Redfish | Intel AMT |
+|---|---|---|
+| `On` | On | Power On |
+| `ForceOff` | ForceOff | Power Off (Soft) |
+| `ForceRestart` | ForceRestart | Master Bus Reset |
+| `GracefulShutdown` | GracefulShutdown | Power Off (Soft, Graceful) |
+| `GracefulRestart` | GracefulRestart | Master Bus Reset (Graceful) |
+
+On Intel AMT the graceful actions are only offered while the machine is on and the [Intel Local Manageability Service](https://github.com/intel/lms) is running in the operating system. Bootimus checks the states the machine currently advertises and reports a clear error rather than falling back to a hard power-off.
+
+### Via API
+
+```bash
+# Set the protocol and credentials on a client
+curl -H "Authorization: Bearer $TOKEN" -X PUT "http://localhost:8081/api/clients/update?mac=00:11:22:33:44:55" \
+  -H "Content-Type: application/json" \
+  -d '{"bmc_protocol":"amt","ipmi_host":"192.168.1.50","ipmi_username":"admin","ipmi_password":"secret"}'
+
+# Query the power state
+curl -H "Authorization: Bearer $TOKEN" "http://localhost:8081/api/clients/power/status?mac=00:11:22:33:44:55"
+
+# Send a power action
+curl -H "Authorization: Bearer $TOKEN" -X POST "http://localhost:8081/api/clients/power?mac=00:11:22:33:44:55&action=On"
+```
+
+`bmc_protocol` accepts `redfish` or `amt`. Leave it empty on a client to inherit the group's protocol; an empty protocol everywhere means Redfish.
 
 ## Hardware Inventory
 

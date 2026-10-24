@@ -25,11 +25,13 @@ import (
 
 	"bootimus/bootloaders"
 	"bootimus/internal/autoinstall"
+	"bootimus/internal/bmc"
+	_ "bootimus/internal/bmc/amt"
+	_ "bootimus/internal/bmc/redfish"
 	"bootimus/internal/extractor"
 	"bootimus/internal/imagescan"
 	"bootimus/internal/models"
 	"bootimus/internal/profiles"
-	"bootimus/internal/redfish"
 	"bootimus/internal/smb"
 	"bootimus/internal/storage"
 	"bootimus/internal/sysstats"
@@ -545,6 +547,9 @@ func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 	}
 	if aif, ok := updates["auto_install_file"].(string); ok {
 		client.AutoInstallFile = aif
+	}
+	if protocol, ok := updates["bmc_protocol"].(string); ok {
+		client.BMCProtocol = protocol
 	}
 	if host, ok := updates["ipmi_host"].(string); ok {
 		client.IPMIHost = host
@@ -4166,34 +4171,14 @@ func (h *Handler) DeleteImageGroup(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Group deleted"})
 }
 
-func (h *Handler) resolveRedfish(c *models.Client) (string, int, string, string, bool, bool) {
-	host := c.IPMIHost
-	port := c.IPMIPort
-	user := c.IPMIUsername
-	pass := c.IPMIPassword
-	insecure := c.IPMIInsecure
-
+func (h *Handler) resolveBMC(c *models.Client) (bmc.Target, bool) {
+	var group *models.ClientGroup
 	if c.ClientGroupID != nil {
-		if g, err := h.storage.GetClientGroup(*c.ClientGroupID); err == nil && g != nil {
-			if port == 0 {
-				port = g.IPMIPort
-			}
-			if user == "" {
-				user = g.IPMIUsername
-			}
-			if pass == "" {
-				pass = g.IPMIPassword
-			}
-			if !insecure {
-				insecure = g.IPMIInsecure
-			}
+		if g, err := h.storage.GetClientGroup(*c.ClientGroupID); err == nil {
+			group = g
 		}
 	}
-
-	if host == "" || user == "" || pass == "" {
-		return "", 0, "", "", false, false
-	}
-	return host, port, user, pass, insecure, true
+	return bmc.Resolve(c, group)
 }
 
 func (h *Handler) PowerClient(w http.ResponseWriter, r *http.Request) {
@@ -4212,18 +4197,22 @@ func (h *Handler) PowerClient(w http.ResponseWriter, r *http.Request) {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Client not found"})
 		return
 	}
-	host, port, user, pass, insecure, ok := h.resolveRedfish(c)
+	target, ok := h.resolveBMC(c)
 	if !ok {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Client has no BMC host + credentials (set on client or group)"})
 		return
 	}
-	client := redfish.New(host, port, user, pass, insecure)
-	if err := client.SetPower(r.Context(), redfish.PowerAction(action)); err != nil {
-		log.Printf("Redfish %s on %s (%s) failed: %v", action, mac, host, err)
+	ctrl, err := bmc.New(target)
+	if err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})
+		return
+	}
+	if err := ctrl.SetPower(r.Context(), bmc.Action(action)); err != nil {
+		log.Printf("BMC %s %s on %s (%s) failed: %v", target.Protocol, action, mac, target.Host, err)
 		h.sendJSON(w, http.StatusOK, Response{Success: false, Error: err.Error()})
 		return
 	}
-	log.Printf("Redfish %s on %s (%s) succeeded", action, mac, host)
+	log.Printf("BMC %s %s on %s (%s) succeeded", target.Protocol, action, mac, target.Host)
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: fmt.Sprintf("Power %s sent to %s", action, mac)})
 }
 
@@ -4238,13 +4227,17 @@ func (h *Handler) PowerStatusClient(w http.ResponseWriter, r *http.Request) {
 		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Client not found"})
 		return
 	}
-	host, port, user, pass, insecure, ok := h.resolveRedfish(c)
+	target, ok := h.resolveBMC(c)
 	if !ok {
 		h.sendJSON(w, http.StatusOK, Response{Success: true, Data: map[string]string{"state": "unconfigured"}})
 		return
 	}
-	client := redfish.New(host, port, user, pass, insecure)
-	state, err := client.PowerState(r.Context())
+	ctrl, err := bmc.New(target)
+	if err != nil {
+		h.sendJSON(w, http.StatusOK, Response{Success: false, Error: err.Error()})
+		return
+	}
+	state, err := ctrl.PowerState(r.Context())
 	if err != nil {
 		h.sendJSON(w, http.StatusOK, Response{Success: false, Error: err.Error()})
 		return
@@ -4283,21 +4276,25 @@ func (h *Handler) PowerClientGroup(w http.ResponseWriter, r *http.Request) {
 		if !c.Enabled {
 			continue
 		}
-		host, port, user, pass, insecure, ok := h.resolveRedfish(c)
+		target, ok := bmc.Resolve(c, group)
 		if !ok {
 			continue
 		}
+		ctrl, err := bmc.New(target)
+		if err != nil {
+			log.Printf("BMC bulk %s on %s (%s) skipped: %v", action, c.MACAddress, target.Host, err)
+			continue
+		}
 		dispatched++
-		go func(mac, host string, port int, user, pass string, insecure bool) {
+		go func(mac string, target bmc.Target, ctrl bmc.Controller) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			client := redfish.New(host, port, user, pass, insecure)
-			if err := client.SetPower(ctx, redfish.PowerAction(action)); err != nil {
-				log.Printf("Redfish bulk %s on %s (%s) failed: %v", action, mac, host, err)
+			if err := ctrl.SetPower(ctx, bmc.Action(action)); err != nil {
+				log.Printf("BMC %s bulk %s on %s (%s) failed: %v", target.Protocol, action, mac, target.Host, err)
 			} else {
-				log.Printf("Redfish bulk %s on %s (%s) ok", action, mac, host)
+				log.Printf("BMC %s bulk %s on %s (%s) ok", target.Protocol, action, mac, target.Host)
 			}
-		}(c.MACAddress, host, port, user, pass, insecure)
+		}(c.MACAddress, target, ctrl)
 		if stagger > 0 {
 			time.Sleep(stagger)
 		}
@@ -4705,6 +4702,7 @@ func (h *Handler) ImportClientsCSV(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if existsErr == nil {
+			client.BMCProtocol = existing.BMCProtocol
 			client.IPMIHost = existing.IPMIHost
 			client.IPMIPort = existing.IPMIPort
 			client.IPMIUsername = existing.IPMIUsername

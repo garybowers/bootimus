@@ -611,6 +611,12 @@ async function powerClient(action) {
     }
 }
 
+function updateBMCPortPlaceholder(select) {
+    const port = select.form.querySelector('[name="ipmi_port"]');
+    if (!port) return;
+    port.placeholder = select.value === 'amt' ? '16992 (16993 with TLS)' : '443';
+}
+
 async function powerStatusClient() {
     const form = document.getElementById('edit-client-form');
     const mac = form.querySelector('[name="mac_address"]').value;
@@ -648,7 +654,7 @@ function updateScheduleActionHint() {
     switch (action) {
         case 'power':
             wrap.style.display = '';
-            label.textContent = 'Redfish Action';
+            label.textContent = 'Power Action';
             input.placeholder = 'On';
             hint.textContent = 'On / ForceOff / ForceRestart / GracefulShutdown / GracefulRestart';
             break;
@@ -1405,6 +1411,8 @@ async function editClient(mac) {
             form.querySelector('[name="proxy_dhcp_no_vendor_option"]').checked = !!currentClient.proxy_dhcp_no_vendor_option;
 
             // BMC / Redfish
+            form.querySelector('[name="bmc_protocol"]').value = currentClient.bmc_protocol || '';
+            updateBMCPortPlaceholder(form.querySelector('[name="bmc_protocol"]'));
             form.querySelector('[name="ipmi_host"]').value = currentClient.ipmi_host || '';
             form.querySelector('[name="ipmi_port"]').value = currentClient.ipmi_port || '';
             form.querySelector('[name="ipmi_username"]').value = currentClient.ipmi_username || '';
@@ -2773,6 +2781,7 @@ function setupForms() {
             bootloader_set: formData.get('bootloader_set') || '',
             proxy_dhcp_no_vendor_option: formData.get('proxy_dhcp_no_vendor_option') === 'on',
             client_group_id: groupIdRaw ? parseInt(groupIdRaw, 10) : null,
+            bmc_protocol: formData.get('bmc_protocol') || '',
             ipmi_host: formData.get('ipmi_host') || '',
             ipmi_port: ipmiPortRaw ? parseInt(ipmiPortRaw, 10) : 0,
             ipmi_username: formData.get('ipmi_username') || '',
@@ -2848,8 +2857,8 @@ const API_REFERENCE = [
         { method: 'POST',   path: '/api/clients/promote?mac={mac}', desc: 'Promote discovered client to static.' },
         { method: 'GET',    path: '/api/clients/inventory?mac={mac}', desc: 'Latest hardware inventory.' },
         { method: 'GET',    path: '/api/clients/inventory/history?mac={mac}', desc: 'Historical inventory submissions.' },
-        { method: 'POST',   path: '/api/clients/power?mac={mac}',  desc: 'IPMI/Redfish power control. Body: <code>{action}</code> (on/off/reset).' },
-        { method: 'GET',    path: '/api/clients/power/status?mac={mac}', desc: 'IPMI/Redfish power status.' },
+        { method: 'POST',   path: '/api/clients/power?mac={mac}',  desc: 'BMC (Redfish or Intel AMT) power control. Query: <code>action</code> (On/ForceOff/ForceRestart/GracefulShutdown/GracefulRestart).' },
+        { method: 'GET',    path: '/api/clients/power/status?mac={mac}', desc: 'BMC (Redfish or Intel AMT) power status.' },
         { method: 'POST',   path: '/api/clients/import',           desc: 'CSV import (multipart).' },
     ]},
     { category: 'Client Groups', endpoints: [
@@ -6314,6 +6323,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 stagger_delay_millis: parseInt(fd.get('stagger_delay_millis') || '0', 10),
                 bootloader_set: fd.get('bootloader_set') || '',
                 allowed_images: allowed,
+                bmc_protocol: fd.get('bmc_protocol') || '',
                 ipmi_port: parseInt(fd.get('ipmi_port') || '0', 10),
                 ipmi_username: fd.get('ipmi_username') || '',
                 ipmi_password: fd.get('ipmi_password') || '',
@@ -6385,6 +6395,8 @@ async function showEditClientGroupModal(id) {
         form.elements.enabled.checked = !!g.enabled;
         form.elements.wol_broadcast_addr.value = g.wol_broadcast_addr || '';
         form.elements.stagger_delay_millis.value = g.stagger_delay_millis || 0;
+        form.elements.bmc_protocol.value = g.bmc_protocol || 'redfish';
+        updateBMCPortPlaceholder(form.elements.bmc_protocol);
         form.elements.ipmi_port.value = g.ipmi_port || '';
         form.elements.ipmi_username.value = g.ipmi_username || '';
         form.elements.ipmi_password.value = g.ipmi_password || '';
