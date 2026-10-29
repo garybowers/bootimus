@@ -1,0 +1,36 @@
+FROM debian:bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git make gcc libc6-dev liblzma-dev ca-certificates curl \
+    gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu libc6-dev-arm64-cross \
+    syslinux syslinux-common isolinux
+RUN curl -fsSLo /tmp/mtools.tar.gz https://ftp.gnu.org/gnu/mtools/mtools-4.0.49.tar.gz && \
+    echo '10cd1111da87bf2400a380c1639a6cba8bfb937a24f9c51f5f88d393ae5f6f76  /tmp/mtools.tar.gz' | sha256sum -c - && \
+    tar -xzf /tmp/mtools.tar.gz -C /tmp && cd /tmp/mtools-4.0.49 && \
+    ./configure --without-x && make -j2 && make install
+RUN git clone https://github.com/ipxe/ipxe.git /build/ipxe && \
+    cd /build/ipxe && git checkout 39a440d082a65a5b8e11e734cd6caf0991b70771
+COPY ipxe-http-range.patch /build/ipxe-http-range.patch
+RUN cd /build/ipxe && git apply /build/ipxe-http-range.patch
+COPY embed.ipxe /build/ipxe/src/embed.ipxe
+COPY certificates /build/certificates
+COPY trust.list /build/trust.list
+WORKDIR /build/ipxe/src
+ARG SECURE_BOOT=0
+RUN printf '%s\n' '#define DOWNLOAD_PROTO_HTTPS' '#define PARAM_CMD' '#define FORM_CMD' > config/local/general.h
+RUN case "$SECURE_BOOT" in 0) suffix="" ;; 1) suffix="-sb" ;; *) exit 2 ;; esac && \
+    trust="$(cat /build/trust.list)" && \
+    make -j2 bin/undionly.kpxe "bin-x86_64-efi${suffix}/ipxe-legacy.efi" "bin-x86_64-efi${suffix}/ipxe-legacy.usb" \
+        EMBED=embed.ipxe TRUST="$trust" CERT="$trust" TRUST_EXT=0 && \
+    make -j2 CROSS=aarch64-linux-gnu- "bin-arm64-efi${suffix}/ipxe-legacy.efi" \
+        EMBED=embed.ipxe TRUST="$trust" CERT="$trust" TRUST_EXT=0 && \
+    mkdir /output && \
+    cp bin/undionly.kpxe /output/undionly.kpxe && \
+    cp "bin-x86_64-efi${suffix}/ipxe-legacy.efi" /output/ipxe.efi && \
+    cp "bin-x86_64-efi${suffix}/ipxe-legacy.efi" /output/bootimus.efi && \
+    cp "bin-x86_64-efi${suffix}/ipxe-legacy.usb" /output/bootimus.usb && \
+    cp "bin-arm64-efi${suffix}/ipxe-legacy.efi" /output/ipxe-arm64.efi && \
+    cp "bin-arm64-efi${suffix}/ipxe-legacy.efi" /output/bootimus-arm64.efi && \
+    if [ "$SECURE_BOOT" = 1 ]; then name="modern-secureboot"; restricted=true; else name="modern"; restricted=false; fi && \
+    printf '{"name":"%s","description":"Opt-in modern iPXE with deployment-specific HTTPS trust. Unsigned; physical keyboard validation pending.","secure_boot_restricted":%s,"ipxe_revision":"39a440d082a65a5b8e11e734cd6caf0991b70771","bootfiles":{"bios":"undionly.kpxe","uefi":"bootimus.efi","arm64":"bootimus-arm64.efi"}}\n' "$name" "$restricted" > /output/manifest.json && \
+    cp -r /build/certificates /output/trusted-certificates
+CMD ["true"]

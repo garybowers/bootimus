@@ -66,6 +66,8 @@ Windows installs boot through the official Microsoft-signed `wimboot`, which the
 
 ## Advanced: self-signed bootloaders for NBD/NFS
 
+For an opt-in modern iPXE build with deployment-specific HTTPS trust, see [custom iPXE](custom-ipxe.md). Those loaders are unsigned and do not replace the signed set described here.
+
 The NBD and NFS boot methods load Bootimus's own boot-environment kernel, which no public CA will sign. If you need those under Secure Boot, build a self-signed set and enrol your certificate on each client once:
 
 ```bash
