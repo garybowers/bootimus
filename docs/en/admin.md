@@ -2,6 +2,8 @@
 
 Complete guide for using the Bootimus admin interface and REST API.
 
+For optional global and per-image boot passwords, see [boot menu passwords](boot-passwords.md).
+
 ##  Table of Contents
 
 - [Accessing the Admin Panel](#accessing-the-admin-panel)

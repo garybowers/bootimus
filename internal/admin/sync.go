@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 
 	"bootimus/internal/models"
 	"bootimus/internal/replica"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type ReplicaController interface {
@@ -23,6 +26,72 @@ type ReplicaController interface {
 type syncKind struct {
 	Count     int    `json:"count"`
 	UpdatedAt string `json:"updated_at"`
+}
+
+type syncBootVerifier struct {
+	Filename  string    `json:"filename,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Required  bool      `json:"required"`
+	Hash      string    `json:"hash"`
+	Revision  string    `json:"revision"`
+}
+
+func validBootVerifier(required bool, hash, revision string) bool {
+	if revision != "" {
+		if len(revision) != 32 {
+			return false
+		}
+		if _, err := hex.DecodeString(revision); err != nil {
+			return false
+		}
+	}
+	if !required {
+		return hash == ""
+	}
+	if len(hash) != 60 {
+		return false
+	}
+	cost, err := bcrypt.Cost([]byte(hash))
+	return err == nil && cost <= 14
+}
+
+func (h *Handler) SyncBootVerifiers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodGet {
+		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
+		return
+	}
+	if r.TLS == nil {
+		h.sendJSON(w, http.StatusForbidden, Response{Success: false, Error: "Boot verifiers require HTTPS"})
+		return
+	}
+	images, err := h.storage.ListImages()
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Could not list images"})
+		return
+	}
+	theme, err := h.storage.GetMenuTheme()
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Could not load theme"})
+		return
+	}
+	verifiers := make([]syncBootVerifier, 0, len(images))
+	for _, image := range images {
+		if !validBootVerifier(image.BootPasswordRequired, image.BootPasswordHash, image.BootPasswordRevision) {
+			h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "Invalid image boot password state"})
+			return
+		}
+		verifiers = append(verifiers, syncBootVerifier{Filename: image.Filename, UpdatedAt: image.UpdatedAt, Required: image.BootPasswordRequired, Hash: image.BootPasswordHash, Revision: image.BootPasswordRevision})
+	}
+	if !validBootVerifier(theme.BootPasswordRequired, theme.BootPasswordHash, theme.BootPasswordRevision) {
+		h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "Invalid menu boot password state"})
+		return
+	}
+	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: map[string]interface{}{
+		"version": 1,
+		"images":  verifiers,
+		"theme":   syncBootVerifier{UpdatedAt: theme.UpdatedAt, Required: theme.BootPasswordRequired, Hash: theme.BootPasswordHash, Revision: theme.BootPasswordRevision},
+	}})
 }
 
 func latest(times ...time.Time) string {

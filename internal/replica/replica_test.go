@@ -63,7 +63,7 @@ func newFakePrimary(t *testing.T) (*fakePrimary, *httptest.Server) {
 			},
 		},
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.hits[r.URL.Path]++
@@ -71,7 +71,7 @@ func newFakePrimary(t *testing.T) (*fakePrimary, *httptest.Server) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		if r.URL.Path == "/api/autoinstall-files" && !f.admin {
+		if (r.URL.Path == "/api/autoinstall-files" || r.URL.Path == "/api/sync/boot-verifiers") && !f.admin {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
@@ -89,6 +89,20 @@ func newFakePrimary(t *testing.T) (*fakePrimary, *httptest.Server) {
 			case "file":
 				w.Write([]byte("#!sh"))
 			}
+			return
+		}
+		if r.URL.Path == "/api/sync/boot-verifiers" {
+			if payload, overridden := f.data[r.URL.Path]; overridden {
+				json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": payload})
+				return
+			}
+			images := f.data["/api/images"].([]models.Image)
+			theme := f.data["/api/theme"].(models.MenuTheme)
+			verifiers := make([]bootVerifier, 0, len(images))
+			for _, image := range images {
+				verifiers = append(verifiers, bootVerifier{Filename: image.Filename, UpdatedAt: image.UpdatedAt, Required: image.BootPasswordRequired, Hash: image.BootPasswordHash, Revision: image.BootPasswordRevision})
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "data": bootVerifierFeed{Version: 1, Images: verifiers, Theme: bootVerifier{UpdatedAt: theme.UpdatedAt, Required: theme.BootPasswordRequired, Hash: theme.BootPasswordHash, Revision: theme.BootPasswordRevision}}})
 			return
 		}
 		payload, ok := f.data[r.URL.Path]
@@ -136,6 +150,7 @@ func newEnv(t *testing.T, syncISOs bool) *env {
 	}
 	e.syncer = New(cfg, Deps{
 		Store:       store,
+		HTTPClient:  srv.Client(),
 		DataDir:     dataDir,
 		ISODir:      filepath.Join(dataDir, "isos"),
 		AutoInstall: lib,

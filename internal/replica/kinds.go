@@ -166,12 +166,16 @@ func imageCacheDir(isoDir, filename string) string {
 	return filepath.Join(isoDir, filepath.FromSlash(strings.TrimSuffix(filename, filepath.Ext(filename))))
 }
 
-func copyImageMetadata(dst *models.Image, src models.Image, groupID *uint) {
+func copyImageMetadata(dst *models.Image, src models.Image, groupID *uint, bootPasswordHash string) {
 	dst.Name = src.Name
 	dst.Description = src.Description
 	dst.Size = src.Size
 	dst.Enabled = src.Enabled
 	dst.Public = src.Public
+	dst.BootPasswordRequired = src.BootPasswordRequired
+	dst.BootPasswordHash = bootPasswordHash
+	dst.BootPasswordRevision = src.BootPasswordRevision
+	dst.BootPasswordSourceAt = src.UpdatedAt
 	dst.GroupID = groupID
 	dst.Group = nil
 	dst.Order = src.Order
@@ -204,6 +208,30 @@ func (s *Syncer) syncImages(ctx context.Context, run *syncRun) (KindResult, erro
 	local, err := s.deps.Store.ListImages()
 	if err != nil {
 		return KindResult{}, err
+	}
+	needsVerifiers := false
+	for _, image := range remote {
+		needsVerifiers = needsVerifiers || image.BootPasswordRequired
+	}
+	for _, image := range local {
+		needsVerifiers = needsVerifiers || image.BootPasswordRequired || image.BootPasswordHash != ""
+	}
+	bootHashes := map[string]string{}
+	if needsVerifiers {
+		feed, err := s.bootVerifiers(ctx)
+		if err != nil {
+			if guardErr := s.guardImageBootPolicies(remote, local); guardErr != nil {
+				return KindResult{}, guardErr
+			}
+			return KindResult{}, err
+		}
+		bootHashes, err = feed.imageHashes(remote)
+		if err != nil {
+			if guardErr := s.guardImageBootPolicies(remote, local); guardErr != nil {
+				return KindResult{}, guardErr
+			}
+			return KindResult{}, err
+		}
 	}
 	byFilename := map[string]*models.Image{}
 	for _, img := range local {
@@ -249,7 +277,7 @@ func (s *Syncer) syncImages(ctx context.Context, run *syncRun) (KindResult, erro
 			}
 		}
 		if !exists {
-			copyImageMetadata(l, r, groupID)
+			copyImageMetadata(l, r, groupID, bootHashes[r.Filename])
 			if err := s.deps.Store.CreateImage(l); err != nil {
 				return res, err
 			}
@@ -264,7 +292,7 @@ func (s *Syncer) syncImages(ctx context.Context, run *syncRun) (KindResult, erro
 			}
 		}
 		before := *l
-		copyImageMetadata(l, r, groupID)
+		copyImageMetadata(l, r, groupID, bootHashes[r.Filename])
 		if !haveFile {
 			l.Extracted = r.Extracted
 			l.KernelPath = r.KernelPath
@@ -524,11 +552,34 @@ func (s *Syncer) syncTheme(ctx context.Context, run *syncRun) (KindResult, error
 	if err != nil {
 		return KindResult{}, err
 	}
+	if run.imagePolicyFailed && !remote.BootPasswordRequired {
+		return KindResult{Count: 1, Skipped: true, Note: "image sync failed"}, nil
+	}
+	bootHash := ""
+	if remote.BootPasswordRequired || local.BootPasswordRequired || local.BootPasswordHash != "" {
+		feed, err := s.bootVerifiers(ctx)
+		if err != nil {
+			if guardErr := s.guardThemeBootPolicy(remote, local); guardErr != nil {
+				return KindResult{}, guardErr
+			}
+			return KindResult{}, err
+		}
+		if !validVerifier(feed.Theme, remote.UpdatedAt, remote.BootPasswordRequired, remote.BootPasswordRevision) {
+			if guardErr := s.guardThemeBootPolicy(remote, local); guardErr != nil {
+				return KindResult{}, guardErr
+			}
+			return KindResult{}, fmt.Errorf("boot verifier feed does not match menu metadata")
+		}
+		bootHash = feed.Theme.Hash
+	}
 	res := KindResult{Count: 1}
-	if local.Title == remote.Title && local.MenuTimeout == remote.MenuTimeout && local.DefaultMenuItem == remote.DefaultMenuItem {
+	if local.Title == remote.Title && local.MenuTimeout == remote.MenuTimeout && local.DefaultMenuItem == remote.DefaultMenuItem && local.BootPasswordRequired == remote.BootPasswordRequired && local.BootPasswordHash == bootHash && local.BootPasswordRevision == remote.BootPasswordRevision && local.BootPasswordSourceAt.Equal(remote.UpdatedAt) {
 		return res, nil
 	}
 	local.Title, local.MenuTimeout, local.DefaultMenuItem = remote.Title, remote.MenuTimeout, remote.DefaultMenuItem
+	local.BootPasswordRequired, local.BootPasswordHash = remote.BootPasswordRequired, bootHash
+	local.BootPasswordRevision = remote.BootPasswordRevision
+	local.BootPasswordSourceAt = remote.UpdatedAt
 	if err := s.deps.Store.UpdateMenuTheme(local); err != nil {
 		return res, err
 	}

@@ -2,12 +2,16 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"bootimus/internal/models"
+	"bootimus/internal/storage/storagetest"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func createToken(t *testing.T, env *auditEnv, bearer, body string) (int, map[string]interface{}) {
@@ -106,4 +110,84 @@ func TestAPITokenLifecycleThroughRoutes(t *testing.T) {
 func jsonNumber(f float64) string {
 	b, _ := json.Marshal(f)
 	return string(b)
+}
+
+func TestBootVerifierSyncRequiresAdminTokenAndHTTPS(t *testing.T) {
+	env := newAuditEnv(t)
+	hashBytes, err := bcrypt.GenerateFromPassword([]byte("private"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := string(hashBytes)
+	image := &models.Image{Name: "Protected", Filename: "protected.iso", Enabled: true, BootPasswordRequired: true, BootPasswordHash: hash}
+	if err := env.store.CreateImage(image); err != nil {
+		t.Fatal(err)
+	}
+	theme, err := env.store.GetMenuTheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	theme.BootPasswordRequired, theme.BootPasswordHash = true, hash
+	if err := env.store.UpdateMenuTheme(theme); err != nil {
+		t.Fatal(err)
+	}
+	_, readData := createToken(t, env, env.admin, `{"name":"reader","scope":"read"}`)
+	_, adminData := createToken(t, env, env.admin, `{"name":"replica","scope":"admin"}`)
+	readToken := readData["data"].(map[string]interface{})["secret"].(string)
+	adminToken := adminData["data"].(map[string]interface{})["secret"].(string)
+	call := func(scheme, path, token string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodGet, scheme+"://bootimus"+path, nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		recorder := httptest.NewRecorder()
+		env.handler.ServeHTTP(recorder, request)
+		return recorder
+	}
+	if response := call("https", "/api/sync/boot-verifiers", readToken); response.Code != http.StatusForbidden {
+		t.Fatalf("read token status = %d", response.Code)
+	}
+	if response := call("http", "/api/sync/boot-verifiers", adminToken); response.Code != http.StatusForbidden || strings.Contains(response.Body.String(), hash) {
+		t.Fatalf("HTTP verifier response = %d", response.Code)
+	}
+	response := call("https", "/api/sync/boot-verifiers", adminToken)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" || !strings.Contains(response.Body.String(), hash) {
+		t.Fatalf("HTTPS verifier response = %d %s", response.Code, response.Body.String())
+	}
+	for _, path := range []string{"/api/images", "/api/theme", "/api/sync/manifest"} {
+		response := call("https", path, readToken)
+		if strings.Contains(response.Body.String(), hash) {
+			t.Errorf("read endpoint %s exposed a verifier", path)
+		}
+	}
+	tlsServer := httptest.NewTLSServer(env.handler)
+	defer tlsServer.Close()
+	request, err := http.NewRequest(http.MethodGet, tlsServer.URL+"/api/sync/boot-verifiers", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+adminToken)
+	liveResponse, err := tlsServer.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer liveResponse.Body.Close()
+	body, err := io.ReadAll(liveResponse.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if liveResponse.StatusCode != http.StatusOK || !strings.Contains(string(body), hash) {
+		t.Fatalf("live TLS verifier response = %d %s", liveResponse.StatusCode, body)
+	}
+}
+
+func TestBootVerifierSyncDeniedWithoutAuthentication(t *testing.T) {
+	server := &Server{config: &Config{Storage: storagetest.New(t), DataDir: t.TempDir()}}
+	mux := http.NewServeMux()
+	server.setupAdminInterface(mux)
+	t.Cleanup(server.audit.wait)
+	request := httptest.NewRequest(http.MethodGet, "https://bootimus/api/sync/boot-verifiers", nil)
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden || recorder.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("unauthenticated server verifier response = %d", recorder.Code)
+	}
 }

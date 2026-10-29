@@ -37,14 +37,8 @@ type MenuBuilder struct {
 	sanDefault        bool
 	nextBootSAN       bool
 	profileImageID    uint
-}
-
-func (s *Server) generateIPXEMenuWithGroups(images []models.Image, macAddress string, nextBootImageID ...uint) string {
-	var nbID uint
-	if len(nextBootImageID) > 0 {
-		nbID = nextBootImageID[0]
-	}
-	return s.generateIPXEMenuFor(images, macAddress, nbID, 0)
+	bootAuthURL       string
+	bootAccess        bootMenuAccess
 }
 
 func (s *Server) resolveSANTarget(client *models.Client) (*models.SANTarget, bool) {
@@ -65,7 +59,7 @@ func (s *Server) resolveSANTarget(client *models.Client) (*models.SANTarget, boo
 	return target, bootDefault
 }
 
-func (s *Server) generateIPXEMenuFor(images []models.Image, macAddress string, nbID uint, nextBootSANID uint) string {
+func (s *Server) generateIPXEMenuWithAccess(images []models.Image, macAddress string, nbID uint, nextBootSANID uint, access bootMenuAccess) string {
 	var groups []*models.ImageGroup
 	var theme *models.MenuTheme
 	var client *models.Client
@@ -81,6 +75,7 @@ func (s *Server) generateIPXEMenuFor(images []models.Image, macAddress string, n
 		theme, err = s.config.Storage.GetMenuTheme()
 		if err != nil {
 			log.Printf("Warning: Failed to load menu theme: %v", err)
+			return bootProtectionUnavailable()
 		}
 
 		if c, err := s.config.Storage.GetClient(macAddress); err == nil {
@@ -149,6 +144,8 @@ func (s *Server) generateIPXEMenuFor(images []models.Image, macAddress string, n
 		sanDefault:        sanDefault,
 		nextBootSAN:       nextBootSAN,
 		profileImageID:    profileImageID,
+		bootAuthURL:       s.bootAuthenticationURL(),
+		bootAccess:        access,
 	}
 	mb.remoteBase, mb.remoteImages = s.remoteImages(images)
 
@@ -159,15 +156,23 @@ func (mb *MenuBuilder) Build() string {
 	var sb strings.Builder
 
 	sb.WriteString("#!ipxe\n\n")
+	if mb.bootAccess.imageID != 0 {
+		fmt.Fprintf(&sb, "goto iso%d\n", mb.bootAccess.imageID)
+		sb.WriteString(mb.buildImageBootSections())
+		sb.WriteString(":uki_needs_uefi\necho This image needs UEFI.\n:failed\necho Boot failed. Return to the menu and try again.\nsleep 2\n:start\nexit\n")
+		return sb.String()
+	}
+	if mb.bootAccess.session != "" {
+		fmt.Fprintf(&sb, "set bootimus_session %s\n", mb.bootAccess.session)
+	}
 	if mb.diskBoot != nil {
 		sb.WriteString("goto diskimaging\n\n")
 	} else if mb.hasEnabledImage(mb.nextBootImageID) {
 		sb.WriteString(fmt.Sprintf("goto iso%d\n\n", mb.nextBootImageID))
 	} else if mb.nextBootSAN && mb.sanTarget != nil {
 		sb.WriteString("goto san\n\n")
-	} else {
-		sb.WriteString(mb.buildMainMenu())
 	}
+	sb.WriteString(mb.buildMainMenu())
 	sb.WriteString(mb.buildGroupMenus())
 	sb.WriteString(mb.buildImageBootSections())
 	sb.WriteString(mb.buildDiskImagingSection())
@@ -304,6 +309,9 @@ func (mb *MenuBuilder) buildMainMenu() string {
 	}
 
 	sb.WriteString("item --gap -- Options:\n")
+	if mb.bootAccess.session != "" {
+		sb.WriteString("item lock Lock network-boot menu\n")
+	}
 	sb.WriteString("item local Boot from Local Disk\n")
 	sb.WriteString("item shell Drop to iPXE shell\n")
 	sb.WriteString("item reboot Reboot\n")
@@ -394,6 +402,10 @@ func (mb *MenuBuilder) buildImageBootSections() string {
 		}
 
 		sb.WriteString(fmt.Sprintf(":iso%d\n", img.ID))
+		if (img.BootPasswordRequired || img.BootPasswordHash != "") && mb.bootAccess.imageID != img.ID {
+			sb.WriteString(mb.buildImagePasswordGate(img.ID))
+			continue
+		}
 		sb.WriteString(fmt.Sprintf("echo Booting %s...\n", img.Name))
 
 		encodedFilename := encodePathSegments(img.Filename)
@@ -436,7 +448,9 @@ func (mb *MenuBuilder) buildImageBootSections() string {
 			sb.WriteString(fmt.Sprintf("sanboot --no-describe --drive 0x80 %s/isos/%s?mac=%s\n", mb.assetBase(&img), encodedFilename, mb.macAddress))
 		}
 
-		if img.GroupID != nil {
+		if mb.bootAccess.imageID != 0 {
+			sb.WriteString("exit\n")
+		} else if img.GroupID != nil {
 			sb.WriteString(fmt.Sprintf("goto group%d\n", *img.GroupID))
 		} else {
 			sb.WriteString("goto start\n")
@@ -657,18 +671,27 @@ func (mb *MenuBuilder) buildFooter() string {
 	}
 
 	sb.WriteString(mb.buildSANBootSection())
+	if mb.bootAccess.session != "" {
+		sb.WriteString(":lock\nclear bootimus_password\nclear bootimus_session\nexit\n")
+	}
 
 	sb.WriteString(`:local
+clear bootimus_password
+clear bootimus_session
 echo Booting from local disk...
 set localboot 1
 iseq ${platform} pcbios && sanboot --no-describe --drive 0x80 ||
 exit
 
 :shell
+clear bootimus_password
+clear bootimus_session
 echo Dropping to iPXE shell...
 shell
 
 :reboot
+clear bootimus_password
+clear bootimus_session
 reboot
 
 :uki_needs_uefi

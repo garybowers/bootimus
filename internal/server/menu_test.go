@@ -40,8 +40,8 @@ func TestBuildNextBootBypassesMenuForGroupedImage(t *testing.T) {
 	if !strings.Contains(out, ":iso7\n") {
 		t.Fatalf("expected next boot image section to be emitted, got:\n%s", out)
 	}
-	if strings.Contains(out, ":start\nmenu ") {
-		t.Fatalf("expected next boot to bypass the interactive menu, got:\n%s", out)
+	if !strings.Contains(out, ":start\nmenu ") {
+		t.Fatalf("expected a return menu after next-boot failure or cancellation, got:\n%s", out)
 	}
 }
 

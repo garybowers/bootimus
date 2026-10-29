@@ -37,13 +37,17 @@ type envelope struct {
 }
 
 func (p *primary) request(ctx context.Context, path string) (*http.Response, error) {
+	return p.requestWithClient(ctx, path, p.http)
+}
+
+func (p *primary) requestWithClient(ctx context.Context, path string, client *http.Client) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.base+path, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+p.token)
 	req.Header.Set("User-Agent", "bootimus-replica/1")
-	resp, err := p.http.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("primary unreachable: %w", err)
 	}
@@ -55,16 +59,23 @@ func (p *primary) request(ctx context.Context, path string) (*http.Response, err
 }
 
 func (p *primary) getJSON(ctx context.Context, path string, out interface{}) error {
+	return p.getJSONWithClient(ctx, path, out, p.http, 256<<20)
+}
+
+func (p *primary) getJSONWithClient(ctx context.Context, path string, out interface{}, client *http.Client, limit int64) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	resp, err := p.request(ctx, path)
+	resp, err := p.requestWithClient(ctx, path, client)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 256<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return err
+	}
+	if int64(len(body)) > limit {
+		return fmt.Errorf("primary response for %s exceeds the size limit", path)
 	}
 	if resp.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("primary has no %s endpoint", path)
@@ -84,6 +95,16 @@ func (p *primary) getJSON(ctx context.Context, path string, out interface{}) err
 		return nil
 	}
 	return json.Unmarshal(env.Data, out)
+}
+
+func (p *primary) getBootVerifiers(ctx context.Context, out interface{}) error {
+	parsed, err := url.Parse(p.base)
+	if err != nil || parsed.Scheme != "https" {
+		return fmt.Errorf("boot verifier sync requires an HTTPS primary URL")
+	}
+	client := *p.http
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	return p.getJSONWithClient(ctx, "/api/sync/boot-verifiers", out, &client, 4<<20)
 }
 
 func (p *primary) download(ctx context.Context, path, dest string) (int64, error) {

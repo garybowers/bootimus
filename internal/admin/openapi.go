@@ -14,14 +14,15 @@ type APIParam struct {
 }
 
 type APIEndpoint struct {
-	Method    string
-	Path      string
-	Summary   string
-	Params    []APIParam
-	Body      string
-	Multipart bool
-	Public    bool
-	ReadOnly  bool
+	Method      string
+	Path        string
+	Summary     string
+	Params      []APIParam
+	Body        string
+	Multipart   bool
+	FormEncoded bool
+	Public      bool
+	ReadOnly    bool
 }
 
 type APISection struct {
@@ -123,7 +124,7 @@ var APISections = []APISection{
 	}},
 	{Tag: "Images", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/images", Summary: "List all images, or one when filename is given.", Params: []APIParam{{Name: "filename", In: "query", Description: "ISO filename of a single image"}}, ReadOnly: true},
-		{Method: "PUT", Path: "/api/images", Summary: "Partial update of an image.", Params: []APIParam{qFilename("ISO filename")}, Body: "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, kernel_override, initrd_override}"},
+		{Method: "PUT", Path: "/api/images", Summary: "Partial update of an image. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.", Params: []APIParam{qFilename("ISO filename")}, Body: "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, kernel_override, initrd_override, boot_password?}"},
 		{Method: "DELETE", Path: "/api/images", Summary: "Delete an image.", Params: []APIParam{qFilename("ISO filename"), {Name: "delete_file", In: "query", Description: "true to also remove the ISO from disk"}}},
 		{Method: "POST", Path: "/api/images/upload", Summary: "Upload an ISO or unified kernel image.", Body: "file, public, description", Multipart: true},
 		{Method: "POST", Path: "/api/images/download", Summary: "Download an ISO from a URL asynchronously, verifying it against a SHA-256 when one is given or published alongside.", Body: "{url, filename, description, sha256, checksum_url, catalogue_id, catalogue_release}"},
@@ -255,7 +256,7 @@ var APISections = []APISection{
 	}},
 	{Tag: "Settings", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/theme", Summary: "Boot menu theme and defaults.", ReadOnly: true},
-		{Method: "PUT", Path: "/api/theme", Summary: "Update the boot menu theme.", Body: "{title, menu_timeout, default_menu_item}"},
+		{Method: "PUT", Path: "/api/theme", Summary: "Update the boot menu theme. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.", Body: "{title, menu_timeout, default_menu_item, boot_password?}"},
 		{Method: "GET", Path: "/api/backup/export", Summary: "Download a tar.gz backup of the database and data directory."},
 		{Method: "POST", Path: "/api/backup/import", Summary: "Stage a backup archive for restore on the next restart.", Body: "backup=@bootimus-backup.tar.gz", Multipart: true},
 		{Method: "GET", Path: "/api/backup/import", Summary: "Whether a restore is staged."},
@@ -267,6 +268,7 @@ var APISections = []APISection{
 	}},
 	{Tag: "Multi-site", Description: "Primary-side sync feed and replica control.", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/sync/manifest", Summary: "Counts and last-change times per kind, the boot base URL and the active bootloader set, for replicas.", ReadOnly: true},
+		{Method: "GET", Path: "/api/sync/boot-verifiers", Summary: "Versioned menu and image boot password verifiers for replicas. Requires an admin-scope token and HTTPS."},
 		{Method: "GET", Path: "/api/sync/tool-files", Summary: "Files on disk for a downloaded boot tool, for replicas.", Params: []APIParam{qName("Tool name")}, ReadOnly: true},
 		{Method: "GET", Path: "/api/sync/asset", Summary: "Stream an ISO, tool file or custom file to a replica.", Params: []APIParam{{Name: "kind", In: "query", Description: "iso, tool or file", Required: true}, {Name: "filename", In: "query", Description: "ISO filename when kind is iso"}, {Name: "name", In: "query", Description: "Tool name when kind is tool"}, {Name: "path", In: "query", Description: "File path within the tool when kind is tool"}, {Name: "id", In: "query", Description: "Custom file ID when kind is file"}}, ReadOnly: true},
 		{Method: "GET", Path: "/api/replica/status", Summary: "Whether this instance is a replica and the result of its last sync.", ReadOnly: true},
@@ -296,6 +298,9 @@ var APISections = []APISection{
 		{Method: "GET", Path: "/diskimage/job", Summary: "Shell script a Clonezilla client runs for its queued capture or deploy job.", Params: []APIParam{{Name: "token", In: "query", Description: "Job token", Required: true}}, Public: true},
 		{Method: "GET", Path: "/diskimage/callback", Summary: "Progress report from a Clonezilla client.", Params: []APIParam{{Name: "token", In: "query", Description: "Job token", Required: true}, {Name: "status", In: "query", Description: "running, done or failed", Required: true}, {Name: "disk", In: "query", Description: "Disk device actually used"}, {Name: "message", In: "query", Description: "Short failure reason"}}, Public: true},
 		{Method: "GET", Path: "/machineconfig", Summary: "Kubernetes machine config for an enrolled node.", Params: []APIParam{{Name: "m", In: "query", Description: "MAC address", Required: true}, {Name: "t", In: "query", Description: "Enrolment token", Required: true}, {Name: "u", In: "query", Description: "System UUID"}}, Public: true},
+	}},
+	{Tag: "Boot passwords", Description: "Menu and image authentication, separate from admin access.", Endpoints: []APIEndpoint{
+		{Method: "POST", Path: "/boot-auth", Summary: "iPXE boot-password authentication on the admin HTTPS port. Returns an iPXE script; does not grant admin access. Credentials and scoped menu sessions are accepted only in the form body.", Body: "{action: menu|image, mac, image?, password?, session?}", FormEncoded: true, Public: true},
 	}},
 }
 
@@ -440,6 +445,10 @@ func buildOperation(tag string, ep APIEndpoint, order int) OpenAPIOperation {
 	if ep.Body != "" {
 		contentType := "application/json"
 		schema := map[string]interface{}{"type": "object"}
+		if ep.FormEncoded {
+			contentType = "application/x-www-form-urlencoded"
+			op.Responses["200"]["content"] = map[string]interface{}{"text/plain": map[string]interface{}{"schema": map[string]interface{}{"type": "string"}}}
+		}
 		if ep.Multipart {
 			contentType = "multipart/form-data"
 			props := map[string]interface{}{}

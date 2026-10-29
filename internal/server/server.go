@@ -151,6 +151,7 @@ type Server struct {
 	adminRedirectServer   *http.Server
 	adminTLS              *tlscert.Reloader
 	adminTLSMode          string
+	bootAuth              bootAuthentication
 	tftpServer            *tftp.Server
 	proxyDHCPServer       *proxydhcp.Server
 	proxyDHCPRecorder     *proxydhcp.Recorder
@@ -1565,6 +1566,8 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 
 	adminHandler := admin.NewHandler(s.config.Storage, s.config.DataDir, s.config.ISODir, s.config.BootDir, Version, s, s.toolsManager, s.config.WOLBroadcastAddr, s.config.ProfileManager, s.config.ProxyDHCPEnabled, s.config.HTTPPort, s.config.ServerAddr, s.config.WindowsSMBPort, s.smbManager, s.config.WindowsSMBEnabled, s.autoInstallLib)
 	adminHandler.AdminTLSStatus = s.AdminTLSStatus
+	adminHandler.BootAuthReady = s.AdminTLSEnabled
+	mux.HandleFunc("/boot-auth", s.handleBootAuthentication)
 	if s.scheduler != nil {
 		adminHandler.SchedulerReload = s.scheduler.Reload
 		adminHandler.SchedulerRunNow = s.scheduler.RunNow
@@ -1878,6 +1881,14 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/webhook/test", adminWrap(adminHandler.TestWebhook))
 
 	mux.HandleFunc("/api/sync/manifest", readWrap(adminHandler.SyncManifest))
+	mux.HandleFunc("/api/sync/boot-verifiers", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if !useAuth {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		adminWrap(adminHandler.SyncBootVerifiers)(w, r)
+	})
 	mux.HandleFunc("/api/sync/tool-files", readWrap(adminHandler.SyncToolFiles))
 	mux.HandleFunc("/api/sync/asset", readWrap(adminHandler.SyncAsset))
 	mux.HandleFunc("/api/replica/status", readWrap(adminHandler.ReplicaStatus))
@@ -2325,7 +2336,26 @@ func normaliseMenuMAC(macAddress string) string {
 }
 
 func (s *Server) renderBootMenu(macAddress, remoteAddr string, commit bool) bootMenuRender {
+	return s.renderBootMenuWithAccess(macAddress, remoteAddr, commit, bootMenuAccess{})
+}
+
+func (s *Server) renderBootMenuWithAccess(macAddress, remoteAddr string, commit bool, access bootMenuAccess) bootMenuRender {
 	result := bootMenuRender{MAC: macAddress, Kind: "menu"}
+	if s.config.Storage != nil {
+		theme, err := s.config.Storage.GetMenuTheme()
+		if err != nil {
+			result.Kind, result.Script = "unavailable", bootProtectionUnavailable()
+			return result
+		}
+		if (theme.BootPasswordRequired || theme.BootPasswordHash != "") && !access.global {
+			if theme.BootPasswordHash == "" {
+				result.Kind, result.Script = "unavailable", bootProtectionUnavailable()
+				return result
+			}
+			result.Kind, result.Script = "locked", s.bootPasswordMenu(macAddress)
+			return result
+		}
+	}
 	var profileClient *models.Client
 	var profileGroup *models.ClientGroup
 	var eff deployment.Effective
@@ -2404,7 +2434,7 @@ func (s *Server) renderBootMenu(macAddress, remoteAddr string, commit bool) boot
 					nextBootImageID = img.ID
 					result.NextBootImage = img.Name
 				}
-				if commit {
+				if commit && (imgErr != nil || img == nil || (!img.BootPasswordRequired && img.BootPasswordHash == "")) {
 					s.config.Storage.ClearNextBootImage(macAddress)
 				}
 			}
@@ -2418,8 +2448,8 @@ func (s *Server) renderBootMenu(macAddress, remoteAddr string, commit bool) boot
 		images, err = s.config.Storage.GetImagesForClient(macAddress)
 		if err != nil {
 			log.Printf("Failed to get images from database: %v", err)
-			isos, _ := s.scanISOs()
-			images = convertISOsToImages(isos)
+			result.Kind, result.Script = "unavailable", bootProtectionUnavailable()
+			return result
 		}
 	} else {
 		isos, _ := s.scanISOs()
@@ -2427,7 +2457,7 @@ func (s *Server) renderBootMenu(macAddress, remoteAddr string, commit bool) boot
 	}
 
 	images = s.applyProfileImages(images, profileClient, profileGroup, eff)
-	result.Script = s.generateIPXEMenuFor(images, macAddress, nextBootImageID, nextBootSANID)
+	result.Script = s.generateIPXEMenuWithAccess(images, macAddress, nextBootImageID, nextBootSANID, access)
 	return result
 }
 
@@ -2437,6 +2467,7 @@ func (s *Server) handleIPXEMenu(w http.ResponseWriter, r *http.Request) {
 	s.logAndBroadcast("Client Connected: MAC %s (IP: %s) requesting boot menu", macAddress, r.RemoteAddr)
 
 	rendered := s.renderBootMenu(macAddress, r.RemoteAddr, true)
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(rendered.Script))
 }

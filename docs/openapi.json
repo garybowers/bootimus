@@ -86,6 +86,10 @@
     {
       "name": "Boot",
       "description": "Endpoints served to PXE clients on the boot port; no authentication."
+    },
+    {
+      "name": "Boot passwords",
+      "description": "Menu and image authentication, separate from admin access."
     }
   ],
   "paths": {
@@ -211,7 +215,7 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": false,
-        "x-bootimus-order": 181
+        "x-bootimus-order": 182
       }
     },
     "/api/auth-info": {
@@ -3491,7 +3495,7 @@
         "tags": [
           "Images"
         ],
-        "summary": "Partial update of an image.",
+        "summary": "Partial update of an image. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.",
         "operationId": "putApiImages",
         "parameters": [
           {
@@ -3505,7 +3509,7 @@
           }
         ],
         "requestBody": {
-          "description": "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, kernel_override, initrd_override}",
+          "description": "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, kernel_override, initrd_override, boot_password?}",
           "required": true,
           "content": {
             "application/json": {
@@ -4359,7 +4363,7 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 178
+        "x-bootimus-order": 179
       }
     },
     "/api/logs/buffer": {
@@ -4383,7 +4387,7 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": false,
-        "x-bootimus-order": 180
+        "x-bootimus-order": 181
       }
     },
     "/api/logs/stream": {
@@ -4407,7 +4411,7 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": false,
-        "x-bootimus-order": 179
+        "x-bootimus-order": 180
       }
     },
     "/api/me": {
@@ -4866,7 +4870,7 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 182
+        "x-bootimus-order": 183
       }
     },
     "/api/proxydhcp/events/clear": {
@@ -4890,7 +4894,7 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": false,
-        "x-bootimus-order": 184
+        "x-bootimus-order": 185
       }
     },
     "/api/proxydhcp/stream": {
@@ -4914,7 +4918,7 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 183
+        "x-bootimus-order": 184
       }
     },
     "/api/replica/status": {
@@ -4938,7 +4942,7 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 176
+        "x-bootimus-order": 177
       }
     },
     "/api/replica/sync": {
@@ -4962,7 +4966,7 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": false,
-        "x-bootimus-order": 177
+        "x-bootimus-order": 178
       }
     },
     "/api/san-targets": {
@@ -5408,7 +5412,31 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 175
+        "x-bootimus-order": 176
+      }
+    },
+    "/api/sync/boot-verifiers": {
+      "get": {
+        "tags": [
+          "Multi-site"
+        ],
+        "summary": "Versioned menu and image boot password verifiers for replicas. Requires an admin-scope token and HTTPS.",
+        "operationId": "getApiSyncBootVerifiers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            },
+            "description": "Successful response"
+          }
+        },
+        "x-bootimus-public": false,
+        "x-bootimus-readonly": false,
+        "x-bootimus-order": 174
       }
     },
     "/api/sync/manifest": {
@@ -5467,7 +5495,7 @@
         },
         "x-bootimus-public": false,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 174
+        "x-bootimus-order": 175
       }
     },
     "/api/theme": {
@@ -5497,10 +5525,10 @@
         "tags": [
           "Settings"
         ],
-        "summary": "Update the boot menu theme.",
+        "summary": "Update the boot menu theme. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.",
         "operationId": "putApiTheme",
         "requestBody": {
-          "description": "{title, menu_timeout, default_menu_item}",
+          "description": "{title, menu_timeout, default_menu_item, boot_password?}",
           "required": true,
           "content": {
             "application/json": {
@@ -6308,7 +6336,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 186
+        "x-bootimus-order": 187
       }
     },
     "/autoinstall/{filename}": {
@@ -6343,7 +6371,42 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 190
+        "x-bootimus-order": 191
+      }
+    },
+    "/boot-auth": {
+      "post": {
+        "tags": [
+          "Boot passwords"
+        ],
+        "summary": "iPXE boot-password authentication on the admin HTTPS port. Returns an iPXE script; does not grant admin access. Credentials and scoped menu sessions are accepted only in the form body.",
+        "operationId": "postBootAuth",
+        "requestBody": {
+          "description": "{action: menu|image, mac, image?, password?, session?}",
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful response"
+          }
+        },
+        "x-bootimus-public": true,
+        "x-bootimus-readonly": true,
+        "x-bootimus-order": 200
       }
     },
     "/boot/{cache_dir}/{path}": {
@@ -6387,7 +6450,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 189
+        "x-bootimus-order": 190
       }
     },
     "/bootenv/{filename}": {
@@ -6422,7 +6485,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 193
+        "x-bootimus-order": 194
       }
     },
     "/diskimage/callback": {
@@ -6482,7 +6545,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 197
+        "x-bootimus-order": 198
       }
     },
     "/diskimage/job": {
@@ -6517,7 +6580,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 196
+        "x-bootimus-order": 197
       }
     },
     "/files/{filename}": {
@@ -6552,7 +6615,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 192
+        "x-bootimus-order": 193
       }
     },
     "/health": {
@@ -6627,7 +6690,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 191
+        "x-bootimus-order": 192
       }
     },
     "/inventory": {
@@ -6662,7 +6725,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 187
+        "x-bootimus-order": 188
       }
     },
     "/isos/{filename}": {
@@ -6697,7 +6760,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 188
+        "x-bootimus-order": 189
       }
     },
     "/logout": {
@@ -6773,7 +6836,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 198
+        "x-bootimus-order": 199
       }
     },
     "/menu.ipxe": {
@@ -6807,7 +6870,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 185
+        "x-bootimus-order": 186
       }
     },
     "/metrics": {
@@ -6866,7 +6929,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 195
+        "x-bootimus-order": 196
       }
     },
     "/tools/{path}": {
@@ -6901,7 +6964,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 194
+        "x-bootimus-order": 195
       }
     }
   },

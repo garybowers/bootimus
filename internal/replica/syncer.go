@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 type Deps struct {
 	Store               storage.Storage
+	HTTPClient          *http.Client
 	DataDir             string
 	ISODir              string
 	AutoInstall         *autoinstall.Library
@@ -64,6 +66,9 @@ func New(cfg Config, deps Deps) *Syncer {
 		primary:      newPrimary(cfg),
 		manifestSeen: map[string]string{},
 		stop:         make(chan struct{}),
+	}
+	if deps.HTTPClient != nil {
+		s.primary.http = deps.HTTPClient
 	}
 	s.status = Status{PrimaryURL: cfg.DisplayURL(), SyncISOs: cfg.SyncISOs, IntervalSeconds: int(cfg.Interval / time.Second)}
 	if deps.Store != nil {
@@ -132,11 +137,12 @@ func (s *Syncer) ImageIsLocal(filename string) bool {
 type kindFunc func(ctx context.Context, run *syncRun) (KindResult, error)
 
 type syncRun struct {
-	manifest     *manifest
-	imageGroups  map[uint]uint
-	sanTargets   map[uint]uint
-	clientGroups map[uint]uint
-	imageIDs     map[uint]string
+	manifest          *manifest
+	imageGroups       map[uint]uint
+	sanTargets        map[uint]uint
+	clientGroups      map[uint]uint
+	imageIDs          map[uint]string
+	imagePolicyFailed bool
 }
 
 func (s *Syncer) RunNow(ctx context.Context) Status {
@@ -180,6 +186,9 @@ func (s *Syncer) RunNow(ctx context.Context) Status {
 		res.Name = step.name
 		res.DurationMs = time.Since(stepStart).Milliseconds()
 		if err != nil {
+			if step.name == "images" {
+				run.imagePolicyFailed = true
+			}
 			res.Error = err.Error()
 			if firstErr == nil {
 				firstErr = fmt.Errorf("%s: %w", step.name, err)

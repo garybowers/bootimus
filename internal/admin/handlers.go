@@ -63,6 +63,7 @@ type Handler struct {
 	profileManager     *profiles.Manager
 	proxyDHCPEnabled   bool
 	AdminTLSStatus     func() string
+	BootAuthReady      func() bool
 	httpPort           int
 	serverAddr         string
 	smbPort            int
@@ -1022,6 +1023,17 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 	}
 	if order, ok := updates["order"].(float64); ok {
 		image.Order = int(order)
+	}
+	if value, exists := updates["boot_password"]; exists {
+		password, ok := value.(string)
+		if !ok {
+			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "boot_password must be a string"})
+			return
+		}
+		if err := h.updateBootPassword(r, &password, &image.BootPasswordHash, &image.BootPasswordRequired, &image.BootPasswordRevision); err != nil {
+			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})
+			return
+		}
 	}
 	if bootMethod, ok := updates["boot_method"].(string); ok {
 		image.BootMethod = bootMethod
@@ -5652,9 +5664,23 @@ func (h *Handler) UpdateMenuTheme(w http.ResponseWriter, r *http.Request) {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
 		return
 	}
-	var theme models.MenuTheme
-	if err := json.NewDecoder(r.Body).Decode(&theme); err != nil {
+	var updates struct {
+		models.MenuTheme
+		BootPassword *string `json:"boot_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
+		return
+	}
+	previous, err := h.storage.GetMenuTheme()
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Failed to load menu protection"})
+		return
+	}
+	theme := updates.MenuTheme
+	theme.BootPasswordHash, theme.BootPasswordRequired, theme.BootPasswordRevision = previous.BootPasswordHash, previous.BootPasswordRequired, previous.BootPasswordRevision
+	if err := h.updateBootPassword(r, updates.BootPassword, &theme.BootPasswordHash, &theme.BootPasswordRequired, &theme.BootPasswordRevision); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})
 		return
 	}
 	if err := h.storage.UpdateMenuTheme(&theme); err != nil {
