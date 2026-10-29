@@ -7706,7 +7706,7 @@ async function bulkWakeClientGroup() {
     try {
         const res = await authFetch(`${API_BASE}/client-groups/wake?id=${id}`, { method: 'POST' });
         const data = await res.json();
-        showAlert(data.message || (data.success ? 'Wake sent' : 'Wake failed'), data.success ? 'success' : 'error');
+        showAlert(data.message || data.error || (data.success ? 'Wake started' : 'Wake failed'), data.success ? 'success' : 'error');
     } catch (err) { showAlert('Failed to send bulk wake', 'error'); }
 }
 

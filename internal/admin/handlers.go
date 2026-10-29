@@ -5555,31 +5555,21 @@ func (h *Handler) WakeClientGroup(w http.ResponseWriter, r *http.Request) {
 		broadcastAddr = group.WOLBroadcastAddr
 	}
 	stagger := time.Duration(group.StaggerDelayMillis) * time.Millisecond
-	sent := 0
-	for _, c := range members {
-		if !c.Enabled {
-			continue
-		}
-		sent++
+	macs := collectEnabledMACs(members)
+	if len(macs) == 0 {
+		h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "No enabled members to wake"})
+		return
 	}
-	go func(macs []string, bcast string, gap time.Duration) {
-		for i, mac := range macs {
-			if i > 0 && gap > 0 {
-				time.Sleep(gap)
-			}
-			if err := wol.SendMagicPacket(mac, bcast); err != nil {
-				log.Printf("ClientGroup wake: failed for %s: %v", mac, err)
-			} else {
-				log.Printf("ClientGroup wake: sent to %s (broadcast: %s)", mac, bcast)
-			}
-		}
-	}(collectEnabledMACs(members), broadcastAddr, stagger)
+	if err := startGroupWake(macs, broadcastAddr, stagger, wol.SendMagicPacket); err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: fmt.Sprintf("Failed to start group wake: %v", err)})
+		return
+	}
 
-	log.Printf("Admin: Wake-on-LAN bulk sent to group %s (%d enabled members, stagger %s)",
-		group.Name, sent, stagger)
+	log.Printf("Admin: Wake-on-LAN started for group %s (%d enabled members, stagger %s)",
+		group.Name, len(macs), stagger)
 	h.sendJSON(w, http.StatusOK, Response{
 		Success: true,
-		Message: fmt.Sprintf("Wake-on-LAN sent to %d member(s) of %s", sent, group.Name),
+		Message: fmt.Sprintf("Wake-on-LAN started for %d member(s) of %s", len(macs), group.Name),
 	})
 }
 

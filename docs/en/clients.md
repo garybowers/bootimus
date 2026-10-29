@@ -505,6 +505,12 @@ When several clients should get the same image, auto-install file, SAN target or
 
 Send a WOL magic packet to wake a client remotely. Combine with **Next Boot** to wake a machine and have it boot into a specific image.
 
+### Waking a group
+
+**Wake All (WOL)** wakes enabled members using the group's saved broadcast address, or the server default if the field is blank. Individual **Wake** buttons use the server default, so check the group override if individual wakes work but group wakes do not.
+
+Bootimus sends the first packet before reporting that the group wake has started. If that send fails, the error appears in the UI and the remaining members are not attempted. Otherwise, the remaining packets are sent in the background with the configured stagger delay. Check the server's `ClientGroup wake` log entries for later failures. A successful send does not confirm that a machine has woken.
+
 ### Via API
 
 ```bash
