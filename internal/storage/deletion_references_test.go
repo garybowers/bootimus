@@ -96,3 +96,39 @@ func TestDeleteDiskImageClearsProfilesAndRollsBackFileFailure(t *testing.T) {
 		t.Fatalf("deleted disk image still referenced: %+v", updated)
 	}
 }
+
+func TestDeleteImageGroupReparentsChildrenAndUngroupsImages(t *testing.T) {
+	store := newTestStore(t)
+	parent := &models.ImageGroup{Name: "parent", Enabled: true}
+	if err := store.CreateImageGroup(parent); err != nil {
+		t.Fatal(err)
+	}
+	child := &models.ImageGroup{Name: "child", ParentID: &parent.ID, Enabled: true}
+	if err := store.CreateImageGroup(child); err != nil {
+		t.Fatal(err)
+	}
+	image := &models.Image{Name: "grouped", Filename: "grouped.iso", GroupID: &parent.ID, Enabled: true}
+	if err := store.CreateImage(image); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteImageGroup(parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetImageGroup(parent.ID); err == nil {
+		t.Fatal("deleted group still present")
+	}
+	updatedChild, err := store.GetImageGroup(child.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedChild.ParentID != nil {
+		t.Errorf("child still references deleted parent %d", *updatedChild.ParentID)
+	}
+	updatedImage, err := store.GetImage(image.Filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedImage.GroupID != nil {
+		t.Errorf("image still references deleted group %d", *updatedImage.GroupID)
+	}
+}

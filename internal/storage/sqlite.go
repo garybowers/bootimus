@@ -468,7 +468,19 @@ func (s *SQLiteStore) UpdateImageGroup(id uint, group *models.ImageGroup) error 
 }
 
 func (s *SQLiteStore) DeleteImageGroup(id uint) error {
-	return s.db.Unscoped().Delete(&models.ImageGroup{}, id).Error
+	return deleteImageGroup(s.db, id)
+}
+
+func deleteImageGroup(db *gorm.DB, id uint) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.ImageGroup{}).Where("parent_id = ?", id).Update("parent_id", nil).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.Image{}).Where("group_id = ?", id).Update("group_id", nil).Error; err != nil {
+			return err
+		}
+		return tx.Unscoped().Delete(&models.ImageGroup{}, id).Error
+	})
 }
 
 func (s *SQLiteStore) ListImagesByGroup(groupID uint) ([]*models.Image, error) {

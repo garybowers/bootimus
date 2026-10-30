@@ -397,3 +397,22 @@ func TestBuildWindowsBootSectionAutoUnattendInitrd(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildGroupMenusToleratesMissingParent(t *testing.T) {
+	missingParent := uint(99)
+	groupID := uint(2)
+	mb := testMenuBuilder(nil)
+	mb.groups = []*models.ImageGroup{{ID: groupID, Name: "Orphan", ParentID: &missingParent, Enabled: true}}
+	mb.images = []models.Image{{ID: 7, Name: "Alpine", Filename: "alpine.iso", Enabled: true, GroupID: &groupID}}
+
+	out := mb.Build()
+	if !strings.Contains(out, ":group2\n") {
+		t.Fatalf("expected the orphaned group menu to be emitted, got:\n%s", out)
+	}
+	if !strings.Contains(out, "item start Back to Main Menu\n") {
+		t.Fatalf("expected an orphaned group to navigate back to the main menu, got:\n%s", out)
+	}
+	if strings.Contains(out, "group99") {
+		t.Fatalf("expected no reference to the missing parent, got:\n%s", out)
+	}
+}

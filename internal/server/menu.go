@@ -374,8 +374,8 @@ func (mb *MenuBuilder) buildGroupMenus() string {
 		}
 
 		sb.WriteString("item --gap -- Navigation:\n")
-		if group.ParentID != nil {
-			sb.WriteString(fmt.Sprintf("item group%d Back to %s\n", *group.ParentID, group.Parent.Name))
+		if parent := mb.findGroup(group.ParentID); parent != nil {
+			sb.WriteString(fmt.Sprintf("item group%d Back to %s\n", parent.ID, parent.Name))
 		} else {
 			sb.WriteString("item start Back to Main Menu\n")
 		}
@@ -714,6 +714,18 @@ func (mb *MenuBuilder) getRootGroups() []*models.ImageGroup {
 		}
 	}
 	return result
+}
+
+func (mb *MenuBuilder) findGroup(id *uint) *models.ImageGroup {
+	if id == nil {
+		return nil
+	}
+	for _, group := range mb.groups {
+		if group.ID == *id {
+			return group
+		}
+	}
+	return nil
 }
 
 func (mb *MenuBuilder) getChildGroups(parentID uint) []*models.ImageGroup {

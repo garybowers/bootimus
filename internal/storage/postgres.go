@@ -750,7 +750,7 @@ func (s *PostgresStore) UpdateImageGroup(id uint, group *models.ImageGroup) erro
 }
 
 func (s *PostgresStore) DeleteImageGroup(id uint) error {
-	return s.db.Unscoped().Delete(&models.ImageGroup{}, id).Error
+	return deleteImageGroup(s.db, id)
 }
 
 func (s *PostgresStore) ListImagesByGroup(groupID uint) ([]*models.Image, error) {
