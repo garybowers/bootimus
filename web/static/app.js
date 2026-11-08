@@ -6240,6 +6240,7 @@ function switchPropsTab(tabName) {
         const filename = document.getElementById('image-props-filename').value;
         if (filename) loadPropsImageFiles();
     }
+    if (short === 'drivers') loadImageDrivers();
 }
 
 function getDefaultBootParams(img) {
@@ -6480,6 +6481,7 @@ async function showImagePropertiesModal(filename, opts) {
         img: img,
         initialAutoInstallFile: img.auto_install_file || '',
     };
+    document.getElementById('image-props-drivers-tab').hidden = !isWindowsFamily(img.distro);
     const aiSel = document.getElementById('image-props-autoinstall-file');
     if (aiSel) aiSel.onchange = updateImagePropsWarnings;
     updateImagePropsWarnings();

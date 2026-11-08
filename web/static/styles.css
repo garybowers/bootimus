@@ -831,3 +831,44 @@ body.read-only :is(.main-content, .modal) .btn:not(.read-ok):not(.modal-close):n
 .timeline-detail { color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
 .hw-changed { background: rgba(245, 158, 11, 0.14); border-radius: 3px; padding: 0 3px; }
 @media (max-width: 700px) { .timeline-item { grid-template-columns: 10px 1fr; } .timeline-time { grid-column: 2; } }
+.driver-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.driver-toolbar input[type="file"] {
+    flex: 1 1 200px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.driver-pack {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.driver-pack-details {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.driver-pack-details small {
+    display: block;
+    color: var(--text-secondary);
+}
+
+#props-drivers-content p {
+    overflow-wrap: anywhere;
+}
+
+#image-drivers-status { font-weight: 600; }
+#image-drivers-error { color: var(--danger); white-space: pre-wrap; }
+#image-drivers-reason, #image-drivers-loading-hint { color: var(--text-secondary); }
+.subtab[hidden] { display: none; }
