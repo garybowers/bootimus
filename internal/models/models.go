@@ -139,8 +139,9 @@ type Client struct {
 	IPMIPassword string `json:"ipmi_password,omitempty"`
 	IPMIInsecure bool   `gorm:"default:false" json:"ipmi_insecure,omitempty"`
 
-	AutoInstallFile string    `json:"auto_install_file,omitempty"`
-	Variables       StringMap `gorm:"type:text" json:"variables,omitempty"`
+	AutoInstallFile    string      `json:"auto_install_file,omitempty"`
+	AutoInstallChoices StringSlice `gorm:"type:text" json:"auto_install_choices,omitempty"`
+	Variables          StringMap   `gorm:"type:text" json:"variables,omitempty"`
 
 	InstallState     string     `json:"install_state,omitempty"`
 	InstallImage     string     `json:"install_image,omitempty"`
@@ -391,8 +392,9 @@ type ClientGroup struct {
 	IPMIPassword string `json:"ipmi_password,omitempty"`
 	IPMIInsecure bool   `gorm:"default:false" json:"ipmi_insecure,omitempty"`
 
-	AutoInstallFile string    `json:"auto_install_file,omitempty"`
-	Variables       StringMap `gorm:"type:text" json:"variables,omitempty"`
+	AutoInstallFile    string      `json:"auto_install_file,omitempty"`
+	AutoInstallChoices StringSlice `gorm:"type:text" json:"auto_install_choices,omitempty"`
+	Variables          StringMap   `gorm:"type:text" json:"variables,omitempty"`
 
 	SANTargetID *uint `gorm:"index" json:"san_target_id,omitempty"`
 	BootFromSAN bool  `gorm:"default:false" json:"boot_from_san"`
@@ -515,7 +517,8 @@ type Image struct {
 	WIMPath               string         `json:"wim_path,omitempty"`
 	WIMIndex              int            `gorm:"default:0" json:"wim_index,omitempty"`
 
-	AutoInstallFile string `json:"auto_install_file,omitempty"`
+	AutoInstallFile    string      `json:"auto_install_file,omitempty"`
+	AutoInstallChoices StringSlice `gorm:"type:text" json:"auto_install_choices,omitempty"`
 }
 
 type WIMFile struct {

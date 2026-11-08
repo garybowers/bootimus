@@ -198,7 +198,7 @@ func TestBuildWindowsBootSectionDropsPathTokens(t *testing.T) {
 	}
 
 	out := mb.buildKernelBootSection(img, "Win11_25H2.iso", "Win11_25H2")
-	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot rawbcd quiet\n") {
+	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot rawbcd quiet || goto failed\n") {
 		t.Errorf("expected path tokens stripped from the wimboot line, got:\n%s", out)
 	}
 	if strings.Contains(out, "/opt/bootimus") {
@@ -221,7 +221,7 @@ func TestBuildWindowsBootSectionDropsLinuxParams(t *testing.T) {
 	}
 
 	out := mb.buildKernelBootSection(img, "Win11_25H2.iso", "Win11_25H2")
-	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot gui index=2 pause=quiet\n") {
+	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot gui index=2 pause=quiet || goto failed\n") {
 		t.Errorf("expected only wimboot arguments on the kernel line, got:\n%s", out)
 	}
 }
@@ -237,7 +237,7 @@ func TestBuildWindowsBootSectionBareWimboot(t *testing.T) {
 	}
 
 	out := mb.buildKernelBootSection(img, "Win11_25H2.iso", "Win11_25H2")
-	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot\n") {
+	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot || goto failed\n") {
 		t.Errorf("expected a bare wimboot kernel line, got:\n%s", out)
 	}
 }
@@ -327,7 +327,7 @@ func TestBuildWinPEBootSectionUsesSelectedWIM(t *testing.T) {
 	}
 
 	out := mb.buildKernelBootSection(img, "WinPE_Strelec.iso", "WinPE_Strelec")
-	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot index=2\n") {
+	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot index=2 || goto failed\n") {
 		t.Errorf("expected the WIM index on the wimboot line, got:\n%s", out)
 	}
 	if !strings.Contains(out, "initrd http://10.0.0.1:8080/boot/WinPE_Strelec/iso/SSTR/strelec10x64%20Eng.wim boot.wim\n") {
@@ -352,7 +352,7 @@ func TestBuildWinPEBootSectionKeepsExplicitIndex(t *testing.T) {
 	}
 
 	out := mb.buildKernelBootSection(img, "WinPE_Strelec.iso", "WinPE_Strelec")
-	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot index=3 gui\n") {
+	if !strings.Contains(out, "kernel http://10.0.0.1:8080/wimboot index=3 gui || goto failed\n") {
 		t.Errorf("explicit index parameter should win, got:\n%s", out)
 	}
 }
@@ -365,7 +365,7 @@ func TestBuildWindowsBootSectionAutoUnattendInitrd(t *testing.T) {
 		BootMethod: "kernel",
 		Distro:     "windows",
 	}
-	unattendLine := "initrd http://10.0.0.1:8080/autoinstall/Win11_25H2.iso?mac=aa:bb:cc:dd:ee:ff AutoUnattend.xml\n"
+	unattendLine := "initrd http://10.0.0.1:8080/autoinstall/Win11_25H2.iso?mac=aa:bb:cc:dd:ee:ff AutoUnattend.xml || goto failed\n"
 
 	cases := []struct {
 		name  string
@@ -388,7 +388,7 @@ func TestBuildWindowsBootSectionAutoUnattendInitrd(t *testing.T) {
 			if !c.want {
 				return
 			}
-			kernelAt := strings.Index(out, "kernel http://10.0.0.1:8080/wimboot\n")
+			kernelAt := strings.Index(out, "kernel http://10.0.0.1:8080/wimboot || goto failed\n")
 			unattendAt := strings.Index(out, unattendLine)
 			wimAt := strings.Index(out, "initrd http://10.0.0.1:8080/boot/Win11_25H2/iso/sources/boot.wim boot.wim")
 			if !(kernelAt >= 0 && kernelAt < unattendAt && unattendAt < wimAt) {

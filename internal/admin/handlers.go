@@ -503,6 +503,10 @@ func (h *Handler) CreateClient(w http.ResponseWriter, r *http.Request) {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "MAC address is required"})
 		return
 	}
+	if err := h.validateAutoInstallChoices(client.AutoInstallChoices); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Error: err.Error()})
+		return
+	}
 	if err := autoinstall.ValidateVariableNames(client.Variables); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})
 		return
@@ -566,6 +570,14 @@ func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 	}
 	if aif, ok := updates["auto_install_file"].(string); ok {
 		client.AutoInstallFile = aif
+	}
+	if raw, ok := updates["auto_install_choices"]; ok {
+		choices, err := h.autoInstallChoicesFromPayload(raw)
+		if err != nil {
+			h.sendJSON(w, http.StatusBadRequest, Response{Error: err.Error()})
+			return
+		}
+		client.AutoInstallChoices = choices
 	}
 	if raw, ok := updates["variables"]; ok {
 		vars, err := variablesFromPayload(raw)
@@ -1047,6 +1059,14 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 	if aiFile, ok := updates["auto_install_file"].(string); ok {
 		image.AutoInstallFile = aiFile
 		image.AutoInstallEnabled = aiFile != "" || image.AutoInstallScript != ""
+	}
+	if raw, ok := updates["auto_install_choices"]; ok {
+		choices, err := h.autoInstallChoicesFromPayload(raw)
+		if err != nil {
+			h.sendJSON(w, http.StatusBadRequest, Response{Error: err.Error()})
+			return
+		}
+		image.AutoInstallChoices = choices
 	}
 	if kernelOverride, ok := updates["kernel_override"].(string); ok {
 		resolved, err := h.resolveBootFileOverride(filename, kernelOverride)
@@ -5356,6 +5376,7 @@ func (h *Handler) ImportClientsCSV(w http.ResponseWriter, r *http.Request) {
 			client.IPMIPassword = existing.IPMIPassword
 			client.IPMIInsecure = existing.IPMIInsecure
 			client.AutoInstallFile = existing.AutoInstallFile
+			client.AutoInstallChoices = existing.AutoInstallChoices
 			client.Variables = existing.Variables
 			if err := h.storage.UpdateClient(mac, client); err != nil {
 				errors = append(errors, fmt.Sprintf("row %d (%s): update failed: %v", rowNum, mac, err))
@@ -5442,6 +5463,10 @@ func (h *Handler) CreateClientGroup(w http.ResponseWriter, r *http.Request) {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Group name is required"})
 		return
 	}
+	if err := h.validateAutoInstallChoices(group.AutoInstallChoices); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Error: err.Error()})
+		return
+	}
 	if err := autoinstall.ValidateVariableNames(group.Variables); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})
 		return
@@ -5470,6 +5495,10 @@ func (h *Handler) UpdateClientGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	group.ID = uint(id)
+	if err := h.validateAutoInstallChoices(group.AutoInstallChoices); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Error: err.Error()})
+		return
+	}
 	if err := autoinstall.ValidateVariableNames(group.Variables); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})
 		return

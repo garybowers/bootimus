@@ -17,28 +17,29 @@ import (
 )
 
 type MenuBuilder struct {
-	images            []models.Image
-	groups            []*models.ImageGroup
-	theme             *models.MenuTheme
-	macAddress        string
-	serverAddr        string
-	httpPort          int
-	nfsPort           int
-	groupStack        []uint
-	enabledTools      []tools.EnabledTool
-	nextBootImageID   uint
-	profileManager    *profiles.Manager
-	autoInstallTypes  map[uint]string
-	forceLocalDefault bool
-	remoteBase        string
-	remoteImages      map[uint]bool
-	diskBoot          *diskimage.Boot
-	sanTarget         *models.SANTarget
-	sanDefault        bool
-	nextBootSAN       bool
-	profileImageID    uint
-	bootAuthURL       string
-	bootAccess        bootMenuAccess
+	images             []models.Image
+	groups             []*models.ImageGroup
+	theme              *models.MenuTheme
+	macAddress         string
+	serverAddr         string
+	httpPort           int
+	nfsPort            int
+	groupStack         []uint
+	enabledTools       []tools.EnabledTool
+	nextBootImageID    uint
+	profileManager     *profiles.Manager
+	autoInstallTypes   map[uint]string
+	autoInstallChoices map[uint][]string
+	forceLocalDefault  bool
+	remoteBase         string
+	remoteImages       map[uint]bool
+	diskBoot           *diskimage.Boot
+	sanTarget          *models.SANTarget
+	sanDefault         bool
+	nextBootSAN        bool
+	profileImageID     uint
+	bootAuthURL        string
+	bootAccess         bootMenuAccess
 }
 
 func (s *Server) resolveSANTarget(client *models.Client) (*models.SANTarget, bool) {
@@ -117,35 +118,38 @@ func (s *Server) generateIPXEMenuWithAccess(images []models.Image, macAddress st
 	}
 
 	autoInstallTypes := make(map[uint]string)
+	autoInstallChoices := make(map[uint][]string)
 	for i := range images {
 		if images[i].BootMethod != "kernel" {
 			continue
 		}
+		autoInstallChoices[images[i].ID] = s.autoInstallChoices(&images[i], client)
 		if t := s.resolveAutoInstallType(&images[i], client); t != "" {
 			autoInstallTypes[images[i].ID] = t
 		}
 	}
 
 	mb := &MenuBuilder{
-		images:            images,
-		groups:            groups,
-		theme:             theme,
-		macAddress:        macAddress,
-		serverAddr:        s.config.ServerAddr,
-		httpPort:          s.config.HTTPPort,
-		nfsPort:           s.config.NFSPort,
-		enabledTools:      enabledTools,
-		nextBootImageID:   nbID,
-		profileManager:    s.config.ProfileManager,
-		autoInstallTypes:  autoInstallTypes,
-		forceLocalDefault: client != nil && client.EnrollmentState == models.EnrollmentStateInstalled,
-		diskBoot:          diskBoot,
-		sanTarget:         sanTarget,
-		sanDefault:        sanDefault,
-		nextBootSAN:       nextBootSAN,
-		profileImageID:    profileImageID,
-		bootAuthURL:       s.bootAuthenticationURL(),
-		bootAccess:        access,
+		images:             images,
+		groups:             groups,
+		theme:              theme,
+		macAddress:         macAddress,
+		serverAddr:         s.config.ServerAddr,
+		httpPort:           s.config.HTTPPort,
+		nfsPort:            s.config.NFSPort,
+		enabledTools:       enabledTools,
+		nextBootImageID:    nbID,
+		profileManager:     s.config.ProfileManager,
+		autoInstallTypes:   autoInstallTypes,
+		autoInstallChoices: autoInstallChoices,
+		forceLocalDefault:  client != nil && client.EnrollmentState == models.EnrollmentStateInstalled,
+		diskBoot:           diskBoot,
+		sanTarget:          sanTarget,
+		sanDefault:         sanDefault,
+		nextBootSAN:        nextBootSAN,
+		profileImageID:     profileImageID,
+		bootAuthURL:        s.bootAuthenticationURL(),
+		bootAccess:         access,
 	}
 	mb.remoteBase, mb.remoteImages = s.remoteImages(images)
 
@@ -406,6 +410,7 @@ func (mb *MenuBuilder) buildImageBootSections() string {
 			sb.WriteString(mb.buildImagePasswordGate(img.ID))
 			continue
 		}
+		sb.WriteString(mb.buildAutoInstallChoiceMenu(&img))
 		sb.WriteString(fmt.Sprintf("echo Booting %s...\n", img.Name))
 
 		encodedFilename := encodePathSegments(img.Filename)
@@ -497,9 +502,12 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 			bootParams = " " + bootParams
 		}
 		sb.WriteString("echo Loading Windows boot files via wimboot...\n")
-		sb.WriteString(fmt.Sprintf("kernel %s/wimboot%s\n", localURL, bootParams))
-		if mb.autoInstallTypes[img.ID] == "autounattend" {
-			sb.WriteString(fmt.Sprintf("initrd %s/autoinstall/%s?mac=%s AutoUnattend.xml\n", localURL, encodedFilename, mb.macAddress))
+		sb.WriteString("imgfree\n")
+		sb.WriteString(fmt.Sprintf("kernel %s/wimboot%s || goto failed\n", localURL, bootParams))
+		if len(mb.autoInstallChoices[img.ID]) > 0 {
+			sb.WriteString(fmt.Sprintf("initrd %s/autoinstall/%s?mac=%s&choice=${bootimus_answer} AutoUnattend.xml || goto failed\n", localURL, encodedFilename, mb.macAddress))
+		} else if mb.autoInstallTypes[img.ID] == "autounattend" {
+			sb.WriteString(fmt.Sprintf("initrd %s/autoinstall/%s?mac=%s AutoUnattend.xml || goto failed\n", localURL, encodedFilename, mb.macAddress))
 		}
 		// Ship only boot.wim and let wimboot synthesize the ramdisk BCD +
 		// boot.sdi (the documented minimal setup). Feeding the ISO's DVD BCD
