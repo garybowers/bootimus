@@ -845,6 +845,8 @@ body.read-only :is(.main-content, .modal) .btn:not(.read-ok):not(.modal-close):n
     max-width: 100%;
 }
 
+.driver-actions { margin-top: 16px; }
+
 .driver-pack {
     display: flex;
     align-items: center;

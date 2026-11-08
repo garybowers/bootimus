@@ -2522,13 +2522,15 @@
                     <label for="image-driver-files" data-i18n="drivers.files">Driver packs</label>
                     <input type="file" id="image-driver-files" accept=".zip,application/zip" multiple>
                     <button type="button" class="btn" id="image-drivers-upload" onclick="uploadImageDrivers()" data-i18n="drivers.upload">Upload packs</button>
-                    <button type="button" class="btn btn-primary" id="image-drivers-apply" onclick="applyImageDrivers()" data-i18n="drivers.apply" disabled>Apply changes</button>
                 </div>
                 <p id="image-drivers-status" role="status" aria-live="polite"></p>
                 <p id="image-drivers-error" role="alert"></p>
                 <p id="image-drivers-reason"></p>
                 <p id="image-drivers-loading-hint"></p>
                 <div id="image-drivers-list"></div>
+                <div class="driver-actions admin-only">
+                    <button type="button" class="btn btn-primary" id="image-drivers-apply" onclick="applyImageDrivers()" data-i18n="drivers.apply" disabled>Apply changes</button>
+                </div>
             </div>
 
             <div id="image-props-progress" style="display: none; margin-top: 20px;">
