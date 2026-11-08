@@ -172,6 +172,7 @@ func copyImageMetadata(dst *models.Image, src models.Image, groupID *uint, bootP
 	dst.Size = src.Size
 	dst.Enabled = src.Enabled
 	dst.Public = src.Public
+	dst.BootMenuExempt = src.BootMenuExempt
 	dst.BootPasswordRequired = src.BootPasswordRequired
 	dst.BootPasswordHash = bootPasswordHash
 	dst.BootPasswordRevision = src.BootPasswordRevision
