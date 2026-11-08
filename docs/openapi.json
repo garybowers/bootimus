@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Bootimus API",
-    "version": "dev",
+    "version": "0.1.79",
     "description": "REST API of the Bootimus PXE and HTTP boot server. Responses are JSON of the form {success, message, error, data}. Endpoints marked x-bootimus-readonly are available to read-only users; all others need an admin token."
   },
   "tags": [
