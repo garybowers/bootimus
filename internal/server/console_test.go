@@ -150,10 +150,15 @@ func TestConsoleStreamsOverWebSocket(t *testing.T) {
 		t.Fatal("expected the socket to close after the console ended")
 	}
 	deadline := time.Now().Add(3 * time.Second)
-	for env.server.consoles.active["aa:bb:cc:dd:ee:10"] && time.Now().Before(deadline) {
+	sessionActive := func() bool {
+		env.server.consoles.mu.Lock()
+		defer env.server.consoles.mu.Unlock()
+		return env.server.consoles.active["aa:bb:cc:dd:ee:10"]
+	}
+	for sessionActive() && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if env.server.consoles.active["aa:bb:cc:dd:ee:10"] {
+	if sessionActive() {
 		t.Fatal("session was not released")
 	}
 }
