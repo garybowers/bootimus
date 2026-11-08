@@ -155,6 +155,16 @@ func (m *Manager) PatchStartnetCmd(wimPath, content string) error {
 	return nil
 }
 
+func (m *Manager) AddDirectory(wimPath string, index int, source, target string) error {
+	quote := func(value string) string { return `"` + strings.ReplaceAll(value, `"`, `\"`) + `"` }
+	cmd := exec.Command(m.wimlibPath, "update", wimPath, strconv.Itoa(index))
+	cmd.Stdin = strings.NewReader("add " + quote(source) + " " + quote(target) + "\n")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("cannot add drivers to WIM image %d: %w\n%s", index, err, output)
+	}
+	return nil
+}
+
 func writeTempCRLF(pattern, content string) (string, error) {
 	f, err := os.CreateTemp("", pattern)
 	if err != nil {

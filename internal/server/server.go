@@ -1849,6 +1849,7 @@ func (s *Server) setupAdminInterface(mux *http.ServeMux) {
 	mux.HandleFunc("/api/drivers/upload", adminWrap(adminHandler.UploadDriverPack))
 	mux.HandleFunc("/api/drivers/delete", adminWrap(adminHandler.DeleteDriverPack))
 	mux.HandleFunc("/api/drivers/rebuild", adminWrap(adminHandler.RebuildImageBootWim))
+	mux.HandleFunc("/api/drivers/status", readWrap(adminHandler.DriverBuildStatus))
 
 	mux.HandleFunc("/api/groups", readWrap(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
