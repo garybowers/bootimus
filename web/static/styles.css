@@ -831,3 +831,17 @@ body.read-only :is(.main-content, .modal) .btn:not(.read-ok):not(.modal-close):n
 .timeline-detail { color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
 .hw-changed { background: rgba(245, 158, 11, 0.14); border-radius: 3px; padding: 0 3px; }
 @media (max-width: 700px) { .timeline-item { grid-template-columns: 10px 1fr; } .timeline-time { grid-column: 2; } }
+
+.autoinstall-choices {
+    min-width: 0;
+    margin: 16px 0;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+.autoinstall-choices legend { font-weight: 600; font-size: 13px; }
+.autoinstall-choices p { margin: 0 0 10px; color: var(--text-secondary); font-size: 13px; }
+.autoinstall-choices > div { max-height: 220px; overflow-y: auto; }
+.autoinstall-choices .checkbox-group { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; }
+.autoinstall-choices input[type="checkbox"] { width: auto; flex: 0 0 auto; margin-top: 3px; }
+.autoinstall-choices span { overflow-wrap: anywhere; }

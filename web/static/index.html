@@ -1446,6 +1446,11 @@
                     </select>
                     <small style="color: var(--text-secondary);">Override the installation config for this machine specifically. Leave blank to inherit from the client group, or fall back to the image's default.</small>
                 </div>
+                <fieldset class="autoinstall-choices" id="edit-client-answer-files">
+                    <legend>Windows answer files offered at boot</legend>
+                    <p>These Windows answer files replace the group or image choices for this client. Leave all unticked to inherit. A configured list waits for a choice, including automatic boots. A configured default is also offered.</p>
+                    <div id="edit-client-autoinstall-choices"></div>
+                </fieldset>
                 <div class="form-group">
                     <label data-i18n="variables.label">Auto-install variables</label>
                     <div id="edit-client-variables" class="kv-editor"></div>
@@ -2494,6 +2499,11 @@
                     </select>
                     <small style="color: var(--text-secondary);" data-i18n="props.field.autoinstall_hint">Only files matching this image's distro are shown. Manage files in the Auto-Install section.</small>
                 </div>
+                <fieldset class="autoinstall-choices" id="image-props-answer-files">
+                    <legend>Windows answer files offered at boot</legend>
+                    <p>Select the Windows answer files to offer after choosing this image. Leave all unticked to use the existing default automatically. A configured list waits for a choice, including automatic boots. A configured default is also offered.</p>
+                    <div id="image-props-autoinstall-choices"></div>
+                </fieldset>
                 <input type="hidden" id="image-props-autoinstall-enabled">
                 <input type="hidden" id="image-props-autoinstall-type">
                 <input type="hidden" id="image-props-autoinstall-script">
@@ -2761,6 +2771,11 @@
                     </select>
                     <small style="color: var(--text-secondary);">Default installation config for every machine in this group. Individual clients can still override.</small>
                 </div>
+                <fieldset class="autoinstall-choices" id="cg-answer-files">
+                    <legend>Windows answer files offered at boot</legend>
+                    <p>These Windows answer files replace the image choices for this group. Leave all unticked to inherit. A configured list waits for a choice, including automatic boots. A configured default is also offered.</p>
+                    <div id="cg-autoinstall-choices"></div>
+                </fieldset>
                 <div class="form-group">
                     <label data-i18n="variables.label">Auto-install variables</label>
                     <div id="cg-variables" class="kv-editor"></div>
