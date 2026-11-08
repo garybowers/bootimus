@@ -73,8 +73,8 @@ var APISections = []APISection{
 	}},
 	{Tag: "Clients", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/clients", Summary: "List all clients, or one when mac is given.", Params: []APIParam{{Name: "mac", In: "query", Description: "MAC address of a single client"}}, ReadOnly: true},
-		{Method: "POST", Path: "/api/clients", Summary: "Create a static client.", Body: "{mac_address, name, description, enabled, ...}"},
-		{Method: "PUT", Path: "/api/clients", Summary: "Partial update; any client field is accepted.", Params: []APIParam{qMAC("MAC address of the client")}, Body: "{name, description, enabled, ...}"},
+		{Method: "POST", Path: "/api/clients", Summary: "Create a static client.", Body: "{mac_address, name, description, auto_install_choices[], enabled, ...}"},
+		{Method: "PUT", Path: "/api/clients", Summary: "Partial update; any client field is accepted.", Params: []APIParam{qMAC("MAC address of the client")}, Body: "{name, description, auto_install_choices[], enabled, ...}"},
 		{Method: "DELETE", Path: "/api/clients", Summary: "Delete a client.", Params: []APIParam{qMAC("MAC address of the client")}},
 		{Method: "POST", Path: "/api/clients/wake", Summary: "Send a Wake-on-LAN packet.", Params: []APIParam{qMAC("MAC address of the client")}},
 		{Method: "POST", Path: "/api/clients/next-boot", Summary: "Set a one-shot next-boot image, or san:<id> to boot from a SAN target once.", Params: []APIParam{qMAC("MAC address of the client")}, Body: "{filename}"},
@@ -113,9 +113,9 @@ var APISections = []APISection{
 	}},
 	{Tag: "Client Groups", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/client-groups", Summary: "List all client groups.", ReadOnly: true},
-		{Method: "POST", Path: "/api/client-groups", Summary: "Create a client group.", Body: "{name, description, ...}"},
+		{Method: "POST", Path: "/api/client-groups", Summary: "Create a client group.", Body: "{name, description, auto_install_choices[], ...}"},
 		{Method: "GET", Path: "/api/client-groups/get", Summary: "Get one client group.", Params: []APIParam{qID("Group ID")}, ReadOnly: true},
-		{Method: "PUT", Path: "/api/client-groups/update", Summary: "Update a client group.", Params: []APIParam{qID("Group ID")}, Body: "{name, description, ...}"},
+		{Method: "PUT", Path: "/api/client-groups/update", Summary: "Update a client group.", Params: []APIParam{qID("Group ID")}, Body: "{name, description, auto_install_choices[], ...}"},
 		{Method: "DELETE", Path: "/api/client-groups/delete", Summary: "Delete a client group.", Params: []APIParam{qID("Group ID")}},
 		{Method: "POST", Path: "/api/client-groups/membership", Summary: "Set the members of a client group.", Body: "{group_id, client_macs[]}"},
 		{Method: "POST", Path: "/api/client-groups/wake", Summary: "Wake all members of a group.", Params: []APIParam{qID("Group ID")}},
@@ -124,7 +124,7 @@ var APISections = []APISection{
 	}},
 	{Tag: "Images", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/images", Summary: "List all images, or one when filename is given.", Params: []APIParam{{Name: "filename", In: "query", Description: "ISO filename of a single image"}}, ReadOnly: true},
-		{Method: "PUT", Path: "/api/images", Summary: "Partial update of an image. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.", Params: []APIParam{qFilename("ISO filename")}, Body: "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, kernel_override, initrd_override, boot_password?}"},
+		{Method: "PUT", Path: "/api/images", Summary: "Partial update of an image. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.", Params: []APIParam{qFilename("ISO filename")}, Body: "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, auto_install_choices[], kernel_override, initrd_override, boot_password?}"},
 		{Method: "DELETE", Path: "/api/images", Summary: "Delete an image.", Params: []APIParam{qFilename("ISO filename"), {Name: "delete_file", In: "query", Description: "true to also remove the ISO from disk"}}},
 		{Method: "POST", Path: "/api/images/upload", Summary: "Upload an ISO or unified kernel image.", Body: "file, public, description", Multipart: true},
 		{Method: "POST", Path: "/api/images/download", Summary: "Download an ISO from a URL asynchronously, verifying it against a SHA-256 when one is given or published alongside.", Body: "{url, filename, description, sha256, checksum_url, catalogue_id, catalogue_release}"},
