@@ -635,6 +635,7 @@ async function loadServerInfo() {
                 cachedWindowsSMBPatcherAvailable = patcher.startsWith('Available');
             }
             renderServerInfo(data.data);
+            updateImagePropsWarnings();
         }
     } catch (err) {
         document.getElementById('server-info').innerHTML = '<p class="alert alert-error">Failed to load server info</p>';
@@ -648,7 +649,7 @@ let cachedHTTPPort = 8080;
 
 // Cached from /api/server-info so the image properties modal knows whether
 // to offer the "Patch SMB" button.
-let cachedWindowsSMBActive = false;
+let cachedWindowsSMBActive = null;
 let cachedWindowsSMBPatcherAvailable = true;
 
 async function powerClient(action) {
@@ -6463,11 +6464,6 @@ async function showImagePropertiesModal(filename, opts) {
         netbootBtn.style.display = 'none';
     }
 
-    const patchSmbBtn = document.getElementById('image-props-patch-smb-btn');
-    const smbEligible = cachedWindowsSMBActive && img.extracted && img.distro === 'windows';
-    patchSmbBtn.style.display = smbEligible ? 'inline-block' : 'none';
-    patchSmbBtn.textContent = img.smb_install_enabled ? t('props.action.re_patch_smb') : t('props.action.patch_smb');
-
     const unpatchSmbBtn = document.getElementById('image-props-unpatch-smb-btn');
     const unpatchVisible = img.extracted && img.distro === 'windows' && img.smb_install_enabled;
     unpatchSmbBtn.style.display = unpatchVisible ? 'inline-block' : 'none';
@@ -6532,6 +6528,10 @@ async function populateBootFileOverrides(img) {
 function updateImagePropsWarnings() {
     if (!_imagePropsState) return;
     const img = _imagePropsState.img;
+    const patchSmbBtn = document.getElementById('image-props-patch-smb-btn');
+    const smbEligible = cachedWindowsSMBActive && img.extracted && img.distro === 'windows';
+    patchSmbBtn.style.display = smbEligible ? 'inline-block' : 'none';
+    patchSmbBtn.textContent = img.smb_install_enabled ? t('props.action.re_patch_smb') : t('props.action.patch_smb');
     const fname = img.filename || '';
     const looksWindows = isWindowsFamily(img.distro) || filenameLooksWindows(fname);
 
@@ -6546,7 +6546,7 @@ function updateImagePropsWarnings() {
     document.getElementById('image-props-warn-netboot').style.display = needsNetboot ? '' : 'none';
 
     // 2. Windows image but the server SMB share isn't enabled.
-    const smbServerOff = looksWindows && !cachedWindowsSMBActive;
+    const smbServerOff = looksWindows && cachedWindowsSMBActive === false;
     document.getElementById('image-props-warn-smb-server').style.display = smbServerOff ? '' : 'none';
 
     // 3. Windows image, SMB enabled, but wimlib-imagex isn't installed —

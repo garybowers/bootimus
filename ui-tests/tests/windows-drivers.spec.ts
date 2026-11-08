@@ -97,3 +97,27 @@ test('read-only users can inspect driver packs without changing them', async ({ 
   await page.locator('#images-table tr[onclick]').getByText(filename, { exact: true }).click();
   await page.locator('#image-props-delete-btn').click();
 });
+
+test('image guidance waits for server information and updates an open window', async ({ page }) => {
+  let release!: () => void;
+  const delayed = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/server-info', async route => {
+    const response = await route.fetch();
+    await delayed;
+    await route.fulfill({ response });
+  });
+  try {
+    const filename = await windowsImage(page);
+    await expect(page.locator('#image-props-warn-smb-server')).toBeHidden();
+    release();
+    // This disposable server has SMB disabled. Its late response must update
+    // the already open window without asking the user to reopen it.
+    await expect(page.locator('#image-props-warn-smb-server')).toBeVisible();
+    await page.setViewportSize({ width: 420, height: 900 });
+    expect(await page.locator('#image-props-warn-smb-server').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
+    await page.locator('#image-props-delete-btn').click();
+    await expect(page.locator('#images-table')).not.toContainText(filename);
+  } finally {
+    release();
+  }
+});

@@ -604,11 +604,11 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
     background: rgba(245, 158, 11, 0.08);
     border: 1px solid rgba(245, 158, 11, 0.35);
     border-left: 3px solid var(--warning);
-    display: flex; align-items: center; gap: 12px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     font-size: 14px; color: var(--text-primary);
     margin-bottom: 12px;
 }
-.guide-warning .gw-text { flex: 1; }
+.guide-warning .gw-text { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 .guide-warning .gw-text strong { color: var(--warning-hover); }
 .guide-warning .btn { white-space: nowrap; }
 
