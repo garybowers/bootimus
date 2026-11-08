@@ -977,6 +977,12 @@
                         <label class="checkbox-group"><input type="checkbox" id="theme-remove-boot-password"> Remove the boot menu password</label>
                     </div>
                     <div class="form-group">
+                        <label class="checkbox-group"><input type="checkbox" id="theme-locked-local-boot" onchange="document.getElementById('theme-locked-timeout').disabled = !this.checked"> Default to local disk on the locked menu</label>
+                        <label for="theme-locked-timeout">Locked menu timeout (seconds)</label>
+                        <input type="number" id="theme-locked-timeout" min="0" max="86400" value="0" required disabled>
+                        <small>Only applies before the global password is entered. Set a timeout to boot the local disk automatically; 0 waits indefinitely. Any key stops the countdown. Pending network boots remain queued until authentication.</small>
+                    </div>
+                    <div class="form-group">
                         <label>Menu Timeout (seconds)</label>
                         <input type="number" id="theme-timeout" min="0" value="30" placeholder="30">
                         <small style="color: var(--text-secondary);">Time before auto-booting the default entry. Set to 0 to disable (wait forever).</small>
