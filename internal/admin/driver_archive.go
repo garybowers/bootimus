@@ -2,6 +2,8 @@ package admin
 
 import (
 	"archive/zip"
+	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +17,32 @@ const (
 	maxDriverExpanded = 1 << 30
 	maxDriverFiles    = 10000
 )
+
+// Hash the stored file too, so packs uploaded before duplicate checking work
+// without a metadata migration. Size is only a shortcut; names are irrelevant.
+func driverArchiveMatches(filename string, size int64, checksum []byte) (bool, error) {
+	file, err := os.Open(filename)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		return false, fmt.Errorf("not a regular file")
+	}
+	if info.Size() != size {
+		return false, nil
+	}
+	hash := sha256.New()
+	written, err := io.Copy(hash, io.LimitReader(file, size+1))
+	return err == nil && written == size && bytes.Equal(hash.Sum(nil), checksum), err
+}
 
 // A pack keeps its original directory structure. Windows treats names as
 // case-insensitive, even when the server's filesystem does not.

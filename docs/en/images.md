@@ -153,6 +153,8 @@ OpenBSD and NetBSD do not boot from a Linux-style kernel and initrd. Each ships 
 
 Open a Windows image and select **Drivers**. Upload ZIP packs containing the INF files and all their supporting files, keeping the vendor's directory structure. Each ZIP may be up to 500 MiB, with at most 10,000 entries and 1 GiB of expanded data. Bootimus checks the archive, but Windows still decides whether the drivers match the hardware and meet its signing requirements.
 
+The same ZIP cannot be uploaded twice to an image, even under a different filename. Other images can use the same pack. Remove any existing duplicates from the list, then apply the changes.
+
 Select **Apply changes** after adding or removing packs. Uploading or removing a pack alone does not change the boot image. The tab shows pending, applying, applied or failed status, including failures after a server restart. Status is also available at `GET /api/drivers/status?imageId=...`; `POST /api/drivers/rebuild?imageId=...` returns HTTP 202 when a rebuild is accepted.
 
 Applying drivers requires an extracted `sources/boot.wim` and `wimtools` on the server. Bootimus rebuilds from its original WIM backup, keeps packs in separate subdirectories under `X:\drivers`, and replaces the active WIM only after a successful rebuild. Removing the last pack restores the original contents. Existing SMB startup scripts are reapplied. If an older image has no original backup, re-extract it before changing its applied drivers.

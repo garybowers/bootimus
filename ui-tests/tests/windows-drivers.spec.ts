@@ -38,6 +38,11 @@ test('Windows driver packs upload, persist and require applying removals', async
   await page.getByRole('button', { name: 'Upload packs', exact: true }).click();
   await expect(page.locator('#image-drivers-status')).toHaveText('Pending changes');
   await expect(page.locator('#image-drivers-list')).toContainText(name);
+  await page.locator('#image-driver-files').setInputFiles({ name: 'renamed.zip', mimeType: 'application/zip', buffer: driverZIP });
+  await page.getByRole('button', { name: 'Upload packs', exact: true }).click();
+  await expect(page.locator('#image-drivers-error')).toContainText('already uploaded');
+  await expect(page.locator('#image-drivers-list .driver-pack')).toHaveCount(1);
+  await expect(page.locator('#image-drivers-status')).toHaveText('Pending changes');
   await expect(page.getByRole('button', { name: 'Apply changes', exact: true })).toBeDisabled();
   expect(await page.locator('#props-drivers-content').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
   await page.setViewportSize({ width: 1280, height: 900 });

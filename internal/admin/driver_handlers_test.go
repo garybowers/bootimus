@@ -62,7 +62,7 @@ func readDriverState(t *testing.T, h *Handler, id uint) driverBuildState {
 
 func TestDriverUploadRemovalAndPersistentStatus(t *testing.T) {
 	handler, image := newDriverHandler(t)
-	for _, payload := range []string{"first", "second"} {
+	for _, payload := range []string{"first", "other"} {
 		response := uploadTestDriver(t, handler, image, "same-name.zip", driverZIP(t, driverZipEntry{"nic.inf", "INF", 0}, driverZipEntry{"nic.sys", payload, 0}))
 		if response.Code != http.StatusOK {
 			t.Fatal(response.Code, response.Body.String())
@@ -103,6 +103,54 @@ func TestDriverUploadRemovalAndPersistentStatus(t *testing.T) {
 	}
 	if state := readDriverState(t, restarted, image.ID); state.Status != "failed" || state.Error == "" {
 		t.Fatal("interrupted build not reported", state)
+	}
+}
+
+func TestDriverUploadRejectsDuplicateContent(t *testing.T) {
+	h, image := newDriverHandler(t)
+	content := driverZIP(t, driverZipEntry{"nic.inf", "INF", 0}, driverZipEntry{"nic.sys", "driver", 0})
+	response := uploadTestDriver(t, h, image, "nic.zip", content)
+	if response.Code != http.StatusOK {
+		t.Fatal(response.Body.String())
+	}
+	packs, _ := h.storage.ListDriverPacksByImage(image.ID)
+	if err := h.saveDriverState(image.ID, driverBuildState{Status: "applied", Revision: driverRevision(packs)}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(h.driverStatePath(image.ID))
+	// A new handler has no in-memory record of the existing upload.
+	restarted := &Handler{storage: h.storage, dataDir: h.dataDir, isoDir: h.isoDir}
+	for _, name := range []string{"nic.zip", "renamed.zip"} {
+		response := uploadTestDriver(t, restarted, image, name, content)
+		if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "already uploaded") {
+			t.Fatal(response.Code, response.Body.String())
+		}
+	}
+	after, _ := os.ReadFile(h.driverStatePath(image.ID))
+	if !bytes.Equal(before, after) {
+		t.Fatal("rejected duplicate changed the build status")
+	}
+	packs, err := h.storage.ListDriverPacksByImage(image.ID)
+	files, readErr := os.ReadDir(filepath.Join(h.isoDir, "windows/drivers"))
+	if err != nil || readErr != nil || len(packs) != 1 || len(files) != 1 {
+		t.Fatal("duplicate left metadata or an archive", len(packs), len(files), err, readErr)
+	}
+	// The same driver may be needed by another Windows image.
+	other := &models.Image{Name: "Other Windows", Filename: "other.iso", Distro: "windows"}
+	if err := h.storage.CreateImage(other); err != nil {
+		t.Fatal(err)
+	}
+	if response := uploadTestDriver(t, h, other, "nic.zip", content); response.Code != http.StatusOK {
+		t.Fatal("duplicate check crossed image boundaries", response.Body.String())
+	}
+	// Removing an unapplied pack permits uploading it again.
+	response = httptest.NewRecorder()
+	h.DeleteDriverPack(response, httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/drivers/delete?id=%d", packs[0].ID), nil))
+	if response.Code != http.StatusOK {
+		t.Fatal(response.Body.String())
+	}
+	if response := uploadTestDriver(t, h, image, "nic.zip", content); response.Code != http.StatusOK {
+		t.Fatal("removed pack prevented re-upload", response.Body.String())
 	}
 }
 

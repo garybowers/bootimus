@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
@@ -72,7 +73,8 @@ func (h *Handler) UploadDriverPack(w http.ResponseWriter, r *http.Request) {
 			os.Remove(output.Name())
 		}
 	}()
-	written, err := io.Copy(output, io.LimitReader(file, maxDriverUpload+1))
+	checksum := sha256.New()
+	written, err := io.Copy(io.MultiWriter(output, checksum), io.LimitReader(file, maxDriverUpload+1))
 	if err != nil || written > maxDriverUpload {
 		h.sendJSON(w, http.StatusBadRequest, Response{Error: "Cannot save driver pack; the ZIP limit is 500 MiB"})
 		return
@@ -84,6 +86,26 @@ func (h *Handler) UploadDriverPack(w http.ResponseWriter, r *http.Request) {
 	if err := unpackDriverArchive(output.Name(), ""); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Error: err.Error()})
 		return
+	}
+	packs, err := h.storage.ListDriverPacksByImage(image.ID)
+	if err != nil {
+		h.sendJSON(w, http.StatusInternalServerError, Response{Error: err.Error()})
+		return
+	}
+	for _, existing := range packs {
+		if filepath.Base(existing.Filename) != existing.Filename {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Error: "Invalid stored driver pack filename"})
+			return
+		}
+		matches, err := driverArchiveMatches(filepath.Join(directory, existing.Filename), written, checksum.Sum(nil))
+		if err != nil {
+			h.sendJSON(w, http.StatusInternalServerError, Response{Error: fmt.Sprintf("Cannot check existing driver pack %q: %v", existing.OriginalName, err)})
+			return
+		}
+		if matches {
+			h.sendJSON(w, http.StatusConflict, Response{Error: fmt.Sprintf("This ZIP is already uploaded to this image as %q", existing.OriginalName)})
+			return
+		}
 	}
 	if err := h.saveDriverState(image.ID, driverBuildState{Status: "pending"}); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Error: err.Error()})
