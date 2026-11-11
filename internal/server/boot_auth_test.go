@@ -25,7 +25,7 @@ func TestBootPasswordScriptsFreeCompletedResponses(test *testing.T) {
 	builder := testMenuBuilder(nil)
 	builder.bootAuthURL = server.bootAuthenticationURL()
 	scripts := map[string]string{
-		"menu":       server.bootPasswordMenu(bootTestMAC),
+		"menu":       server.bootPasswordMenu(bootTestMAC, nil),
 		"image gate": builder.buildImagePasswordGate(image.ID),
 		"image form": server.imagePasswordForm(bootTestMAC, image.ID),
 	}

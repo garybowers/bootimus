@@ -257,7 +257,7 @@ var APISections = []APISection{
 	}},
 	{Tag: "Settings", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/theme", Summary: "Boot menu theme and defaults.", ReadOnly: true},
-		{Method: "PUT", Path: "/api/theme", Summary: "Update the boot menu theme. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.", Body: "{title, menu_timeout, default_menu_item, boot_password?}"},
+		{Method: "PUT", Path: "/api/theme", Summary: "Update the boot menu theme. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces. Locked-menu local boot is opt-in; its timeout is 0 (wait) or 1-86400 seconds. Omitted locked-menu fields are preserved.", Body: "{title, menu_timeout, default_menu_item, boot_password?, locked_menu_local_boot?, locked_menu_timeout?}"},
 		{Method: "GET", Path: "/api/backup/export", Summary: "Download a tar.gz backup of the database and data directory."},
 		{Method: "POST", Path: "/api/backup/import", Summary: "Stage a backup archive for restore on the next restart.", Body: "backup=@bootimus-backup.tar.gz", Multipart: true},
 		{Method: "GET", Path: "/api/backup/import", Summary: "Whether a restore is staged."},

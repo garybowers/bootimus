@@ -5525,10 +5525,10 @@
         "tags": [
           "Settings"
         ],
-        "summary": "Update the boot menu theme. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.",
+        "summary": "Update the boot menu theme. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces. Locked-menu local boot is opt-in; its timeout is 0 (wait) or 1-86400 seconds. Omitted locked-menu fields are preserved.",
         "operationId": "putApiTheme",
         "requestBody": {
-          "description": "{title, menu_timeout, default_menu_item, boot_password?}",
+          "description": "{title, menu_timeout, default_menu_item, boot_password?, locked_menu_local_boot?, locked_menu_timeout?}",
           "required": true,
           "content": {
             "application/json": {

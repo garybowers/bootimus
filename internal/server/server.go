@@ -2350,10 +2350,10 @@ func (s *Server) renderBootMenuWithAccess(macAddress, remoteAddr string, commit 
 		}
 		if (theme.BootPasswordRequired || theme.BootPasswordHash != "") && !access.global {
 			if theme.BootPasswordHash == "" {
-				result.Kind, result.Script = "unavailable", bootProtectionUnavailable()
+				result.Kind, result.Script = "unavailable", bootProtectionUnavailableWithTheme(theme)
 				return result
 			}
-			result.Kind, result.Script = "locked", s.bootPasswordMenu(macAddress)
+			result.Kind, result.Script = "locked", s.bootPasswordMenu(macAddress, theme)
 			return result
 		}
 	}
