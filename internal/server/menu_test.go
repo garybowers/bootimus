@@ -398,6 +398,47 @@ func TestBuildWindowsBootSectionAutoUnattendInitrd(t *testing.T) {
 	}
 }
 
+func TestWindowsInitrdNamesWithLongSourcePaths(t *testing.T) {
+	const filename = "Windows11_Client_x64_en-us_26300_9457.iso"
+	for _, tc := range []struct {
+		name       string
+		hasDefault bool
+		choices    []string
+	}{
+		{"configured default", true, nil},
+		{"chooser with default", true, []string{"windows/kiosk.xml"}},
+		{"chooser without default", false, []string{"windows/kiosk.xml"}},
+	} {
+		for _, wimPath := range []string{"", "rescue/Windows recovery environment amd64.wim"} {
+			t.Run(tc.name+"/"+wimPath, func(t *testing.T) {
+				mb := testMenuBuilder(nil)
+				if tc.hasDefault {
+					mb.autoInstallTypes = map[uint]string{9: "autounattend"}
+				}
+				mb.autoInstallChoices = map[uint][]string{9: tc.choices}
+				img := &models.Image{ID: 9, Filename: filename, Distro: "windows", WIMPath: wimPath}
+				out := mb.buildKernelBootSection(img, filename, "windows")
+				answerURL := "http://10.0.0.1:8080/autoinstall/" + filename + "?mac=" + mb.macAddress
+				if len(tc.choices) > 0 {
+					answerURL += "&choice=${bootimus_answer}"
+				}
+				if !strings.Contains(out, "initrd --name AutoUnattend.xml "+answerURL+" AutoUnattend.xml || goto failed\n") {
+					t.Errorf("answer file must keep its UEFI name, BIOS filename and selection URL:\n%s", out)
+				}
+				wimPaths := []string{"sources/boot.wim", "SOURCES/BOOT.WIM"}
+				if wimPath != "" {
+					wimPaths = []string{"rescue/Windows%20recovery%20environment%20amd64.wim"}
+				}
+				for _, path := range wimPaths {
+					if !strings.Contains(out, "initrd --name boot.wim http://10.0.0.1:8080/boot/windows/iso/"+path+" boot.wim") {
+						t.Errorf("WIM path %q must retain the boot.wim name for both firmware modes:\n%s", path, out)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestBuildGroupMenusToleratesMissingParent(t *testing.T) {
 	missingParent := uint(99)
 	groupID := uint(2)
