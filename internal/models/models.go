@@ -470,6 +470,7 @@ type Image struct {
 	Enabled               bool           `gorm:"default:true" json:"enabled"`
 	Public                bool           `gorm:"default:false" json:"public"`
 	BootPasswordRequired  bool           `gorm:"default:false" json:"boot_password_required"`
+	BootMenuExempt        bool           `gorm:"default:false" json:"boot_menu_exempt"`
 	BootPasswordHash      string         `json:"-"`
 	BootPasswordRevision  string         `json:"boot_password_revision,omitempty"`
 	BootPasswordSourceAt  time.Time      `json:"-"`
@@ -633,6 +634,8 @@ type MenuTheme struct {
 	Title                string    `gorm:"default:Bootimus - Boot Menu" json:"title"`
 	MenuTimeout          int       `gorm:"default:30" json:"menu_timeout"` // seconds, 0 = no timeout (wait forever)
 	DefaultMenuItem      string    `gorm:"default:local" json:"default_menu_item"`
+	LockedMenuLocalBoot  bool      `gorm:"default:false" json:"locked_menu_local_boot"`
+	LockedMenuTimeout    int       `gorm:"default:0" json:"locked_menu_timeout"`
 	BootPasswordRequired bool      `gorm:"default:false" json:"boot_password_required"`
 	BootPasswordHash     string    `json:"-"`
 	BootPasswordRevision string    `json:"boot_password_revision,omitempty"`

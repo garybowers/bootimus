@@ -604,11 +604,11 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
     background: rgba(245, 158, 11, 0.08);
     border: 1px solid rgba(245, 158, 11, 0.35);
     border-left: 3px solid var(--warning);
-    display: flex; align-items: center; gap: 12px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     font-size: 14px; color: var(--text-primary);
     margin-bottom: 12px;
 }
-.guide-warning .gw-text { flex: 1; }
+.guide-warning .gw-text { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 .guide-warning .gw-text strong { color: var(--warning-hover); }
 .guide-warning .btn { white-space: nowrap; }
 
@@ -670,8 +670,9 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
 .res-detail { font-size: 13px; color: var(--text-secondary); text-align: center; line-height: 1.4; }
 
 /* Info sections - side by side at bottom */
-.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
 .info-section {
+    min-width: 0;
     background: var(--bg-secondary); padding: 24px; border-radius: var(--radius);
     box-shadow: var(--shadow);
     border: none;
@@ -680,10 +681,10 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--a
     color: var(--text-primary); font-size: 16px; font-weight: 600;
     margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
 }
-.info-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.info-item { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
 .info-item:last-child { border-bottom: none; }
-.info-label { color: var(--text-secondary); font-size: 15px; }
-.info-value { color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 15px; text-align: right; font-weight: 500; }
+.info-label { color: var(--text-secondary); font-size: 15px; flex-shrink: 0; max-width: 40%; overflow-wrap: anywhere; }
+.info-value { color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 15px; text-align: right; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 
 /* Sessions */
 .session-item {
@@ -831,6 +832,49 @@ body.read-only :is(.main-content, .modal) .btn:not(.read-ok):not(.modal-close):n
 .timeline-detail { color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
 .hw-changed { background: rgba(245, 158, 11, 0.14); border-radius: 3px; padding: 0 3px; }
 @media (max-width: 700px) { .timeline-item { grid-template-columns: 10px 1fr; } .timeline-time { grid-column: 2; } }
+.driver-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.driver-toolbar input[type="file"] {
+    flex: 1 1 200px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.driver-actions { margin-top: 16px; }
+
+.driver-pack {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.driver-pack-details {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.driver-pack-details small {
+    display: block;
+    color: var(--text-secondary);
+}
+
+#props-drivers-content p {
+    overflow-wrap: anywhere;
+}
+
+#image-drivers-status { font-weight: 600; }
+#image-drivers-error { color: var(--danger); white-space: pre-wrap; }
+#image-drivers-reason, #image-drivers-loading-hint { color: var(--text-secondary); }
+.subtab[hidden] { display: none; }
 
 .autoinstall-choices {
     min-width: 0;

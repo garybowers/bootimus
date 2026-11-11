@@ -103,10 +103,16 @@ func (s *Syncer) guardImageBootPolicies(remote []models.Image, local []*models.I
 		byFilename[image.Filename] = image
 	}
 	for _, image := range remote {
+		current := byFilename[image.Filename]
+		if current != nil && current.BootMenuExempt && !image.BootMenuExempt {
+			current.BootMenuExempt = false
+			if err := s.deps.Store.UpdateImage(current.Filename, current); err != nil {
+				return fmt.Errorf("revoke menu exception for image %q: %w", current.Filename, err)
+			}
+		}
 		if !image.BootPasswordRequired {
 			continue
 		}
-		current := byFilename[image.Filename]
 		if current == nil || sameProtectedPolicy(current.BootPasswordRequired, current.BootPasswordHash, current.BootPasswordRevision, current.BootPasswordSourceAt, image.BootPasswordRevision, image.UpdatedAt) {
 			continue
 		}

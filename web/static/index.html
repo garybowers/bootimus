@@ -977,6 +977,12 @@
                         <label class="checkbox-group"><input type="checkbox" id="theme-remove-boot-password"> Remove the boot menu password</label>
                     </div>
                     <div class="form-group">
+                        <label class="checkbox-group"><input type="checkbox" id="theme-locked-local-boot" onchange="document.getElementById('theme-locked-timeout').disabled = !this.checked"> Default to local disk on the locked menu</label>
+                        <label for="theme-locked-timeout">Locked menu timeout (seconds)</label>
+                        <input type="number" id="theme-locked-timeout" min="0" max="86400" value="0" required disabled>
+                        <small>Only applies before the global password is entered. Set a timeout to boot the local disk automatically; 0 waits indefinitely. Any key stops the countdown. Pending network boots remain queued until authentication.</small>
+                    </div>
+                    <div class="form-group">
                         <label>Menu Timeout (seconds)</label>
                         <input type="number" id="theme-timeout" min="0" value="30" placeholder="30">
                         <small style="color: var(--text-secondary);">Time before auto-booting the default entry. Set to 0 to disable (wait forever).</small>
@@ -2382,6 +2388,7 @@
                 <button type="button" class="subtab active" data-props-tab="general" onclick="switchPropsTab('general')" data-i18n="props.tab.properties">Properties</button>
                 <button type="button" class="subtab admin-only" data-props-tab="autoinstall" onclick="switchPropsTab('autoinstall')" data-i18n="props.tab.autoinstall">Auto-Install</button>
                 <button type="button" class="subtab" data-props-tab="files" onclick="switchPropsTab('files')" data-i18n="props.tab.files">Files</button>
+                <button type="button" class="subtab read-ok" id="image-props-drivers-tab" data-props-tab="drivers" onclick="switchPropsTab('drivers')" data-i18n="drivers.title" hidden>Drivers</button>
             </div>
 
             <div id="props-general-content" class="props-tab-content">
@@ -2485,6 +2492,10 @@
                     <small>Leave blank to keep the current password. Checked separately from the menu password, including automatic boots. Direct image downloads remain accessible.</small>
                     <label class="checkbox-group"><input type="checkbox" id="image-props-remove-boot-password"> Remove the image password</label>
                 </div>
+                <div class="form-group">
+                    <label class="checkbox-group"><input type="checkbox" id="image-props-boot-menu-exempt"> Show on locked boot menu</label>
+                    <small>Skip the global menu password for this image only. Its own image password and client/profile visibility still apply. Shell, tools and other images remain locked.</small>
+                </div>
             </div>
 
             <div id="props-autoinstall-content" class="props-tab-content" style="display: none;">
@@ -2522,6 +2533,23 @@
                         <div class="spinner"></div>
                         Loading files...
                     </div>
+                </div>
+            </div>
+
+            <div id="props-drivers-content" class="props-tab-content" style="display: none;">
+                <p data-i18n="drivers.help">Upload ZIP packs containing the INF and all supporting files. Keep the vendor's folder structure. Changes take effect after you apply them.</p>
+                <div class="driver-toolbar admin-only">
+                    <label for="image-driver-files" data-i18n="drivers.files">Driver packs</label>
+                    <input type="file" id="image-driver-files" accept=".zip,application/zip" multiple>
+                    <button type="button" class="btn" id="image-drivers-upload" onclick="uploadImageDrivers()" data-i18n="drivers.upload">Upload packs</button>
+                </div>
+                <p id="image-drivers-status" role="status" aria-live="polite"></p>
+                <p id="image-drivers-error" role="alert"></p>
+                <p id="image-drivers-reason"></p>
+                <p id="image-drivers-loading-hint"></p>
+                <div id="image-drivers-list"></div>
+                <div class="driver-actions admin-only">
+                    <button type="button" class="btn btn-primary" id="image-drivers-apply" onclick="applyImageDrivers()" data-i18n="drivers.apply" disabled>Apply changes</button>
                 </div>
             </div>
 
@@ -3079,5 +3107,6 @@
     <script src="vendor/addon-fit.js"></script>
     <script src="i18n.js"></script>
     <script src="app.js"></script>
+    <script src="drivers.js"></script>
 </body>
 </html>

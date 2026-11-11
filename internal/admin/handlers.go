@@ -74,6 +74,8 @@ type Handler struct {
 	extractionStates   map[string]*extractionState
 	bootWimLocksMu     sync.Mutex
 	bootWimLocks       map[string]*sync.Mutex
+	driverBuildsMu     sync.Mutex
+	driverBuilds       map[uint]bool
 	SchedulerReload    func() error
 	SchedulerRunNow    func(id uint) error
 	WebhookNotifier    *webhook.Notifier
@@ -129,6 +131,11 @@ func (h *Handler) computeSMBPatchFingerprint(img *models.Image) string {
 }
 
 func (h *Handler) patchWindowsBootWim(isoFilename string) bool {
+	return h.patchWindowsBootWimAt(isoFilename, "")
+}
+
+// A non-empty target patches a staged WIM without backing it up as pristine.
+func (h *Handler) patchWindowsBootWimAt(isoFilename, target string) bool {
 	if h.smbManager == nil {
 		return false
 	}
@@ -149,6 +156,9 @@ func (h *Handler) patchWindowsBootWim(isoFilename string) bool {
 	sharePath := filepath.Join(h.isoDir, isoBase, "iso")
 
 	bootWimPath := findExtractedBootWim(sharePath)
+	if target != "" {
+		bootWimPath = target
+	}
 	if bootWimPath == "" {
 		log.Printf("Windows SMB: skipping boot.wim patch - %s has no extracted sources/boot.wim", isoFilename)
 		return false
@@ -161,7 +171,7 @@ func (h *Handler) patchWindowsBootWim(isoFilename string) bool {
 	}
 
 	origPath := bootWimPath + ".orig"
-	if _, err := os.Stat(origPath); os.IsNotExist(err) {
+	if _, err := os.Stat(origPath); os.IsNotExist(err) && target == "" {
 		log.Printf("Windows SMB: backing up pristine boot.wim to %s", origPath)
 		if err := copyFile(bootWimPath, origPath); err != nil {
 			log.Printf("Windows SMB: skipping boot.wim patch - failed to back up pristine boot.wim: %v", err)
@@ -238,6 +248,17 @@ func (h *Handler) bootWimLock(isoFilename string) *sync.Mutex {
 }
 
 func (h *Handler) discardStaleBootWimBackup(isoFilename string) {
+	if image, err := h.storage.GetImage(isoFilename); err == nil {
+		os.Remove(h.driverStatePath(image.ID))
+		if packs, err := h.storage.ListDriverPacksByImage(image.ID); err == nil {
+			for _, pack := range packs {
+				pack.LastApplied = nil
+				if err := h.storage.UpdateDriverPack(pack.ID, pack); err != nil {
+					log.Printf("Cannot reset driver pack %d after extraction: %v", pack.ID, err)
+				}
+			}
+		}
+	}
 	if bootWimPath := h.extractedBootWimPath(isoFilename); bootWimPath != "" {
 		if err := os.Remove(bootWimPath + ".orig"); err == nil {
 			log.Printf("Windows SMB: discarded stale boot.wim backup for %s", isoFilename)
@@ -1047,6 +1068,14 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if value, exists := updates["boot_menu_exempt"]; exists {
+		exempt, ok := value.(bool)
+		if !ok {
+			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "boot_menu_exempt must be a boolean"})
+			return
+		}
+		image.BootMenuExempt = exempt
+	}
 	if bootMethod, ok := updates["boot_method"].(string); ok {
 		image.BootMethod = bootMethod
 	}
@@ -1506,6 +1535,9 @@ func (h *Handler) ExtractImageByFilename(filename string) error {
 }
 
 func (h *Handler) extractImageFiles(filename string, image *models.Image) (*extractor.BootFiles, error) {
+	mu := h.bootWimLock(filename)
+	mu.Lock()
+	defer mu.Unlock()
 	log.Printf("Admin: Starting kernel/initrd extraction - %s (re-extract: %v)", filename, image.Extracted)
 
 	ext, err := extractor.New(h.isoDir)
@@ -1595,15 +1627,14 @@ func (h *Handler) extractImageFiles(filename string, image *models.Image) (*extr
 		}
 	}
 
-	if bootFiles.Distro == "windows" {
-		mu := h.bootWimLock(filename)
-		mu.Lock()
+	if models.IsWindowsDistro(bootFiles.Distro) {
 		h.discardStaleBootWimBackup(filename)
+	}
+	if bootFiles.Distro == "windows" {
 		image.SMBInstallEnabled = h.patchWindowsBootWim(filename)
 		if image.SMBInstallEnabled {
 			image.SMBPatchFingerprint = h.computeSMBPatchFingerprint(image)
 		}
-		mu.Unlock()
 	}
 
 	log.Printf("Setting boot_method to 'kernel' for image ID=%d, filename=%s", image.ID, image.Filename)
@@ -1745,7 +1776,8 @@ func (h *Handler) UnpatchImageSMB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.Rename(origPath, bootWimPath); err != nil {
+	// Keep the pristine backup for the driver rebuild that follows unpatching.
+	if err := atomicCopyFile(origPath, bootWimPath); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: fmt.Sprintf("Failed to restore original boot.wim: %v", err)})
 		return
 	}
@@ -4338,228 +4370,6 @@ func (h *Handler) ListDriverPacks(w http.ResponseWriter, r *http.Request) {
 	h.sendJSON(w, http.StatusOK, Response{Success: true, Data: packs})
 }
 
-func (h *Handler) UploadDriverPack(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
-		return
-	}
-
-	if err := r.ParseMultipartForm(500 << 20); err != nil {
-		h.sendJSON(w, http.StatusBadRequest, Response{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to parse form: %v", err),
-		})
-		return
-	}
-
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		h.sendJSON(w, http.StatusBadRequest, Response{
-			Success: false,
-			Error:   "No file provided",
-		})
-		return
-	}
-	defer file.Close()
-
-	description := r.FormValue("description")
-	imageIDStr := r.FormValue("imageId")
-
-	if imageIDStr == "" {
-		h.sendJSON(w, http.StatusBadRequest, Response{
-			Success: false,
-			Error:   "Image ID is required",
-		})
-		return
-	}
-
-	imageID, err := strconv.ParseUint(imageIDStr, 10, 32)
-	if err != nil {
-		h.sendJSON(w, http.StatusBadRequest, Response{
-			Success: false,
-			Error:   "Invalid image ID",
-		})
-		return
-	}
-
-	var images []*models.Image
-	images, _ = h.storage.ListImages()
-	var imageName string
-	for _, img := range images {
-		if img.ID == uint(imageID) {
-			imageName = strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename))
-			break
-		}
-	}
-
-	if imageName == "" {
-		h.sendJSON(w, http.StatusBadRequest, Response{
-			Success: false,
-			Error:   "Image not found",
-		})
-		return
-	}
-
-	originalFilename := filepath.Base(header.Filename)
-	if originalFilename == "" || originalFilename == "." || originalFilename == ".." {
-		h.sendJSON(w, http.StatusBadRequest, Response{
-			Success: false,
-			Error:   "Invalid filename",
-		})
-		return
-	}
-
-	if !strings.HasSuffix(strings.ToLower(originalFilename), ".zip") {
-		h.sendJSON(w, http.StatusBadRequest, Response{
-			Success: false,
-			Error:   "Only ZIP files are allowed",
-		})
-		return
-	}
-
-	cleanFilename := filepath.Clean(originalFilename)
-	destDir := filepath.Join(h.isoDir, imageName, "drivers")
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		h.sendJSON(w, http.StatusInternalServerError, Response{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to create directory: %v", err),
-		})
-		return
-	}
-
-	destPath := filepath.Join(destDir, cleanFilename)
-	dest, err := os.Create(destPath)
-	if err != nil {
-		h.sendJSON(w, http.StatusInternalServerError, Response{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to create file: %v", err),
-		})
-		return
-	}
-	defer dest.Close()
-
-	written, err := io.Copy(dest, file)
-	if err != nil {
-		os.Remove(destPath)
-		h.sendJSON(w, http.StatusInternalServerError, Response{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to write file: %v", err),
-		})
-		return
-	}
-
-	driverPack := &models.DriverPack{
-		Filename:     cleanFilename,
-		OriginalName: originalFilename,
-		Description:  description,
-		Size:         written,
-		ImageID:      uint(imageID),
-		Enabled:      true,
-	}
-
-	if err = h.storage.CreateDriverPack(driverPack); err != nil {
-		os.Remove(destPath)
-		h.sendJSON(w, http.StatusInternalServerError, Response{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to save driver pack metadata: %v", err),
-		})
-		return
-	}
-
-	log.Printf("Uploaded driver pack: %s (%d bytes) for image %s", cleanFilename, written, imageName)
-
-	h.sendJSON(w, http.StatusOK, Response{
-		Success: true,
-		Message: "Driver pack uploaded successfully",
-		Data:    driverPack,
-	})
-}
-
-func (h *Handler) DeleteDriverPack(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
-		return
-	}
-
-	idStr := r.URL.Query().Get("id")
-	if idStr == "" {
-		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "ID required"})
-		return
-	}
-
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid ID"})
-		return
-	}
-
-	pack, err := h.storage.GetDriverPack(uint(id))
-	if err != nil {
-		h.sendJSON(w, http.StatusNotFound, Response{Success: false, Error: "Driver pack not found"})
-		return
-	}
-
-	var images []*models.Image
-	images, _ = h.storage.ListImages()
-	var imageName string
-	for _, img := range images {
-		if img.ID == pack.ImageID {
-			imageName = strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename))
-			break
-		}
-	}
-
-	if err = h.storage.DeleteDriverPack(uint(id)); err != nil {
-		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
-		return
-	}
-
-	if imageName != "" {
-		filePath := filepath.Join(h.isoDir, imageName, "drivers", pack.Filename)
-		if err := os.Remove(filePath); err != nil {
-			log.Printf("Warning: Failed to delete driver pack file %s: %v", filePath, err)
-		}
-	}
-
-	log.Printf("Deleted driver pack: %s (ID: %d)", pack.Filename, pack.ID)
-	h.sendJSON(w, http.StatusOK, Response{Success: true, Message: "Driver pack deleted"})
-}
-
-func (h *Handler) RebuildImageBootWim(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
-		return
-	}
-
-	imageIDStr := r.URL.Query().Get("imageId")
-	if imageIDStr == "" {
-		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Image ID required"})
-		return
-	}
-
-	imageID, err := strconv.ParseUint(imageIDStr, 10, 32)
-	if err != nil {
-		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid image ID"})
-		return
-	}
-
-	log.Printf("Rebuilding boot.wim for image ID %d...", imageID)
-
-	go func() {
-		if err := h.RebuildBootWim(uint(imageID)); err != nil {
-			log.Printf("ERROR: Failed to rebuild boot.wim for image %d: %v", imageID, err)
-		} else {
-			log.Printf("Successfully rebuilt boot.wim for image %d", imageID)
-		}
-	}()
-
-	h.sendJSON(w, http.StatusOK, Response{
-		Success: true,
-		Message: "Boot.wim rebuild started in background. Check logs for progress.",
-	})
-}
-
 func (h *Handler) ListImageGroups(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.sendJSON(w, http.StatusMethodNotAllowed, Response{Success: false, Error: "Method not allowed"})
@@ -5685,7 +5495,9 @@ func (h *Handler) UpdateMenuTheme(w http.ResponseWriter, r *http.Request) {
 	}
 	var updates struct {
 		models.MenuTheme
-		BootPassword *string `json:"boot_password"`
+		BootPassword        *string `json:"boot_password"`
+		LockedMenuLocalBoot *bool   `json:"locked_menu_local_boot"`
+		LockedMenuTimeout   *int    `json:"locked_menu_timeout"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
@@ -5697,6 +5509,17 @@ func (h *Handler) UpdateMenuTheme(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	theme := updates.MenuTheme
+	theme.LockedMenuLocalBoot, theme.LockedMenuTimeout = previous.LockedMenuLocalBoot, previous.LockedMenuTimeout
+	if updates.LockedMenuLocalBoot != nil {
+		theme.LockedMenuLocalBoot = *updates.LockedMenuLocalBoot
+	}
+	if updates.LockedMenuTimeout != nil {
+		theme.LockedMenuTimeout = *updates.LockedMenuTimeout
+	}
+	if theme.LockedMenuTimeout < 0 || theme.LockedMenuTimeout > 86400 {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Locked menu timeout must be between 0 and 86400 seconds"})
+		return
+	}
 	theme.BootPasswordHash, theme.BootPasswordRequired, theme.BootPasswordRevision = previous.BootPasswordHash, previous.BootPasswordRequired, previous.BootPasswordRevision
 	if err := h.updateBootPassword(r, updates.BootPassword, &theme.BootPasswordHash, &theme.BootPasswordRequired, &theme.BootPasswordRevision); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})

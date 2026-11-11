@@ -635,6 +635,7 @@ async function loadServerInfo() {
                 cachedWindowsSMBPatcherAvailable = patcher.startsWith('Available');
             }
             renderServerInfo(data.data);
+            updateImagePropsWarnings();
         }
     } catch (err) {
         document.getElementById('server-info').innerHTML = '<p class="alert alert-error">Failed to load server info</p>';
@@ -648,7 +649,7 @@ let cachedHTTPPort = 8080;
 
 // Cached from /api/server-info so the image properties modal knows whether
 // to offer the "Patch SMB" button.
-let cachedWindowsSMBActive = false;
+let cachedWindowsSMBActive = null;
 let cachedWindowsSMBPatcherAvailable = true;
 
 async function powerClient(action) {
@@ -3886,7 +3887,7 @@ async function copyAPIRefCurl(btn) {
     if (!wrap) return;
     const code = wrap.querySelector('code').textContent;
     try {
-        await navigator.clipboard.writeText(code);
+        await copyText(code);
         btn.classList.add('copied');
         const orig = btn.innerHTML;
         btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -3947,6 +3948,9 @@ async function loadTheme() {
             document.getElementById('theme-title').value = data.data.title || '';
             document.getElementById('theme-timeout').value = data.data.menu_timeout != null ? data.data.menu_timeout : 30;
             document.getElementById('theme-default-item').value = data.data.default_menu_item || '';
+            document.getElementById('theme-locked-local-boot').checked = data.data.locked_menu_local_boot === true;
+            document.getElementById('theme-locked-timeout').value = data.data.locked_menu_timeout ?? 0;
+            document.getElementById('theme-locked-timeout').disabled = !data.data.locked_menu_local_boot;
             document.getElementById('theme-boot-password').value = '';
             document.getElementById('theme-remove-boot-password').checked = false;
             document.getElementById('theme-boot-password-status').textContent = data.data.boot_password_required ? 'Password set.' : 'No password set.';
@@ -3970,6 +3974,8 @@ async function saveTheme(e) {
         title: document.getElementById('theme-title').value,
         menu_timeout: parseInt(document.getElementById('theme-timeout').value) || 0,
         default_menu_item: document.getElementById('theme-default-item').value,
+        locked_menu_local_boot: document.getElementById('theme-locked-local-boot').checked,
+        locked_menu_timeout: Number(document.getElementById('theme-locked-timeout').value),
     };
     const bootPassword = document.getElementById('theme-boot-password').value;
     if (document.getElementById('theme-remove-boot-password').checked) theme.boot_password = '';
@@ -4809,6 +4815,48 @@ function showUploadModal() {
 }
 
 // Utilities
+async function copyText(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+            await navigator.clipboard.writeText(text);
+            return;
+        } catch (_) {
+            // Clipboard access can be denied even on HTTPS. Try the fallback.
+        }
+    }
+
+    // LAN HTTP pages have no Clipboard API. Keep this fallback in the click
+    // handler so browsers that support it still have the user's activation.
+    const active = document.activeElement;
+    const selection = window.getSelection();
+    const ranges = [];
+    if (selection) {
+        for (let i = 0; i < selection.rangeCount; i++) {
+            ranges.push(selection.getRangeAt(i).cloneRange());
+        }
+    }
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.readOnly = true;
+    field.tabIndex = -1;
+    field.style.cssText = 'position: fixed; left: -9999px; top: 0; opacity: 0';
+    document.body.appendChild(field);
+    try {
+        field.focus({ preventScroll: true });
+        field.select();
+        if (!document.execCommand('copy')) {
+            throw new Error('Select the text and copy it manually.');
+        }
+    } finally {
+        field.remove();
+        if (active instanceof HTMLElement) active.focus({ preventScroll: true });
+        if (selection) {
+            selection.removeAllRanges();
+            ranges.forEach(range => selection.addRange(range));
+        }
+    }
+}
+
 function showModal(id) {
     const modal = document.getElementById(id);
     applyReadOnlyToModal(modal);
@@ -6057,7 +6105,7 @@ function copyFileDownloadURL(filename) {
     const port = 8080;
     const url = `http://${serverAddr}:${port}/files/${filename}`;
 
-    navigator.clipboard.writeText(url).then(() => {
+    copyText(url).then(() => {
         showNotification('Download URL copied to clipboard', 'success');
     }).catch(() => {
         showNotification('Failed to copy URL', 'error');
@@ -6066,7 +6114,7 @@ function copyFileDownloadURL(filename) {
 
 function copyFileURL() {
     const url = document.getElementById('edit-file-url').textContent;
-    navigator.clipboard.writeText(url).then(() => {
+    copyText(url).then(() => {
         showNotification('URL copied to clipboard', 'success');
     }).catch(() => {
         showNotification('Failed to copy URL', 'error');
@@ -6242,6 +6290,7 @@ function switchPropsTab(tabName) {
         const filename = document.getElementById('image-props-filename').value;
         if (filename) loadPropsImageFiles();
     }
+    if (short === 'drivers') loadImageDrivers();
 }
 
 function getDefaultBootParams(img) {
@@ -6414,6 +6463,7 @@ async function showImagePropertiesModal(filename, opts) {
     document.getElementById('image-props-enabled').checked = img.enabled;
     document.getElementById('image-props-public').checked = img.public;
     document.getElementById('image-props-boot-password').value = '';
+    document.getElementById('image-props-boot-menu-exempt').checked = img.boot_menu_exempt === true;
     document.getElementById('image-props-remove-boot-password').checked = false;
     document.getElementById('image-props-boot-password-status').textContent = img.boot_password_required ? 'Password set.' : 'No password set.';
     renderImageIntegrity(img);
@@ -6469,11 +6519,6 @@ async function showImagePropertiesModal(filename, opts) {
         netbootBtn.style.display = 'none';
     }
 
-    const patchSmbBtn = document.getElementById('image-props-patch-smb-btn');
-    const smbEligible = cachedWindowsSMBActive && img.extracted && img.distro === 'windows';
-    patchSmbBtn.style.display = smbEligible ? 'inline-block' : 'none';
-    patchSmbBtn.textContent = img.smb_install_enabled ? t('props.action.re_patch_smb') : t('props.action.patch_smb');
-
     const unpatchSmbBtn = document.getElementById('image-props-unpatch-smb-btn');
     const unpatchVisible = img.extracted && img.distro === 'windows' && img.smb_install_enabled;
     unpatchSmbBtn.style.display = unpatchVisible ? 'inline-block' : 'none';
@@ -6487,6 +6532,7 @@ async function showImagePropertiesModal(filename, opts) {
         img: img,
         initialAutoInstallFile: img.auto_install_file || '',
     };
+    document.getElementById('image-props-drivers-tab').hidden = !isWindowsFamily(img.distro);
     const aiSel = document.getElementById('image-props-autoinstall-file');
     if (aiSel) aiSel.onchange = updateImagePropsWarnings;
     updateImagePropsWarnings();
@@ -6537,6 +6583,10 @@ async function populateBootFileOverrides(img) {
 function updateImagePropsWarnings() {
     if (!_imagePropsState) return;
     const img = _imagePropsState.img;
+    const patchSmbBtn = document.getElementById('image-props-patch-smb-btn');
+    const smbEligible = cachedWindowsSMBActive && img.extracted && img.distro === 'windows';
+    patchSmbBtn.style.display = smbEligible ? 'inline-block' : 'none';
+    patchSmbBtn.textContent = img.smb_install_enabled ? t('props.action.re_patch_smb') : t('props.action.patch_smb');
     const fname = img.filename || '';
     const looksWindows = isWindowsFamily(img.distro) || filenameLooksWindows(fname);
 
@@ -6551,7 +6601,7 @@ function updateImagePropsWarnings() {
     document.getElementById('image-props-warn-netboot').style.display = needsNetboot ? '' : 'none';
 
     // 2. Windows image but the server SMB share isn't enabled.
-    const smbServerOff = looksWindows && !cachedWindowsSMBActive;
+    const smbServerOff = looksWindows && cachedWindowsSMBActive === false;
     document.getElementById('image-props-warn-smb-server').style.display = smbServerOff ? '' : 'none';
 
     // 3. Windows image, SMB enabled, but wimlib-imagex isn't installed —
@@ -6901,6 +6951,7 @@ async function saveImageProperties(opts) {
         enabled: enabled,
         public: isPublic,
         auto_install_file: autoInstallFile,
+        boot_menu_exempt: document.getElementById('image-props-boot-menu-exempt').checked,
     };
 
     const bootPassword = document.getElementById('image-props-boot-password').value;
@@ -8967,7 +9018,7 @@ async function previewBootMenu(mac) {
 async function copyMenuPreview() {
     if (!menuPreviewData) return;
     try {
-        await navigator.clipboard.writeText(menuPreviewData.script || '');
+        await copyText(menuPreviewData.script || '');
         showAlert('Boot menu script copied', 'success');
     } catch (err) {
         showAlert('Copy failed: ' + err.message, 'error');
@@ -9222,7 +9273,7 @@ async function createAPIToken(e) {
 async function copyAPITokenSecret() {
     const secret = document.getElementById('api-token-secret-value').textContent;
     try {
-        await navigator.clipboard.writeText(secret);
+        await copyText(secret);
         showAlert('Token copied', 'success');
     } catch (err) {
         showAlert('Copy failed: ' + err.message, 'error');
@@ -9324,7 +9375,7 @@ async function enableTOTP() {
 
 async function copyTOTPRecoveryCodes() {
     try {
-        await navigator.clipboard.writeText(document.getElementById('totp-recovery-codes').textContent);
+        await copyText(document.getElementById('totp-recovery-codes').textContent);
         showAlert('Recovery codes copied', 'success');
     } catch (err) {
         showAlert('Copy failed: ' + err.message, 'error');

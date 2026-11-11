@@ -21,8 +21,10 @@ type APIEndpoint struct {
 	Body        string
 	Multipart   bool
 	FormEncoded bool
+	PlainText   bool
 	Public      bool
 	ReadOnly    bool
+	Accepted    bool
 }
 
 type APISection struct {
@@ -124,7 +126,7 @@ var APISections = []APISection{
 	}},
 	{Tag: "Images", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/images", Summary: "List all images, or one when filename is given.", Params: []APIParam{{Name: "filename", In: "query", Description: "ISO filename of a single image"}}, ReadOnly: true},
-		{Method: "PUT", Path: "/api/images", Summary: "Partial update of an image. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.", Params: []APIParam{qFilename("ISO filename")}, Body: "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, auto_install_choices[], kernel_override, initrd_override, boot_password?}"},
+		{Method: "PUT", Path: "/api/images", Summary: "Partial update of an image. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces. boot_menu_exempt bypasses only the global menu password; image passwords and client visibility still apply.", Params: []APIParam{qFilename("ISO filename")}, Body: "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, auto_install_choices[], kernel_override, initrd_override, boot_password?, boot_menu_exempt?}"},
 		{Method: "DELETE", Path: "/api/images", Summary: "Delete an image.", Params: []APIParam{qFilename("ISO filename"), {Name: "delete_file", In: "query", Description: "true to also remove the ISO from disk"}}},
 		{Method: "POST", Path: "/api/images/upload", Summary: "Upload an ISO or unified kernel image.", Body: "file, public, description", Multipart: true},
 		{Method: "POST", Path: "/api/images/download", Summary: "Download an ISO from a URL asynchronously, verifying it against a SHA-256 when one is given or published alongside.", Body: "{url, filename, description, sha256, checksum_url, catalogue_id, catalogue_release}"},
@@ -208,9 +210,10 @@ var APISections = []APISection{
 	}},
 	{Tag: "Driver Packs", Description: "Windows driver packs injected into boot.wim.", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/drivers", Summary: "List driver packs for an image.", Params: []APIParam{{Name: "imageId", In: "query", Description: "Image ID", Required: true}}, ReadOnly: true},
+		{Method: "GET", Path: "/api/drivers/status", Summary: "Driver build status, errors and prerequisites.", Params: []APIParam{{Name: "imageId", In: "query", Description: "Image ID", Required: true}}, ReadOnly: true},
 		{Method: "POST", Path: "/api/drivers/upload", Summary: "Upload a driver pack.", Body: "file, imageId", Multipart: true},
 		{Method: "DELETE", Path: "/api/drivers/delete", Summary: "Delete a driver pack.", Params: []APIParam{qID("Driver pack ID")}},
-		{Method: "POST", Path: "/api/drivers/rebuild", Summary: "Rebuild boot.wim with the driver packs.", Params: []APIParam{{Name: "imageId", In: "query", Description: "Image ID", Required: true}}},
+		{Method: "POST", Path: "/api/drivers/rebuild", Summary: "Apply driver changes in the background; poll /api/drivers/status for completion.", Params: []APIParam{{Name: "imageId", In: "query", Description: "Image ID", Required: true}}, Accepted: true},
 	}},
 	{Tag: "Kubernetes", Description: "Clusters, node images and node enrolment.", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/clusters", Summary: "List clusters.", ReadOnly: true},
@@ -256,7 +259,7 @@ var APISections = []APISection{
 	}},
 	{Tag: "Settings", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/theme", Summary: "Boot menu theme and defaults.", ReadOnly: true},
-		{Method: "PUT", Path: "/api/theme", Summary: "Update the boot menu theme. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.", Body: "{title, menu_timeout, default_menu_item, boot_password?}"},
+		{Method: "PUT", Path: "/api/theme", Summary: "Update the boot menu theme. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces. Locked-menu local boot is opt-in; its timeout is 0 (wait) or 1-86400 seconds. Omitted locked-menu fields are preserved.", Body: "{title, menu_timeout, default_menu_item, boot_password?, locked_menu_local_boot?, locked_menu_timeout?}"},
 		{Method: "GET", Path: "/api/backup/export", Summary: "Download a tar.gz backup of the database and data directory."},
 		{Method: "POST", Path: "/api/backup/import", Summary: "Stage a backup archive for restore on the next restart.", Body: "backup=@bootimus-backup.tar.gz", Multipart: true},
 		{Method: "GET", Path: "/api/backup/import", Summary: "Whether a restore is staged."},
@@ -285,6 +288,7 @@ var APISections = []APISection{
 	}},
 	{Tag: "Boot", Description: "Endpoints served to PXE clients on the boot port; no authentication.", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/menu.ipxe", Summary: "Generated iPXE menu script.", Params: []APIParam{{Name: "mac", In: "query", Description: "MAC address of the booting client"}}, Public: true},
+		{Method: "GET", Path: "/boot-menu-image", Summary: "Select an enabled, client-visible image explicitly allowed on the locked menu. Rechecks the exception and returns an image-password form when needed; never unlocks the full menu.", Params: []APIParam{{Name: "mac", In: "query", Description: "MAC address of the booting client"}, {Name: "image", In: "query", Required: true, Description: "Image ID"}}, PlainText: true, Public: true},
 		{Method: "GET", Path: "/autoexec.ipxe", Summary: "iPXE autoexec for the chainloaded bootloader.", Public: true},
 		{Method: "GET", Path: "/inventory", Summary: "iPXE-submitted hardware inventory.", Params: []APIParam{qMAC("MAC address of the booting client")}, Public: true},
 		{Method: "GET", Path: "/isos/{filename}", Summary: "Direct ISO download.", Params: []APIParam{pathParam("filename", "ISO filename")}, Public: true},
@@ -433,6 +437,9 @@ func buildOperation(tag string, ep APIEndpoint, order int) OpenAPIOperation {
 		ReadOnly: ep.ReadOnly || ep.Public,
 		Order:    order,
 	}
+	if ep.PlainText {
+		op.Responses["200"]["content"] = map[string]interface{}{"text/plain": map[string]interface{}{"schema": map[string]interface{}{"type": "string"}}}
+	}
 	for _, p := range ep.Params {
 		op.Parameters = append(op.Parameters, OpenAPIParameter{
 			Name:        p.Name,
@@ -472,6 +479,11 @@ func buildOperation(tag string, ep APIEndpoint, order int) OpenAPIOperation {
 	}
 	if ep.Public {
 		op.Security = []map[string][]string{}
+	}
+	if ep.Accepted {
+		op.Responses["202"] = op.Responses["200"]
+		op.Responses["202"]["description"] = "Rebuild accepted; completion is reported by the status endpoint"
+		delete(op.Responses, "200")
 	}
 	return op
 }

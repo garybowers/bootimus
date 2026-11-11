@@ -8,6 +8,7 @@ Complete guide for managing ISO images, extracting boot files, and handling spec
 - [Checksums and Update Notifications](#checksums-and-update-notifications)
 - [Unified Kernel Images (UKI)](#unified-kernel-images-uki)
 - [OpenBSD and NetBSD](#openbsd-and-netbsd)
+- [Windows driver packs](#windows-driver-packs)
 - [WinPE and Rescue Media](#winpe-and-rescue-media)
 - [Kernel Extraction](#kernel-extraction)
 - [Netboot Support](#netboot-support)
@@ -147,6 +148,18 @@ OpenBSD and NetBSD do not boot from a Linux-style kernel and initrd. Each ships 
 - NetBSD's `pxeboot_ia32.bin` performs its own DHCP exchange after it loads and reads the DHCP `filename` field to decide between NFS and TFTP. Without a `tftp:` prefix there it defaults to NFS, which Bootimus does not provide for this purpose. If the loader reports that it cannot open `boot.cfg` or the kernel, type `boot tftp:bsd/<image>/netbsd-INSTALL.gz` at its prompt, or give NetBSD clients `filename "tftp:boot.cfg";` on your DHCP server. OpenBSD's loaders always use TFTP and need no such step.
 - The per-client association is keyed by IP address, so two clients behind the same NAT address booting different BSD images within 15 minutes would receive the same configuration.
 - Autoinstall for the BSD installers is not wired up yet. The installers can still fetch sets from the extracted ISO tree over HTTP.
+
+## Windows driver packs
+
+Open a Windows image and select **Drivers**. Upload ZIP packs containing the INF files and all their supporting files, keeping the vendor's directory structure. Each ZIP may be up to 500 MiB, with at most 10,000 entries and 1 GiB of expanded data. Bootimus checks the archive, but Windows still decides whether the drivers match the hardware and meet its signing requirements.
+
+The same ZIP cannot be uploaded twice to an image, even under a different filename. Other images can use the same pack. Remove any existing duplicates from the list, then apply the changes.
+
+Select **Apply changes** after adding or removing packs. Uploading or removing a pack alone does not change the boot image. The tab shows pending, applying, applied or failed status, including failures after a server restart. Status is also available at `GET /api/drivers/status?imageId=...`; `POST /api/drivers/rebuild?imageId=...` returns HTTP 202 when a rebuild is accepted.
+
+Applying drivers requires an extracted `sources/boot.wim` and `wimtools` on the server. Bootimus rebuilds from its original WIM backup, keeps packs in separate subdirectories under `X:\drivers`, and replaces the active WIM only after a successful rebuild. Removing the last pack restores the original contents. Existing SMB startup scripts are reapplied. If an older image has no original backup, re-extract it before changing its applied drivers.
+
+For automatic loading, configure Windows SMB and use **Patch SMB**. The startup script loads the drivers before connecting to the installation share and passes the same directory to Windows Setup. Custom WinPE media needs its own driver-loading script; layouts without `sources/boot.wim` are not supported by this driver-management workflow.
 
 ## WinPE and Rescue Media
 

@@ -39,6 +39,7 @@ var viewerReadRoutes = map[string]bool{
 	"/api/downloads/progress":        true,
 	"/api/files":                     true,
 	"/api/drivers":                   true,
+	"/api/drivers/status":            true,
 	"/api/groups":                    true,
 	"/api/client-groups":             true,
 	"/api/client-groups/get":         true,
