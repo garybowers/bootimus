@@ -190,7 +190,7 @@ const es = {
 
   cta: {
     title: '¿Harto de hacer de niñera de tftpd?',
-    sub: 'Docker, bare metal o USB flasheable. Elige tu veneno.',
+    sub: 'Docker, bare metal o USB flasheable. Elige cómo quieres ejecutar Bootimus.',
     primary: '$ get bootimus',
     secondary: 'leer la docu →',
   },

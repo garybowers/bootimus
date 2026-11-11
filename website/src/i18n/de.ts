@@ -190,7 +190,7 @@ const de = {
 
   cta: {
     title: 'Keine Lust mehr, tftpd zu babysitten?',
-    sub: 'Docker, Bare Metal oder flashbarer USB-Stick. Such dir aus, was dir taugt.',
+    sub: 'Docker, Bare Metal oder flashbarer USB-Stick. Wähle, wie du Bootimus ausführen möchtest.',
     primary: '$ get bootimus',
     secondary: 'zur doku →',
   },

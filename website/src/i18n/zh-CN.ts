@@ -190,7 +190,7 @@ const zhCN = {
 
   cta: {
     title: '不想再当 tftpd 的保姆了?',
-    sub: 'Docker、裸金属,或可烧录的 U 盘。挑一个顺手的。',
+    sub: 'Docker、裸金属,或可烧录的 U 盘。选择运行 Bootimus 的方式。',
     primary: '$ get bootimus',
     secondary: '查看文档 →',
   },

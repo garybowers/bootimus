@@ -112,7 +112,7 @@ export default {
 
   cta: {
     title: 'Ready to stop babysitting tftpd?',
-    sub: 'Docker, bare metal, or flashable USB. Pick your poison.',
+    sub: 'Docker, bare metal, or flashable USB. Choose how you want to run Bootimus.',
     primary: '$ get bootimus',
     secondary: 'read the docs →',
   },

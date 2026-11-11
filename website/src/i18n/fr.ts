@@ -190,7 +190,7 @@ const fr = {
 
   cta: {
     title: 'Marre de babysitter tftpd ?',
-    sub: 'Docker, bare metal, ou USB flashable. Choisis ton poison.',
+    sub: 'Docker, bare metal, ou USB flashable. Choisis comment tu veux exécuter Bootimus.',
     primary: '$ get bootimus',
     secondary: 'lire la doc →',
   },
