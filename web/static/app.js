@@ -2357,6 +2357,7 @@ async function editClient(mac) {
             }
 
             await populateAutoInstallFileDropdown('edit-client-autoinstall-select', currentClient.auto_install_file);
+            await populateAutoInstallChoices('edit-client', currentClient.auto_install_choices);
             renderVariableRows('edit-client-variables', currentClient.variables);
 
             // Populate images select using allowed_images (persisted filename list)
@@ -3703,6 +3704,7 @@ function setupForms() {
         };
         try {
             updates.variables = collectVariables('edit-client-variables');
+            updates.auto_install_choices = collectAutoInstallChoices('edit-client');
         } catch (err) {
             showAlert(err.message, 'error');
             return;
@@ -6470,7 +6472,10 @@ async function showImagePropertiesModal(filename, opts) {
     populateWIMSelector(img);
 
     applyBootParamsWindowsLock(distroSelect.value);
-    distroSelect.onchange = () => applyBootParamsWindowsLock(distroSelect.value);
+    distroSelect.onchange = () => {
+        applyBootParamsWindowsLock(distroSelect.value);
+        updateAnswerFileVisibility();
+    };
 
     // Auto-install fields
     document.getElementById('image-props-autoinstall-enabled').checked = img.auto_install_enabled || false;
@@ -6478,6 +6483,8 @@ async function showImagePropertiesModal(filename, opts) {
     document.getElementById('image-props-autoinstall-script').value = img.auto_install_script || '';
     document.getElementById('image-props-autoinstall-url').textContent = img.filename;
     await populateImageAutoInstallFileDropdown(img);
+    await populateAutoInstallChoices('image-props', img.auto_install_choices);
+    updateAnswerFileVisibility();
 
     const groupSelect = document.getElementById('image-props-group');
     groupSelect.innerHTML = '<option value="">Unassigned</option>';
@@ -6961,6 +6968,7 @@ async function saveImageProperties(opts) {
     }
 
     try {
+        updates.auto_install_choices = collectAutoInstallChoices('image-props');
         if (!await saveWIMSelection(filename)) return false;
 
         // Update general image properties
@@ -7548,6 +7556,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             try {
                 body.variables = collectVariables('cg-variables');
+                body.auto_install_choices = collectAutoInstallChoices('cg');
             } catch (err) {
                 showAlert(err.message, 'error');
                 return;
@@ -7697,6 +7706,7 @@ async function showEditClientGroupModal(id) {
         } catch (err) {}
 
         await populateAutoInstallFileDropdown('cg-autoinstall-select', g.auto_install_file);
+        await populateAutoInstallChoices('cg', g.auto_install_choices);
         renderVariableRows('cg-variables', g.variables);
         await populateSANTargetSelect('cg-san-select', g.san_target_id, '(none)');
         form.elements.boot_from_san.checked = !!g.boot_from_san;
@@ -7967,6 +7977,53 @@ async function populateAutoInstallFileDropdown(selectId, currentValue, distroFil
             sel.appendChild(og);
         }
     } catch (e) {}
+}
+
+async function populateAutoInstallChoices(prefix, selected = []) {
+    const container = document.getElementById(`${prefix}-autoinstall-choices`);
+    container.dataset.loaded = 'false';
+    container.textContent = 'Loading answer files…';
+    try {
+        const readOnly = isReadOnly();
+        let files = selected.map(path => ({ path }));
+        if (!readOnly) {
+            const res = await authFetch(`${API_BASE}/autoinstall-files`);
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Cannot load answer files');
+            files = (data.data || []).filter(f => f.type === 'autounattend');
+        }
+        const available = new Set(files.map(f => f.path));
+        const paths = [...available, ...selected.filter(path => !available.has(path))];
+        container.replaceChildren();
+        for (const path of paths) {
+            const label = document.createElement('label');
+            label.className = 'checkbox-group';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = path;
+            input.checked = selected.includes(path);
+            input.disabled = readOnly;
+            const text = document.createElement('span');
+            text.textContent = path + (available.has(path) ? '' : ' (missing; untick to remove)');
+            label.append(input, text);
+            container.appendChild(label);
+        }
+        if (!paths.length) container.textContent = readOnly ? 'No additional answer files selected.' : 'Add Windows XML files in Auto-Install to offer them here.';
+        container.dataset.loaded = 'true';
+    } catch (err) {
+        container.textContent = 'Cannot load answer files. Reopen this form before saving.';
+    }
+}
+
+function collectAutoInstallChoices(prefix) {
+    const container = document.getElementById(`${prefix}-autoinstall-choices`);
+    if (container.dataset.loaded !== 'true') throw new Error('Answer files have not loaded. Reopen this form before saving.');
+    return Array.from(container.querySelectorAll('input:checked'), input => input.value);
+}
+
+function updateAnswerFileVisibility() {
+    const distro = document.getElementById('image-props-distro').value;
+    document.getElementById('image-props-answer-files').hidden = !isWindowsFamily(distro);
 }
 
 async function populateImageAutoInstallFileDropdown(img) {

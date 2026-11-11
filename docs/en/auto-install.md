@@ -8,6 +8,7 @@ Run unattended installs across Windows, Ubuntu, Debian, Red Hat-family distros, 
 - [Supported Formats](#supported-formats)
 - [The File Library](#the-file-library)
 - [Attaching Files](#attaching-files)
+- [Choosing a Windows answer file at boot](#choosing-a-windows-answer-file-at-boot)
 - [Resolution Order](#resolution-order)
 - [Placeholders](#placeholders)
 - [Variables](#variables)
@@ -31,6 +32,24 @@ Auto-install configs are stored in a per-distro library under `data/autoinstall/
 - **Preview** the rendered result for any client and image, and have YAML, XML and JSON files checked for well-formedness when you save them.
 
 Bootimus serves the rendered file over HTTP on the auto-install endpoint. Linux installers fetch it through a kernel parameter; for Windows, wimboot fetches the same URL as an extra `initrd` and injects it into the WinPE RAM disk as `AutoUnattend.xml`, so `setup.exe /unattend:` picks it up automatically (see [Windows Notes](#windows-notes)).
+
+## Choosing a Windows answer file at boot
+
+To offer several configurations for one Windows ISO:
+
+1. Add the XML answer files in **Auto-Install**.
+2. Open the image's properties, select **Auto-Install**, and tick the files under **Windows answer files offered at boot**.
+3. Select **Save Properties**. Choosing this image in iPXE now opens an answer-file menu.
+
+The existing default remains available, including client, group and deployment-profile overrides. Selecting another file applies only to that boot; it does not change any saved default. Placeholders and install callbacks work as before.
+
+Client and client-group edit forms have the same checkbox list. A non-empty client list replaces the group and image lists; otherwise the group list takes precedence over the image list. Empty lists inherit. With no list at any level, existing automatic behaviour is unchanged.
+
+A configured list waits for an explicit choice, including next-boot actions and deployment-profile boots. It has no timeout. Escape or **Back to boot menu** cancels; a missing or withdrawn alternative stops the boot rather than loading another configuration. Menu and image passwords still apply before the chooser.
+
+This requires Windows kernel/wimboot booting and offers up to 32 XML files per list. It does not patch `boot.wim` or change the SMB fallback file. Windows SMB startup uses the selected file injected by wimboot; custom WinPE startup must read that injected `AutoUnattend.xml` too. Upgrade replicas before using the chooser.
+
+The image, client and client-group APIs accept `auto_install_choices`, an array of library paths such as `["windows/desktop.xml", "windows/kiosk.xml"]`. Send `[]` to clear a list. Boot requests carry an opaque `choice` identifier checked against the current list; they cannot select an arbitrary library path.
 
 ## Supported Formats
 

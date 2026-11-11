@@ -2681,7 +2681,16 @@ func (s *Server) handleAutoInstallScript(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	script, scriptType, source, err := s.resolveAutoInstallScript(image, client)
+	var script, scriptType, source string
+	if values, selected := r.URL.Query()["choice"]; selected {
+		if len(values) != 1 || values[0] == "" {
+			http.Error(w, "Invalid answer-file selection", http.StatusBadRequest)
+			return
+		}
+		script, scriptType, source, err = s.resolveAutoInstallChoice(image, client, values[0])
+	} else {
+		script, scriptType, source, err = s.resolveAutoInstallScript(image, client)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return

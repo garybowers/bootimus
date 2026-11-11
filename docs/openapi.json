@@ -862,7 +862,7 @@
         "summary": "Create a client group.",
         "operationId": "postApiClientGroups",
         "requestBody": {
-          "description": "{name, description, ...}",
+          "description": "{name, description, auto_install_choices[], ...}",
           "required": true,
           "content": {
             "application/json": {
@@ -1105,7 +1105,7 @@
           }
         ],
         "requestBody": {
-          "description": "{name, description, ...}",
+          "description": "{name, description, auto_install_choices[], ...}",
           "required": true,
           "content": {
             "application/json": {
@@ -1240,7 +1240,7 @@
         "summary": "Create a static client.",
         "operationId": "postApiClients",
         "requestBody": {
-          "description": "{mac_address, name, description, enabled, ...}",
+          "description": "{mac_address, name, description, auto_install_choices[], enabled, ...}",
           "required": true,
           "content": {
             "application/json": {
@@ -1284,7 +1284,7 @@
           }
         ],
         "requestBody": {
-          "description": "{name, description, enabled, ...}",
+          "description": "{name, description, auto_install_choices[], enabled, ...}",
           "required": true,
           "content": {
             "application/json": {
@@ -3544,7 +3544,7 @@
           }
         ],
         "requestBody": {
-          "description": "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, kernel_override, initrd_override, boot_password?, boot_menu_exempt?}",
+          "description": "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, auto_install_choices[], kernel_override, initrd_override, boot_password?, boot_menu_exempt?}",
           "required": true,
           "content": {
             "application/json": {

@@ -193,6 +193,7 @@ func copyImageMetadata(dst *models.Image, src models.Image, groupID *uint, bootP
 	dst.AutoInstallEnabled = src.AutoInstallEnabled
 	dst.AutoInstallScriptType = src.AutoInstallScriptType
 	dst.AutoInstallFile = src.AutoInstallFile
+	dst.AutoInstallChoices = append(models.StringSlice(nil), src.AutoInstallChoices...)
 	dst.WIMPath = src.WIMPath
 	dst.WIMIndex = src.WIMIndex
 	dst.WIMFiles = src.WIMFiles
@@ -406,6 +407,7 @@ func applyClientGroup(dst *models.ClientGroup, src models.ClientGroup, san *uint
 	}
 	dst.IPMIInsecure = src.IPMIInsecure
 	dst.AutoInstallFile = src.AutoInstallFile
+	dst.AutoInstallChoices = append(models.StringSlice(nil), src.AutoInstallChoices...)
 	dst.SANTargetID = san
 	dst.BootFromSAN = src.BootFromSAN
 }
@@ -519,6 +521,7 @@ func applyClient(dst *models.Client, src models.Client, group, san *uint) {
 	}
 	dst.IPMIInsecure = src.IPMIInsecure
 	dst.AutoInstallFile = src.AutoInstallFile
+	dst.AutoInstallChoices = append(models.StringSlice(nil), src.AutoInstallChoices...)
 	dst.ProxyDHCPNoVendorOption = src.ProxyDHCPNoVendorOption
 	dst.SANTargetID = san
 	dst.BootFromSAN = src.BootFromSAN

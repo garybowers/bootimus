@@ -875,3 +875,17 @@ body.read-only :is(.main-content, .modal) .btn:not(.read-ok):not(.modal-close):n
 #image-drivers-error { color: var(--danger); white-space: pre-wrap; }
 #image-drivers-reason, #image-drivers-loading-hint { color: var(--text-secondary); }
 .subtab[hidden] { display: none; }
+
+.autoinstall-choices {
+    min-width: 0;
+    margin: 16px 0;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+.autoinstall-choices legend { font-weight: 600; font-size: 13px; }
+.autoinstall-choices p { margin: 0 0 10px; color: var(--text-secondary); font-size: 13px; }
+.autoinstall-choices > div { max-height: 220px; overflow-y: auto; }
+.autoinstall-choices .checkbox-group { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; }
+.autoinstall-choices input[type="checkbox"] { width: auto; flex: 0 0 auto; margin-top: 3px; }
+.autoinstall-choices span { overflow-wrap: anywhere; }
