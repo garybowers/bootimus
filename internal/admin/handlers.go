@@ -1056,6 +1056,14 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if value, exists := updates["boot_menu_exempt"]; exists {
+		exempt, ok := value.(bool)
+		if !ok {
+			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "boot_menu_exempt must be a boolean"})
+			return
+		}
+		image.BootMenuExempt = exempt
+	}
 	if bootMethod, ok := updates["boot_method"].(string); ok {
 		image.BootMethod = bootMethod
 	}
@@ -5458,7 +5466,9 @@ func (h *Handler) UpdateMenuTheme(w http.ResponseWriter, r *http.Request) {
 	}
 	var updates struct {
 		models.MenuTheme
-		BootPassword *string `json:"boot_password"`
+		BootPassword        *string `json:"boot_password"`
+		LockedMenuLocalBoot *bool   `json:"locked_menu_local_boot"`
+		LockedMenuTimeout   *int    `json:"locked_menu_timeout"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Invalid request body"})
@@ -5470,6 +5480,17 @@ func (h *Handler) UpdateMenuTheme(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	theme := updates.MenuTheme
+	theme.LockedMenuLocalBoot, theme.LockedMenuTimeout = previous.LockedMenuLocalBoot, previous.LockedMenuTimeout
+	if updates.LockedMenuLocalBoot != nil {
+		theme.LockedMenuLocalBoot = *updates.LockedMenuLocalBoot
+	}
+	if updates.LockedMenuTimeout != nil {
+		theme.LockedMenuTimeout = *updates.LockedMenuTimeout
+	}
+	if theme.LockedMenuTimeout < 0 || theme.LockedMenuTimeout > 86400 {
+		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "Locked menu timeout must be between 0 and 86400 seconds"})
+		return
+	}
 	theme.BootPasswordHash, theme.BootPasswordRequired, theme.BootPasswordRevision = previous.BootPasswordHash, previous.BootPasswordRequired, previous.BootPasswordRevision
 	if err := h.updateBootPassword(r, updates.BootPassword, &theme.BootPasswordHash, &theme.BootPasswordRequired, &theme.BootPasswordRevision); err != nil {
 		h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: err.Error()})

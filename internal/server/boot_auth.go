@@ -163,14 +163,33 @@ exit
 `
 
 func bootProtectionUnavailable() string {
-	return "#!ipxe\necho Protected boot is unavailable. Check HTTPS, certificates and bootloader support.\n:choice\nmenu Bootimus\nitem local Boot from Local Disk\nchoose selected || goto choice\ngoto ${selected}\n" + bootPasswordLocal
+	return bootProtectionUnavailableWithTheme(nil)
 }
 
-func (server *Server) bootPasswordMenu(mac string) string {
+func lockedMenuChoice(theme *models.MenuTheme) string {
+	if theme == nil || !theme.LockedMenuLocalBoot {
+		return "choose selected"
+	}
+	timeout := theme.LockedMenuTimeout
+	if timeout < 0 || timeout > 86400 {
+		timeout = 0
+	}
+	return fmt.Sprintf("choose --default local --timeout %d --retimeout 0 selected", timeout*1000)
+}
+
+func bootProtectionUnavailableWithTheme(theme *models.MenuTheme) string {
+	return "#!ipxe\necho Protected boot is unavailable. Check HTTPS, certificates and bootloader support.\n:choice\nmenu Bootimus\nitem local Boot from Local Disk\n" + lockedMenuChoice(theme) + " || goto choice\ngoto ${selected}\n" + bootPasswordLocal
+}
+
+func (server *Server) bootPasswordMenu(mac string, theme *models.MenuTheme) string {
 	mac, valid := bootMAC(mac)
 	endpoint := server.bootAuthenticationURL()
 	if !valid || endpoint == "" {
-		return bootProtectionUnavailable()
+		return bootProtectionUnavailableWithTheme(theme)
+	}
+	items, sections, err := server.lockedMenuImages(mac)
+	if err != nil {
+		return bootProtectionUnavailableWithTheme(theme)
 	}
 	return fmt.Sprintf(`#!ipxe
 clear bootimus_password
@@ -179,7 +198,7 @@ clear bootimus_session
 menu Bootimus - Password required
 item unlock Enter network-boot menu
 item local Boot from Local Disk
-choose selected || goto start
+%s%s || goto start
 goto ${selected}
 :unlock
 form Boot menu password || goto rejected
@@ -202,7 +221,7 @@ sleep 1
 clear bootimus_password
 params --name bootimus --delete ||
 goto start
-%s`, mac, endpoint, bootPasswordLocal)
+%s%s`, items, lockedMenuChoice(theme), mac, endpoint, bootPasswordLocal, sections)
 }
 
 func (builder *MenuBuilder) buildImagePasswordGate(imageID uint) string {
@@ -250,7 +269,7 @@ exit
 `, mac, imageID, server.bootAuthenticationURL())
 }
 
-func (server *Server) bootImageForClient(mac string, imageID uint) (*models.Image, error) {
+func (server *Server) bootImagesForClient(mac string) ([]models.Image, error) {
 	images, err := server.config.Storage.GetImagesForClient(mac)
 	if err != nil {
 		return nil, err
@@ -262,6 +281,14 @@ func (server *Server) bootImageForClient(mac string, imageID uint) (*models.Imag
 	if client != nil {
 		effective, group := server.effectiveFor(client)
 		images = server.applyProfileImages(images, client, group, effective)
+	}
+	return images, nil
+}
+
+func (server *Server) bootImageForClient(mac string, imageID uint) (*models.Image, error) {
+	images, err := server.bootImagesForClient(mac)
+	if err != nil {
+		return nil, err
 	}
 	for _, image := range images {
 		if image.ID == imageID && image.Enabled {
@@ -305,16 +332,16 @@ func (server *Server) handleBootAuthentication(writer http.ResponseWriter, reque
 		return
 	}
 	globalRequired := theme.BootPasswordRequired || theme.BootPasswordHash != ""
-	if globalRequired && theme.BootPasswordHash == "" {
-		http.Error(writer, "Boot password verification is unavailable on this server", http.StatusServiceUnavailable)
-		return
-	}
 	address := hostOf(request.RemoteAddr)
 	session := request.PostForm.Get("session")
 	globalAccepted := !globalRequired || server.bootAuth.accepts(session, mac, address, theme.BootPasswordHash)
 	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	switch request.PostForm.Get("action") {
 	case "menu":
+		if globalRequired && theme.BootPasswordHash == "" {
+			http.Error(writer, "Boot password verification is unavailable on this server", http.StatusServiceUnavailable)
+			return
+		}
 		if !globalAccepted && !server.checkBootPassword(writer, request, theme.BootPasswordHash) {
 			return
 		}
@@ -330,10 +357,6 @@ func (server *Server) handleBootAuthentication(writer http.ResponseWriter, reque
 		rendered := server.renderBootMenuWithAccess(mac, request.RemoteAddr, true, bootMenuAccess{global: true, session: session})
 		fmt.Fprint(writer, rendered.Script)
 	case "image":
-		if !globalAccepted {
-			http.Error(writer, "Unlock the boot menu first", http.StatusForbidden)
-			return
-		}
 		identifier, err := strconv.ParseUint(request.PostForm.Get("image"), 10, 32)
 		if err != nil || identifier == 0 {
 			http.Error(writer, "Invalid image", http.StatusBadRequest)
@@ -342,6 +365,10 @@ func (server *Server) handleBootAuthentication(writer http.ResponseWriter, reque
 		image, err := server.bootImageForClient(mac, uint(identifier))
 		if err != nil {
 			http.Error(writer, "Image unavailable", http.StatusForbidden)
+			return
+		}
+		if !globalAccepted && !image.BootMenuExempt {
+			http.Error(writer, "Unlock the boot menu first", http.StatusForbidden)
 			return
 		}
 		if image.BootPasswordRequired || image.BootPasswordHash != "" {
@@ -357,14 +384,7 @@ func (server *Server) handleBootAuthentication(writer http.ResponseWriter, reque
 				return
 			}
 		}
-		if client, err := server.config.Storage.GetClient(mac); err == nil && client.NextBootImage == image.Filename {
-			if err := server.config.Storage.ClearNextBootImage(mac); err != nil {
-				http.Error(writer, "Unable to confirm next boot", http.StatusServiceUnavailable)
-				return
-			}
-		}
-		script := server.generateIPXEMenuWithAccess([]models.Image{*image}, mac, image.ID, 0, bootMenuAccess{global: true, session: session, imageID: image.ID})
-		fmt.Fprint(writer, script)
+		server.serveBootMenuImage(writer, mac, image, bootMenuAccess{global: globalAccepted, session: session, imageID: image.ID})
 	default:
 		http.Error(writer, "Invalid authentication action", http.StatusBadRequest)
 	}

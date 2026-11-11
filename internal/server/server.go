@@ -1268,6 +1268,7 @@ func (s *Server) startHTTPServer(listener net.Listener) error {
 
 	mux.HandleFunc("/inventory", s.handleInventoryReport)
 	mux.HandleFunc("/menu.ipxe", s.handleIPXEMenu)
+	mux.HandleFunc("/boot-menu-image", s.handleBootMenuImage)
 
 	toolsDir := filepath.Join(s.config.DataDir, "tools")
 	mux.Handle("/tools/", http.StripPrefix("/tools/", http.FileServer(http.Dir(toolsDir))))
@@ -2350,10 +2351,10 @@ func (s *Server) renderBootMenuWithAccess(macAddress, remoteAddr string, commit 
 		}
 		if (theme.BootPasswordRequired || theme.BootPasswordHash != "") && !access.global {
 			if theme.BootPasswordHash == "" {
-				result.Kind, result.Script = "unavailable", bootProtectionUnavailable()
+				result.Kind, result.Script = "unavailable", bootProtectionUnavailableWithTheme(theme)
 				return result
 			}
-			result.Kind, result.Script = "locked", s.bootPasswordMenu(macAddress)
+			result.Kind, result.Script = "locked", s.bootPasswordMenu(macAddress, theme)
 			return result
 		}
 	}
