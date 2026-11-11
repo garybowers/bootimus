@@ -106,10 +106,21 @@
       "boot_method": "kernel"
     },
     {
+      "id": "truenas-scale",
+      "display_name": "TrueNAS SCALE",
+      "family": "debian",
+      "filename_patterns": ["truenas-scale"],
+      "kernel_paths": ["/vmlinuz"],
+      "initrd_paths": ["/initrd.img"],
+      "squashfs_paths": ["/live/filesystem.squashfs"],
+      "default_boot_params": "initrd=initrd boot=live ip=dhcp fetch={{BASE_URL}}/isos/{{FILENAME}}",
+      "boot_method": "kernel"
+    },
+    {
       "id": "debian",
       "display_name": "Debian",
       "family": "debian",
-      "filename_patterns": ["debian", "truenas", "devuan", "antix", "mx-", "mxlinux", "pureos", "deepin", "lmde", "sparky", "bunsenlabs"],
+      "filename_patterns": ["debian", "devuan", "antix", "mx-", "mxlinux", "pureos", "deepin", "lmde", "sparky", "bunsenlabs"],
       "kernel_paths": ["/live/vmlinuz", "/live/vmlinuz1", "/vmlinuz", "/install/vmlinuz", "/install.amd/vmlinuz"],
       "initrd_paths": ["/live/initrd.img", "/live/initrd1.img", "/initrd.img", "/install/initrd.gz", "/install.amd/initrd.gz"],
       "squashfs_paths": ["/live/filesystem.squashfs"],

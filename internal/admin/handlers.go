@@ -930,7 +930,7 @@ func detectDistroFromFilename(filename string) string {
 		"ubuntu": "ubuntu", "debian": "debian", "arch": "arch",
 		"fedora": "fedora", "centos": "centos", "rocky": "centos",
 		"alma": "centos", "opensuse": "opensuse", "nixos": "nixos",
-		"proxmox": "proxmox", "truenas": "debian", "pop-os": "ubuntu",
+		"proxmox": "proxmox", "truenas-scale": "truenas-scale", "pop-os": "ubuntu",
 		"pop_os": "ubuntu", "mint": "ubuntu", "kali": "debian",
 		"windows": "windows", "freebsd": "freebsd",
 	}
