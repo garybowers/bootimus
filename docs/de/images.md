@@ -451,7 +451,7 @@ ip=dhcp
 | **Ubuntu Desktop** |  Ja |  Nein | `/casper/vmlinuz` + fetch-Optimierung |
 | **Ubuntu Server** |  Ja |  Ja | `/install/vmlinuz` + Netboot |
 | **Pop!_OS** |  Ja |  Nein | `/casper/vmlinuz` |
-| **TrueNAS SCALE** |  Ja |  Nein | `/vmlinuz` + `/initrd.img` (Root) |
+| **TrueNAS SCALE** |  Ja |  Nein | 25.10.2.1: Installation und Festplattenstart in UEFI-QEMU; vollständiger ISO-Download |
 | **Proxmox VE** |  Ja |  Nein | `/boot/linux26` + `/boot/initrd.img` |
 | **openSUSE** |  Ja |  N/A | `/boot/x86_64/loader/linux` |
 | **NixOS** |  N/A |  N/A | Sanboot |
@@ -496,7 +496,14 @@ Bootimus erkennt Distributionen, indem er nach bestimmten Datei-Patterns scannt:
 /vmlinuz
 /initrd.img
 /live/filesystem.squashfs
+/TrueNAS-SCALE.update
 ```
+
+Bootimus erkennt SCALE an der Datei `TrueNAS-SCALE.update` und wählt ein eigenes Profil. Kernel/Initrd wie gewohnt extrahieren; das Profil lädt die vollständige ISO und bindet sie für den Installer unter `/cdrom` ein. Die ISO bleibt unverändert. Der Installer benötigt systemd 254 oder neuer.
+
+Mit SCALE 25.10.2.1 in UEFI-QEMU und 8 GiB RAM geprüft: Installation auf eine neue virtuelle Festplatte und anschließender Start davon. Die vollständige ISO bleibt während der Installation im RAM. Andere Versionen, echte Hardware und Secure Boot sind ungetestet. Das Profil gilt nicht für das FreeBSD-basierte TrueNAS CORE.
+
+Bereits extrahierte Images erneut extrahieren, um die alten Debian-Einstellungen zu ersetzen. Eigene Boot-Parameter danach prüfen.
 
 **Proxmox VE**:
 ```

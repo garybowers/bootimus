@@ -199,6 +199,8 @@ globally active set.
 ### Debian/Ubuntu-based
 - Ubuntu (all flavours), Debian, Linux Mint, Pop!_OS, Kali, Parrot, Zorin, elementary OS, MX Linux, antiX, Devuan, PureOS, Deepin, LMDE, TrueNAS SCALE, Proxmox
 
+TrueNAS SCALE uses a dedicated installer profile. SCALE 25.10.2.1 was tested through installation and disk boot in UEFI QEMU with 8 GiB RAM; see the [Image Management Guide](docs/en/images.md#detection-patterns) for requirements and existing-image updates.
+
 ### Red Hat-based
 - Fedora, CentOS, Rocky Linux, AlmaLinux, Oracle Linux, Nobara, Mageia
 
