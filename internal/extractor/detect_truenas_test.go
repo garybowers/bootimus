@@ -1,7 +1,6 @@
 package extractor
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,13 +55,13 @@ func TestDebianRootLayoutIsNotTrueNAS(t *testing.T) {
 }
 
 func TestTrueNASBsdtarFallback(t *testing.T) {
-	if _, err := exec.LookPath("bsdtar"); err != nil {
-		t.Skip("bsdtar not installed")
-	}
 	dir := t.TempDir()
 	name := filepath.Join(dir, "renamed.iso")
-	writeTestISO(t, name, trueNASFiles())
-	ext, _ := New(dir)
+	buildJolietOnlyISO(t, name, trueNASFiles())
+	ext, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := ext.extractViaBsdtar(name)
 	if err != nil {
 		t.Fatal(err)
