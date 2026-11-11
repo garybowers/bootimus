@@ -5,7 +5,7 @@ const es = {
       'Servidor de arranque PXE y HTTP autocontenido. Un solo binario. Cero configuración. 50+ distros listas para usar.',
     downloadsTitle: 'Descargas — Bootimus',
     downloadsDescription:
-      'Descarga los binarios de bootimus, las imágenes Docker, la appliance USB y las herramientas PXE mirrorizadas.',
+      'Descarga binarios de Bootimus, imágenes Docker y enlaces a herramientas PXE.',
     docsTitle: 'Documentación — Bootimus',
     docsDescription:
       'Documentación de Bootimus: despliegue, gestión de imágenes, DHCP, autenticación, ACLs de cliente, perfiles de distro.',
@@ -88,7 +88,7 @@ const es = {
       },
       '08': {
         title: 'Corre en todos lados',
-        body: 'Docker multi-arch (amd64/arm64), binario estático, o una imagen appliance basada en Alpine de 2 GB para flashear a USB.',
+        body: 'Docker multi-arquitectura (amd64/arm64) o un binario Linux estático.',
       },
       '09': {
         title: 'Instalaciones desatendidas',
@@ -190,7 +190,7 @@ const es = {
 
   cta: {
     title: '¿Harto de hacer de niñera de tftpd?',
-    sub: 'Docker, bare metal o USB flasheable. Elige tu veneno.',
+    sub: 'Ejecuta Bootimus en Docker o directamente en Linux.',
     primary: '$ get bootimus',
     secondary: 'leer la docu →',
   },
@@ -199,7 +199,7 @@ const es = {
     kicker: '// descargas',
     title: 'Pilla un build.',
     lede:
-      'Cada release sale como imagen Docker, como binarios Linux estáticos tirados en vivo del último release de GitHub, y como una imagen appliance USB flasheable de 2 GiB (Alpine + bootimus, arranca directo). Las herramientas se mirrorizan por separado para que la UI admin las baje sin chocar contra los rate limits de upstream.',
+      'Bootimus está disponible como imagen Docker y binarios Linux estáticos en GitHub Releases. Descarga las herramientas de rescate desde las webs de sus proyectos.',
     badgeStable: 'latest · estable',
     badgePrerelease: 'pre-release',
     badgeNone: 'aún sin releases',
@@ -209,7 +209,7 @@ const es = {
     released: 'publicado',
     via: 'vía',
     sectionArtifacts: 'artefactos del release',
-    sectionTools: 'tools mirrorizadas',
+    sectionTools: 'herramientas de rescate',
     sectionApi: 'consumir el manifest',
     emptyTitle: 'Aún no hay binarios publicados',
     emptyBody:
@@ -218,9 +218,9 @@ const es = {
     verifyTitle: 'verificar',
     apiTitle: 'api · manifest.json',
     toolsLede:
-      'Estas son imágenes netboot-ready que la UI admin puede bajar a demanda y exponer como entradas del menú PXE. Mirrorizadas en dl.bootimus.com para que no dependas de la disponibilidad de upstream cuando arrancas un trabajo de rescate. Las URLs upstream siguen siendo la fuente de verdad — puedes sobrescribir cualquier URL mirror desde la página de Tools.',
+      'Puedes añadir estas herramientas a Bootimus. Las webs de los proyectos ofrecen descargas, versiones actuales y sumas de comprobación.',
     apiLede:
-      'La UI admin lee /api/manifest.json para chequear updates y listar las tools disponibles. Schema estable — los campos no se renombran sin un bump mayor. La fuente de verdad para los binarios es la API de GitHub Releases; este endpoint solo normaliza y merges los pedacitos estáticos (tag Docker, imagen appliance, tools mirrorizadas).',
+      'El manifiesto incluye archivos de GitHub Releases, la imagen Docker y enlaces a los proyectos. Un campo mirror vacío indica que no hay un espejo del proyecto disponible.',
     mirror: 'mirror ↓',
     upstream: 'upstream ↗',
     get: 'bajar ↓',

@@ -5,7 +5,7 @@ const zhCN = {
       '一体化 PXE 与 HTTP 引导服务器。单一二进制。零配置。开箱即用 50+ 发行版。',
     downloadsTitle: '下载 — Bootimus',
     downloadsDescription:
-      '下载 bootimus 二进制、Docker 镜像、USB 设备镜像，以及镜像的 PXE 工具。',
+      '下载 Bootimus 二进制文件、Docker 镜像，并查看 PXE 工具链接。',
     docsTitle: '文档 — Bootimus',
     docsDescription:
       'Bootimus 文档:部署、镜像管理、DHCP、身份认证、客户端 ACL、发行版配置。',
@@ -88,7 +88,7 @@ const zhCN = {
       },
       '08': {
         title: '到处都能跑',
-        body: '多架构 Docker (amd64/arm64)、静态二进制,或可烧录到 U 盘的 2GB 基于 Alpine 的设备镜像。',
+        body: '支持 amd64/arm64 的 Docker 镜像或静态 Linux 二进制文件。',
       },
       '09': {
         title: '无人值守安装',
@@ -190,7 +190,7 @@ const zhCN = {
 
   cta: {
     title: '不想再当 tftpd 的保姆了?',
-    sub: 'Docker、裸金属,或可烧录的 U 盘。挑一个顺手的。',
+    sub: '在 Docker 中或直接在 Linux 上运行 Bootimus。',
     primary: '$ get bootimus',
     secondary: '查看文档 →',
   },
@@ -199,7 +199,7 @@ const zhCN = {
     kicker: '// 下载',
     title: '拿一个构建走。',
     lede:
-      '每个版本都提供:Docker 镜像、从最新 GitHub release 实时拉取的静态 Linux 二进制,以及一个 2 GiB 可烧录到 U 盘的设备镜像 (Alpine + bootimus,开机即用)。工具单独镜像,这样管理 UI 拉取时不必担心上游限速。',
+      'Bootimus 提供 Docker 镜像和 GitHub Releases 中的静态 Linux 二进制文件。救援工具请从各自的项目网站下载。',
     badgeStable: '最新 · 稳定',
     badgePrerelease: '预发布',
     badgeNone: '尚无发布',
@@ -209,7 +209,7 @@ const zhCN = {
     released: '发布于',
     via: '来自',
     sectionArtifacts: '发布构件',
-    sectionTools: '镜像工具',
+    sectionTools: '救援工具',
     sectionApi: '使用 manifest',
     emptyTitle: '尚未发布二进制',
     emptyBody:
@@ -218,9 +218,9 @@ const zhCN = {
     verifyTitle: '校验',
     apiTitle: 'api · manifest.json',
     toolsLede:
-      '这些是 netboot-ready 的镜像,管理 UI 可按需下载并作为 PXE 菜单项呈现。镜像在 dl.bootimus.com 上,这样在跑救援任务时就不必依赖上游可用性。上游 URL 仍是权威来源 — 任何镜像 URL 都可以在工具页面里覆盖。',
+      '这些工具可添加到 Bootimus。请访问项目网站获取下载、最新版本和校验和。',
     apiLede:
-      '管理 UI 读取 /api/manifest.json 来检查更新和列出可用工具。Schema 稳定 — 不做大版本升级就不会重命名字段。二进制的权威来源是 GitHub Releases API;这个端点只是做规范化并合入静态部分 (Docker 标签、设备镜像、镜像工具)。',
+      '清单包含 GitHub 发布文件、Docker 镜像和工具项目链接。mirror 字段为空表示没有可用的项目镜像站。',
     mirror: '镜像 ↓',
     upstream: '上游 ↗',
     get: '下载 ↓',
