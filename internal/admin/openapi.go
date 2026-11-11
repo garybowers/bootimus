@@ -24,6 +24,7 @@ type APIEndpoint struct {
 	PlainText   bool
 	Public      bool
 	ReadOnly    bool
+	Accepted    bool
 }
 
 type APISection struct {
@@ -209,9 +210,10 @@ var APISections = []APISection{
 	}},
 	{Tag: "Driver Packs", Description: "Windows driver packs injected into boot.wim.", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/drivers", Summary: "List driver packs for an image.", Params: []APIParam{{Name: "imageId", In: "query", Description: "Image ID", Required: true}}, ReadOnly: true},
+		{Method: "GET", Path: "/api/drivers/status", Summary: "Driver build status, errors and prerequisites.", Params: []APIParam{{Name: "imageId", In: "query", Description: "Image ID", Required: true}}, ReadOnly: true},
 		{Method: "POST", Path: "/api/drivers/upload", Summary: "Upload a driver pack.", Body: "file, imageId", Multipart: true},
 		{Method: "DELETE", Path: "/api/drivers/delete", Summary: "Delete a driver pack.", Params: []APIParam{qID("Driver pack ID")}},
-		{Method: "POST", Path: "/api/drivers/rebuild", Summary: "Rebuild boot.wim with the driver packs.", Params: []APIParam{{Name: "imageId", In: "query", Description: "Image ID", Required: true}}},
+		{Method: "POST", Path: "/api/drivers/rebuild", Summary: "Apply driver changes in the background; poll /api/drivers/status for completion.", Params: []APIParam{{Name: "imageId", In: "query", Description: "Image ID", Required: true}}, Accepted: true},
 	}},
 	{Tag: "Kubernetes", Description: "Clusters, node images and node enrolment.", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/clusters", Summary: "List clusters.", ReadOnly: true},
@@ -477,6 +479,11 @@ func buildOperation(tag string, ep APIEndpoint, order int) OpenAPIOperation {
 	}
 	if ep.Public {
 		op.Security = []map[string][]string{}
+	}
+	if ep.Accepted {
+		op.Responses["202"] = op.Responses["200"]
+		op.Responses["202"]["description"] = "Rebuild accepted; completion is reported by the status endpoint"
+		delete(op.Responses, "200")
 	}
 	return op
 }

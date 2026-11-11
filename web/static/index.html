@@ -2383,6 +2383,7 @@
                 <button type="button" class="subtab active" data-props-tab="general" onclick="switchPropsTab('general')" data-i18n="props.tab.properties">Properties</button>
                 <button type="button" class="subtab admin-only" data-props-tab="autoinstall" onclick="switchPropsTab('autoinstall')" data-i18n="props.tab.autoinstall">Auto-Install</button>
                 <button type="button" class="subtab" data-props-tab="files" onclick="switchPropsTab('files')" data-i18n="props.tab.files">Files</button>
+                <button type="button" class="subtab read-ok" id="image-props-drivers-tab" data-props-tab="drivers" onclick="switchPropsTab('drivers')" data-i18n="drivers.title" hidden>Drivers</button>
             </div>
 
             <div id="props-general-content" class="props-tab-content">
@@ -2522,6 +2523,23 @@
                         <div class="spinner"></div>
                         Loading files...
                     </div>
+                </div>
+            </div>
+
+            <div id="props-drivers-content" class="props-tab-content" style="display: none;">
+                <p data-i18n="drivers.help">Upload ZIP packs containing the INF and all supporting files. Keep the vendor's folder structure. Changes take effect after you apply them.</p>
+                <div class="driver-toolbar admin-only">
+                    <label for="image-driver-files" data-i18n="drivers.files">Driver packs</label>
+                    <input type="file" id="image-driver-files" accept=".zip,application/zip" multiple>
+                    <button type="button" class="btn" id="image-drivers-upload" onclick="uploadImageDrivers()" data-i18n="drivers.upload">Upload packs</button>
+                </div>
+                <p id="image-drivers-status" role="status" aria-live="polite"></p>
+                <p id="image-drivers-error" role="alert"></p>
+                <p id="image-drivers-reason"></p>
+                <p id="image-drivers-loading-hint"></p>
+                <div id="image-drivers-list"></div>
+                <div class="driver-actions admin-only">
+                    <button type="button" class="btn btn-primary" id="image-drivers-apply" onclick="applyImageDrivers()" data-i18n="drivers.apply" disabled>Apply changes</button>
                 </div>
             </div>
 
@@ -3074,5 +3092,6 @@
     <script src="vendor/addon-fit.js"></script>
     <script src="i18n.js"></script>
     <script src="app.js"></script>
+    <script src="drivers.js"></script>
 </body>
 </html>
