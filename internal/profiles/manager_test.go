@@ -138,7 +138,9 @@ func TestTrueNASProfile(t *testing.T) {
 	}
 	// The separate update payload is outside filesystem.squashfs, so the
 	// installer needs the complete ISO even after filesystem detection.
-	want := "initrd=initrd boot=live ip=dhcp fetch={{BASE_URL}}/isos/{{FILENAME}}"
+	// Its media scanner skips loop devices, so expose live-boot's ISO mount
+	// at /cdrom and disable the physical-media scanner for this boot.
+	want := "initrd=initrd boot=live ip=dhcp fetch={{BASE_URL}}/isos/{{FILENAME}} systemd.mount-extra=/run/live/medium:/cdrom:none:bind,ro systemd.mask=mount-cd.service"
 	if p.DefaultBootParams != want || p.BootParamsWithSquashfs != "" || p.AutoInstallType != "" {
 		t.Fatalf("TrueNAS must fetch the ISO without Debian preseed settings: %+v", p)
 	}

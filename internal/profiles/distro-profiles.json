@@ -113,7 +113,7 @@
       "kernel_paths": ["/vmlinuz"],
       "initrd_paths": ["/initrd.img"],
       "squashfs_paths": ["/live/filesystem.squashfs"],
-      "default_boot_params": "initrd=initrd boot=live ip=dhcp fetch={{BASE_URL}}/isos/{{FILENAME}}",
+      "default_boot_params": "initrd=initrd boot=live ip=dhcp fetch={{BASE_URL}}/isos/{{FILENAME}} systemd.mount-extra=/run/live/medium:/cdrom:none:bind,ro systemd.mask=mount-cd.service",
       "boot_method": "kernel"
     },
     {
