@@ -5,7 +5,7 @@ export default {
       'Self-contained PXE and HTTP boot server. Single binary. Zero config. 50+ distros out of the box.',
     downloadsTitle: 'Downloads — Bootimus',
     downloadsDescription:
-      'Get Bootimus binaries and Docker images, plus links to PXE tools.',
+      'Download bootimus binaries and Docker images, with links to PXE tools.',
     docsTitle: 'Docs — Bootimus',
     docsDescription:
       'Bootimus documentation: deployment, image management, DHCP, authentication, client ACLs, disk imaging, multi-site, distro profiles.',
@@ -65,7 +65,7 @@ export default {
       '05': { title: 'One-click tools', body: 'GParted, Clonezilla, Memtest86+, SystemRescue, ShredOS, netboot.xyz. Enable from the UI, they show up in the menu.' },
       '06': { title: 'JWT + LDAP + OIDC + 2FA', body: 'Token auth with bcrypt, TOTP two-factor and lockout on repeated failures. Optional LDAP/AD or OpenID Connect sign-in with group-based admin. Scoped API tokens for scripts.' },
       '07': { title: 'REST API + OpenAPI', body: 'Everything the UI does is an API call, described in a generated OpenAPI document. Script boot assignments, scans, WOL triggers. Live log stream over SSE. Every admin change lands in an audit log.' },
-      '08': { title: 'Runs anywhere', body: 'Multi-arch Docker (amd64/arm64) or a static Linux binary.' },
+      '08': { title: 'Runs anywhere', body: 'Multi-arch Docker (amd64/arm64) or a static binary.' },
       '09': { title: 'Unattended installs', body: 'Drop autounattend.xml, kickstart, preseed, or cloud-init in. Attach to an image as the default, override per client. Bootimus stages it at boot — no clicks, no setup wizard.' },
       '10': { title: 'Disk imaging', body: 'Capture a client\'s disk with the bundled Clonezilla and deploy it to one machine or a whole group on their next PXE boot. Jobs report back when they finish.' },
       '11': { title: 'Lights-out control', body: 'Power on, off and restart over Redfish or Intel AMT, open an AMT Serial-over-LAN or IPMI console in the browser, and watch every PXE request on the Debug page.' },
@@ -112,7 +112,7 @@ export default {
 
   cta: {
     title: 'Ready to stop babysitting tftpd?',
-    sub: 'Run Bootimus in Docker or directly on Linux.',
+    sub: 'Docker or bare metal. Pick your poison.',
     primary: '$ get bootimus',
     secondary: 'read the docs →',
   },
@@ -121,7 +121,7 @@ export default {
     kicker: '// downloads',
     title: 'Grab a build.',
     lede:
-      'Bootimus is available as a Docker image and static Linux binaries from GitHub Releases. Download rescue tools from their project websites.',
+      'Every release ships as a Docker image and static Linux binaries pulled live from the latest GitHub release. Tools are available from their upstream project websites.',
     badgeStable: 'latest · stable',
     badgePrerelease: 'pre-release',
     badgeNone: 'no releases yet',
@@ -131,7 +131,7 @@ export default {
     released: 'released',
     via: 'via',
     sectionArtifacts: 'release artifacts',
-    sectionTools: 'rescue tools',
+    sectionTools: 'tools',
     sectionApi: 'consume the manifest',
     emptyTitle: 'No binaries published yet',
     emptyBody:
@@ -140,9 +140,9 @@ export default {
     verifyTitle: 'verify',
     apiTitle: 'api · manifest.json',
     toolsLede:
-      'These tools can be added to Bootimus. Use the project links for downloads, current versions and checksums.',
+      'These are netboot-ready images the admin UI can download on demand and expose as PXE menu entries. Upstream URLs remain the source of truth.',
     apiLede:
-      'The manifest lists GitHub release assets, the Docker image and tool project links. A blank mirror field means no project mirror is available.',
+      'Stable schema — fields won\'t be renamed without a major bump. Source-of-truth for binaries is the GitHub Releases API; this endpoint just normalises and merges in the static bits (Docker tag, tool project links). A blank mirror field means no mirror is available.',
     mirror: 'mirror ↓',
     upstream: 'upstream ↗',
     get: 'get ↓',

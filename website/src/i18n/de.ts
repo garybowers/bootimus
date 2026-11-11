@@ -5,7 +5,7 @@ const de = {
       'Eigenständiger PXE- und HTTP-Boot-Server. Ein Binary. Keine Konfiguration. 50+ Distros out-of-the-box.',
     downloadsTitle: 'Downloads — Bootimus',
     downloadsDescription:
-      'Bootimus-Binärdateien, Docker-Images und Links zu PXE-Tools herunterladen.',
+      'Lade bootimus-Binaries und Docker-Images herunter, mit Links zu PXE-Tools.',
     docsTitle: 'Dokumentation — Bootimus',
     docsDescription:
       'Bootimus-Dokumentation: Deployment, Image-Verwaltung, DHCP, Authentifizierung, Client-ACLs, Distro-Profile.',
@@ -88,7 +88,7 @@ const de = {
       },
       '08': {
         title: 'Läuft überall',
-        body: 'Multi-Arch-Docker (amd64/arm64) oder eine statische Linux-Binärdatei.',
+        body: 'Multi-Arch-Docker (amd64/arm64) oder ein statisches Binary.',
       },
       '09': {
         title: 'Unbeaufsichtigte Installationen',
@@ -190,7 +190,7 @@ const de = {
 
   cta: {
     title: 'Keine Lust mehr, tftpd zu babysitten?',
-    sub: 'Bootimus in Docker oder direkt unter Linux ausführen.',
+    sub: 'Docker oder Bare Metal. Such dir aus, was dir taugt.',
     primary: '$ get bootimus',
     secondary: 'zur doku →',
   },
@@ -199,7 +199,7 @@ const de = {
     kicker: '// downloads',
     title: 'Schnapp dir einen Build.',
     lede:
-      'Bootimus ist als Docker-Image und als statische Linux-Binärdatei über GitHub Releases verfügbar. Rettungswerkzeuge gibt es auf den jeweiligen Projektwebsites.',
+      'Jedes Release gibt\'s als Docker-Image und als statisches Linux-Binary live aus dem neuesten GitHub-Release. Tools gibt\'s auf den jeweiligen Upstream-Projektwebsites.',
     badgeStable: 'aktuell · stabil',
     badgePrerelease: 'pre-release',
     badgeNone: 'noch keine releases',
@@ -209,7 +209,7 @@ const de = {
     released: 'veröffentlicht',
     via: 'via',
     sectionArtifacts: 'release-artefakte',
-    sectionTools: 'Rettungswerkzeuge',
+    sectionTools: 'tools',
     sectionApi: 'manifest verwenden',
     emptyTitle: 'Noch keine Binaries veröffentlicht',
     emptyBody:
@@ -218,9 +218,9 @@ const de = {
     verifyTitle: 'verifizieren',
     apiTitle: 'api · manifest.json',
     toolsLede:
-      'Diese Werkzeuge können zu Bootimus hinzugefügt werden. Downloads, aktuelle Versionen und Prüfsummen stehen auf den Projektwebsites.',
+      'Das sind netboot-fertige Images, die das Admin-UI bei Bedarf herunterlädt und als PXE-Menüeinträge ausspielt. Die Upstream-URLs bleiben die Wahrheit.',
     apiLede:
-      'Das Manifest enthält GitHub-Release-Dateien, das Docker-Image und Links zu den Werkzeugprojekten. Ein leeres mirror-Feld bedeutet, dass kein Projekt-Mirror verfügbar ist.',
+      'Stabiles Schema — Felder werden ohne Major-Bump nicht umbenannt. Quelle der Wahrheit für Binaries ist die GitHub-Releases-API; dieser Endpoint normalisiert nur und mergt die statischen Stücke (Docker-Tag, Links zu Tool-Projekten) mit ein. Ein leeres mirror-Feld bedeutet, dass kein Mirror verfügbar ist.',
     mirror: 'mirror ↓',
     upstream: 'upstream ↗',
     get: 'holen ↓',
