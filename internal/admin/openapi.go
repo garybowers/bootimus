@@ -21,6 +21,7 @@ type APIEndpoint struct {
 	Body        string
 	Multipart   bool
 	FormEncoded bool
+	PlainText   bool
 	Public      bool
 	ReadOnly    bool
 }
@@ -124,7 +125,7 @@ var APISections = []APISection{
 	}},
 	{Tag: "Images", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/images", Summary: "List all images, or one when filename is given.", Params: []APIParam{{Name: "filename", In: "query", Description: "ISO filename of a single image"}}, ReadOnly: true},
-		{Method: "PUT", Path: "/api/images", Summary: "Partial update of an image. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces.", Params: []APIParam{qFilename("ISO filename")}, Body: "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, kernel_override, initrd_override, boot_password?}"},
+		{Method: "PUT", Path: "/api/images", Summary: "Partial update of an image. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces. boot_menu_exempt bypasses only the global menu password; image passwords and client visibility still apply.", Params: []APIParam{qFilename("ISO filename")}, Body: "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, kernel_override, initrd_override, boot_password?, boot_menu_exempt?}"},
 		{Method: "DELETE", Path: "/api/images", Summary: "Delete an image.", Params: []APIParam{qFilename("ISO filename"), {Name: "delete_file", In: "query", Description: "true to also remove the ISO from disk"}}},
 		{Method: "POST", Path: "/api/images/upload", Summary: "Upload an ISO or unified kernel image.", Body: "file, public, description", Multipart: true},
 		{Method: "POST", Path: "/api/images/download", Summary: "Download an ISO from a URL asynchronously, verifying it against a SHA-256 when one is given or published alongside.", Body: "{url, filename, description, sha256, checksum_url, catalogue_id, catalogue_release}"},
@@ -285,6 +286,7 @@ var APISections = []APISection{
 	}},
 	{Tag: "Boot", Description: "Endpoints served to PXE clients on the boot port; no authentication.", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/menu.ipxe", Summary: "Generated iPXE menu script.", Params: []APIParam{{Name: "mac", In: "query", Description: "MAC address of the booting client"}}, Public: true},
+		{Method: "GET", Path: "/boot-menu-image", Summary: "Select an enabled, client-visible image explicitly allowed on the locked menu. Rechecks the exception and returns an image-password form when needed; never unlocks the full menu.", Params: []APIParam{{Name: "mac", In: "query", Description: "MAC address of the booting client"}, {Name: "image", In: "query", Required: true, Description: "Image ID"}}, PlainText: true, Public: true},
 		{Method: "GET", Path: "/autoexec.ipxe", Summary: "iPXE autoexec for the chainloaded bootloader.", Public: true},
 		{Method: "GET", Path: "/inventory", Summary: "iPXE-submitted hardware inventory.", Params: []APIParam{qMAC("MAC address of the booting client")}, Public: true},
 		{Method: "GET", Path: "/isos/{filename}", Summary: "Direct ISO download.", Params: []APIParam{pathParam("filename", "ISO filename")}, Public: true},
@@ -432,6 +434,9 @@ func buildOperation(tag string, ep APIEndpoint, order int) OpenAPIOperation {
 		Public:   ep.Public,
 		ReadOnly: ep.ReadOnly || ep.Public,
 		Order:    order,
+	}
+	if ep.PlainText {
+		op.Responses["200"]["content"] = map[string]interface{}{"text/plain": map[string]interface{}{"schema": map[string]interface{}{"type": "string"}}}
 	}
 	for _, p := range ep.Params {
 		op.Parameters = append(op.Parameters, OpenAPIParameter{

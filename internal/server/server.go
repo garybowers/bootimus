@@ -1268,6 +1268,7 @@ func (s *Server) startHTTPServer(listener net.Listener) error {
 
 	mux.HandleFunc("/inventory", s.handleInventoryReport)
 	mux.HandleFunc("/menu.ipxe", s.handleIPXEMenu)
+	mux.HandleFunc("/boot-menu-image", s.handleBootMenuImage)
 
 	toolsDir := filepath.Join(s.config.DataDir, "tools")
 	mux.Handle("/tools/", http.StripPrefix("/tools/", http.FileServer(http.Dir(toolsDir))))

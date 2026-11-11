@@ -6459,6 +6459,7 @@ async function showImagePropertiesModal(filename, opts) {
     document.getElementById('image-props-enabled').checked = img.enabled;
     document.getElementById('image-props-public').checked = img.public;
     document.getElementById('image-props-boot-password').value = '';
+    document.getElementById('image-props-boot-menu-exempt').checked = img.boot_menu_exempt === true;
     document.getElementById('image-props-remove-boot-password').checked = false;
     document.getElementById('image-props-boot-password-status').textContent = img.boot_password_required ? 'Password set.' : 'No password set.';
     renderImageIntegrity(img);
@@ -6941,6 +6942,7 @@ async function saveImageProperties(opts) {
         enabled: enabled,
         public: isPublic,
         auto_install_file: autoInstallFile,
+        boot_menu_exempt: document.getElementById('image-props-boot-menu-exempt').checked,
     };
 
     const bootPassword = document.getElementById('image-props-boot-password').value;

@@ -42,11 +42,21 @@ Pending next-boot actions and deployment profiles do not bypass the password or 
 
 `PUT /api/theme` also accepts `locked_menu_local_boot` and `locked_menu_timeout`. Omitted fields preserve their current values. Replicas sync both settings.
 
+## Images on the locked menu
+
+In **Images → Properties**, enable **Show on locked boot menu** for a kiosk or other image that should be selectable before the global password. The option is off by default and bypasses only the global menu password. An image's own password still applies; leave it unset for password-free boot. The image must also be enabled and visible to that client through its existing public, assignment, group or profile rules.
+
+Exceptions appear beside local boot on the locked menu. They never unlock the shell, tools or other images, and do not automatically run pending next-boot or profile actions. Each selection rechecks the current permissions. Cancelling an image-password prompt returns to the locked menu; only a successful selection consumes a matching next-boot action.
+
+Replicas copy the exception flag and revoke an observed removal even if password-verifier sync fails. Upgrade replicas before using exceptions. This remains menu protection on a trusted provisioning network, not direct-download access control.
+
 ## API
 
 `PUT /api/theme` and `PUT /api/images?filename=...` accept `boot_password`. Omit it to preserve the password, supply a non-empty string to set it, or `""` to remove it. Responses contain `boot_password_required` and an opaque `boot_password_revision`, never the password or hash. The revision changes on every set or removal. Changing either status field directly has no effect.
 
 Boot clients submit URL-encoded POST bodies to `/boot-auth` on the admin HTTPS port. Passwords and menu-session tokens must not appear in URLs. This endpoint grants no admin session or API access.
+
+`PUT /api/images?filename=...` also accepts the boolean `boot_menu_exempt`; omit it to preserve the current value. `GET /boot-menu-image?mac=...&image=...` on the boot HTTP port serves only explicitly exempt, client-visible images. Images with their own password still authenticate over HTTPS.
 
 ## Replicas
 

@@ -2486,6 +2486,10 @@
                     <small>Leave blank to keep the current password. Checked separately from the menu password, including automatic boots. Direct image downloads remain accessible.</small>
                     <label class="checkbox-group"><input type="checkbox" id="image-props-remove-boot-password"> Remove the image password</label>
                 </div>
+                <div class="form-group">
+                    <label class="checkbox-group"><input type="checkbox" id="image-props-boot-menu-exempt"> Show on locked boot menu</label>
+                    <small>Skip the global menu password for this image only. Its own image password and client/profile visibility still apply. Shell, tools and other images remain locked.</small>
+                </div>
             </div>
 
             <div id="props-autoinstall-content" class="props-tab-content" style="display: none;">

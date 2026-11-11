@@ -468,6 +468,7 @@ type Image struct {
 	Enabled               bool           `gorm:"default:true" json:"enabled"`
 	Public                bool           `gorm:"default:false" json:"public"`
 	BootPasswordRequired  bool           `gorm:"default:false" json:"boot_password_required"`
+	BootMenuExempt        bool           `gorm:"default:false" json:"boot_menu_exempt"`
 	BootPasswordHash      string         `json:"-"`
 	BootPasswordRevision  string         `json:"boot_password_revision,omitempty"`
 	BootPasswordSourceAt  time.Time      `json:"-"`

@@ -1035,6 +1035,14 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if value, exists := updates["boot_menu_exempt"]; exists {
+		exempt, ok := value.(bool)
+		if !ok {
+			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "boot_menu_exempt must be a boolean"})
+			return
+		}
+		image.BootMenuExempt = exempt
+	}
 	if bootMethod, ok := updates["boot_method"].(string); ok {
 		image.BootMethod = bootMethod
 	}
