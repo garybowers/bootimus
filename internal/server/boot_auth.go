@@ -163,14 +163,29 @@ exit
 `
 
 func bootProtectionUnavailable() string {
-	return "#!ipxe\necho Protected boot is unavailable. Check HTTPS, certificates and bootloader support.\n:choice\nmenu Bootimus\nitem local Boot from Local Disk\nchoose selected || goto choice\ngoto ${selected}\n" + bootPasswordLocal
+	return bootProtectionUnavailableWithTheme(nil)
 }
 
-func (server *Server) bootPasswordMenu(mac string) string {
+func lockedMenuChoice(theme *models.MenuTheme) string {
+	if theme == nil || !theme.LockedMenuLocalBoot {
+		return "choose selected"
+	}
+	timeout := theme.LockedMenuTimeout
+	if timeout < 0 || timeout > 86400 {
+		timeout = 0
+	}
+	return fmt.Sprintf("choose --default local --timeout %d --retimeout 0 selected", timeout*1000)
+}
+
+func bootProtectionUnavailableWithTheme(theme *models.MenuTheme) string {
+	return "#!ipxe\necho Protected boot is unavailable. Check HTTPS, certificates and bootloader support.\n:choice\nmenu Bootimus\nitem local Boot from Local Disk\n" + lockedMenuChoice(theme) + " || goto choice\ngoto ${selected}\n" + bootPasswordLocal
+}
+
+func (server *Server) bootPasswordMenu(mac string, theme *models.MenuTheme) string {
 	mac, valid := bootMAC(mac)
 	endpoint := server.bootAuthenticationURL()
 	if !valid || endpoint == "" {
-		return bootProtectionUnavailable()
+		return bootProtectionUnavailableWithTheme(theme)
 	}
 	return fmt.Sprintf(`#!ipxe
 clear bootimus_password
@@ -179,7 +194,7 @@ clear bootimus_session
 menu Bootimus - Password required
 item unlock Enter network-boot menu
 item local Boot from Local Disk
-choose selected || goto start
+%s || goto start
 goto ${selected}
 :unlock
 form Boot menu password || goto rejected
@@ -202,7 +217,7 @@ sleep 1
 clear bootimus_password
 params --name bootimus --delete ||
 goto start
-%s`, mac, endpoint, bootPasswordLocal)
+%s`, lockedMenuChoice(theme), mac, endpoint, bootPasswordLocal)
 }
 
 func (builder *MenuBuilder) buildImagePasswordGate(imageID uint) string {

@@ -3945,6 +3945,9 @@ async function loadTheme() {
             document.getElementById('theme-title').value = data.data.title || '';
             document.getElementById('theme-timeout').value = data.data.menu_timeout != null ? data.data.menu_timeout : 30;
             document.getElementById('theme-default-item').value = data.data.default_menu_item || '';
+            document.getElementById('theme-locked-local-boot').checked = data.data.locked_menu_local_boot === true;
+            document.getElementById('theme-locked-timeout').value = data.data.locked_menu_timeout ?? 0;
+            document.getElementById('theme-locked-timeout').disabled = !data.data.locked_menu_local_boot;
             document.getElementById('theme-boot-password').value = '';
             document.getElementById('theme-remove-boot-password').checked = false;
             document.getElementById('theme-boot-password-status').textContent = data.data.boot_password_required ? 'Password set.' : 'No password set.';
@@ -3968,6 +3971,8 @@ async function saveTheme(e) {
         title: document.getElementById('theme-title').value,
         menu_timeout: parseInt(document.getElementById('theme-timeout').value) || 0,
         default_menu_item: document.getElementById('theme-default-item').value,
+        locked_menu_local_boot: document.getElementById('theme-locked-local-boot').checked,
+        locked_menu_timeout: Number(document.getElementById('theme-locked-timeout').value),
     };
     const bootPassword = document.getElementById('theme-boot-password').value;
     if (document.getElementById('theme-remove-boot-password').checked) theme.boot_password = '';

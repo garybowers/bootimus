@@ -573,10 +573,11 @@ func (s *Syncer) syncTheme(ctx context.Context, run *syncRun) (KindResult, error
 		bootHash = feed.Theme.Hash
 	}
 	res := KindResult{Count: 1}
-	if local.Title == remote.Title && local.MenuTimeout == remote.MenuTimeout && local.DefaultMenuItem == remote.DefaultMenuItem && local.BootPasswordRequired == remote.BootPasswordRequired && local.BootPasswordHash == bootHash && local.BootPasswordRevision == remote.BootPasswordRevision && local.BootPasswordSourceAt.Equal(remote.UpdatedAt) {
+	if local.Title == remote.Title && local.MenuTimeout == remote.MenuTimeout && local.DefaultMenuItem == remote.DefaultMenuItem && local.LockedMenuLocalBoot == remote.LockedMenuLocalBoot && local.LockedMenuTimeout == remote.LockedMenuTimeout && local.BootPasswordRequired == remote.BootPasswordRequired && local.BootPasswordHash == bootHash && local.BootPasswordRevision == remote.BootPasswordRevision && local.BootPasswordSourceAt.Equal(remote.UpdatedAt) {
 		return res, nil
 	}
 	local.Title, local.MenuTimeout, local.DefaultMenuItem = remote.Title, remote.MenuTimeout, remote.DefaultMenuItem
+	local.LockedMenuLocalBoot, local.LockedMenuTimeout = remote.LockedMenuLocalBoot, remote.LockedMenuTimeout
 	local.BootPasswordRequired, local.BootPasswordHash = remote.BootPasswordRequired, bootHash
 	local.BootPasswordRevision = remote.BootPasswordRevision
 	local.BootPasswordSourceAt = remote.UpdatedAt
