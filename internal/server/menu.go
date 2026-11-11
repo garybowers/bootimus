@@ -499,15 +499,15 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 		sb.WriteString("echo Loading Windows boot files via wimboot...\n")
 		sb.WriteString(fmt.Sprintf("kernel %s/wimboot%s\n", localURL, bootParams))
 		if mb.autoInstallTypes[img.ID] == "autounattend" {
-			sb.WriteString(fmt.Sprintf("initrd %s/autoinstall/%s?mac=%s AutoUnattend.xml\n", localURL, encodedFilename, mb.macAddress))
+			sb.WriteString(fmt.Sprintf("initrd --name AutoUnattend.xml %s/autoinstall/%s?mac=%s AutoUnattend.xml\n", localURL, encodedFilename, mb.macAddress))
 		}
 		// Ship only boot.wim and let wimboot synthesize the ramdisk BCD +
 		// boot.sdi (the documented minimal setup). Feeding the ISO's DVD BCD
 		// hangs 24H2/25H2 media on a black screen after the loading bar.
 		if img.WIMPath != "" {
-			sb.WriteString(fmt.Sprintf("initrd %s/boot/%s/iso/%s boot.wim\n", baseURL, cacheDir, encodePathSegments(img.WIMPath)))
+			sb.WriteString(fmt.Sprintf("initrd --name boot.wim %s/boot/%s/iso/%s boot.wim\n", baseURL, cacheDir, encodePathSegments(img.WIMPath)))
 		} else {
-			sb.WriteString(fmt.Sprintf("initrd %s/boot/%s/iso/sources/boot.wim boot.wim || initrd %s/boot/%s/iso/SOURCES/BOOT.WIM boot.wim\n", baseURL, cacheDir, baseURL, cacheDir))
+			sb.WriteString(fmt.Sprintf("initrd --name boot.wim %s/boot/%s/iso/sources/boot.wim boot.wim || initrd --name boot.wim %s/boot/%s/iso/SOURCES/BOOT.WIM boot.wim\n", baseURL, cacheDir, baseURL, cacheDir))
 		}
 		sb.WriteString("boot || goto failed\n")
 
