@@ -136,7 +136,26 @@ There's one example config, [bootimus.example.yaml](bootimus.example.yaml). Rath
 
 [distro-profiles.json](distro-profiles.json) and [tools-profiles.json](tools-profiles.json) are the source of truth for boot behaviour. Please bump the `version` field when you change them so caches invalidate cleanly.
 
-For app releases, `make bump NEW_VERSION=X.Y.Z` updates `VERSION`, the profile versions and `docs/openapi.json`. It uses the Go toolchain to regenerate the API document.
+## App releases
+
+Releases are selected by a maintainer and published by the existing
+[release workflow](.github/workflows/release.yml). Pushing a `v*` tag starts
+the workflow, which publishes Linux and Windows binaries, checksums and Docker
+images. Stable releases also update Docker's `latest` tag.
+
+Release checklist:
+
+1. Run `make bump NEW_VERSION=X.Y.Z`. This updates `VERSION`, the source and
+   embedded profile versions, and `docs/openapi.json` using the Go toolchain.
+2. Review and merge those changes, then wait for CI on the commit to pass.
+3. Tag that commit and push only the intended tag, for example
+   `git push origin vX.Y.Z`.
+4. Check both publishing jobs, the release assets and Docker images, then
+   review the generated release notes.
+
+The local `make release` target also pushes Docker images and prints manual
+GitHub upload instructions. Use the tag workflow for the usual release process.
+Website deployments and appliance builds are separate.
 
 ## Before opening a PR
 
@@ -151,7 +170,6 @@ For app releases, `make bump NEW_VERSION=X.Y.Z` updates `VERSION`, the profile v
 
 ## A few things we'd rather avoid
 
-- **GitHub Actions and release automation.** Releases are cut manually — please don't add workflow files.
 - **Drive-by formatting or refactoring** in code unrelated to your PR. It makes review harder.
 - **Marketing-style copy** in READMEs or release notes. Plain descriptions of what changed read better.
 - **Decorative emoji** in code, comments, commit messages, or docs.
