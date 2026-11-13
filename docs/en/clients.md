@@ -724,3 +724,31 @@ curl -H "Authorization: Bearer $TOKEN" -X DELETE "http://localhost:8081/api/clie
 -  Use [Admin Console](admin.md) for management
 -  Set up [DHCP Configuration](dhcp.md) for network booting
 -  View [Boot Logs](admin.md#boot-logs) for monitoring
+
+## Native Raspberry Pi / TFTP boot statistics
+
+A Pi booting directly from its firmware never requests an iPXE menu or HTTP boot
+image, so those requests cannot update its statistics. To count these boots:
+
+1. Register the client by MAC address, then open **Clients → Edit**.
+2. Set **Native TFTP boot file** to the exact kernel path shown in the TFTP log,
+   for example `ec84083c/kernel7.img`. Include the directory unique to that client.
+3. Save and boot the client again. **Boot Count**, **Last Boot** and the activity
+   timeline update after the kernel transfer completes.
+
+Use a kernel file, not `config.txt`, `cmdline.txt` or a firmware file: those may
+be requested during discovery without a boot. Custom kernel filenames work too.
+Each request path can belong to only one client. A shared root filename cannot
+identify a client; configure a serial-specific directory or other unique TFTP
+prefix first. The API field is `native_tftp_boot_file`; an empty string disables it.
+
+This works with external DHCP and relays because it does not infer the MAC from
+the source IP or Pi serial. It changes statistics only, not DHCP, TFTP paths,
+image permissions or password protection. The client remains **Static** if it
+was registered manually; that label does not indicate whether it has booted.
+
+A successful activity entry means **the configured file was transferred**, not
+that the OS started. Failed transfers do not count. Further transfers within
+30 seconds of the counted transfer are suppressed, including across server
+restarts; a genuine reboot inside that window is also suppressed because TFTP
+has no boot-session identifier. Replicas keep their own transfer statistics.

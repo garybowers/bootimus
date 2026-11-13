@@ -533,10 +533,18 @@ func (h *Handler) CreateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := models.ValidateNativeTFTPBootFile(client.NativeTFTPBootFile); err != nil {
+		h.sendJSON(w, http.StatusBadRequest, Response{Error: err.Error()})
+		return
+	}
 	client.Enabled = true
 	client.Static = true
 
 	if err := h.storage.CreateClient(&client); err != nil {
+		if errors.Is(err, storage.ErrNativeTFTPBootFileExists) {
+			h.sendJSON(w, http.StatusConflict, Response{Error: err.Error()})
+			return
+		}
 		if errors.Is(err, storage.ErrClientExists) {
 			h.sendJSON(w, http.StatusConflict, Response{Success: false, Error: "A client with this MAC address already exists"})
 			return
@@ -588,6 +596,18 @@ func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 	}
 	if bls, ok := updates["bootloader_set"].(string); ok {
 		client.BootloaderSet = bls
+	}
+	if raw, ok := updates["native_tftp_boot_file"]; ok {
+		filename, valid := raw.(string)
+		if !valid {
+			h.sendJSON(w, http.StatusBadRequest, Response{Error: "native_tftp_boot_file must be a string; use an empty string to clear it"})
+			return
+		}
+		if err := models.ValidateNativeTFTPBootFile(filename); err != nil {
+			h.sendJSON(w, http.StatusBadRequest, Response{Error: err.Error()})
+			return
+		}
+		client.NativeTFTPBootFile = filename
 	}
 	if aif, ok := updates["auto_install_file"].(string); ok {
 		client.AutoInstallFile = aif
@@ -670,6 +690,10 @@ func (h *Handler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.storage.UpdateClient(mac, client); err != nil {
+		if errors.Is(err, storage.ErrNativeTFTPBootFileExists) {
+			h.sendJSON(w, http.StatusConflict, Response{Error: err.Error()})
+			return
+		}
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
 		return
 	}

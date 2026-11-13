@@ -1041,7 +1041,8 @@ func sanitiseTFTPFilename(name string) string {
 	return name
 }
 
-func (s *Server) serveTFTPFile(filename string, rf io.ReaderFrom) error {
+func (s *Server) serveTFTPFile(filename string, rf io.ReaderFrom) (transferErr error) {
+	requestPath := filename
 	if clean := sanitiseTFTPFilename(filename); clean != filename {
 		log.Printf("TFTP: Truncated malformed filename %q to %q", filename, clean)
 		filename = clean
@@ -1053,6 +1054,18 @@ func (s *Server) serveTFTPFile(filename string, rf io.ReaderFrom) error {
 	cleanPath = filepath.ToSlash(cleanPath)
 
 	remote := tftpRemote(rf)
+	// Use the exact request path, not a resolved fallback or basename: the
+	// administrator maps a client-specific kernel request to its client.
+	defer func() {
+		if transferErr == nil && s.config.Storage != nil {
+			recorded, err := s.config.Storage.RecordNativeTFTPBoot(requestPath, remote)
+			if err != nil {
+				log.Printf("Native TFTP boot statistics: %v", err)
+			} else if recorded {
+				metrics.BootAttempts.WithLabelValues("Native TFTP transfer").Inc()
+			}
+		}
+	}()
 	start := time.Now()
 	defer func() {
 		log.Printf("TFTP DEBUG: handler exit %s file=%s elapsed=%s", remote, filename, time.Since(start))

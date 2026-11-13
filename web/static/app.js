@@ -1950,6 +1950,7 @@ function renderClientDetailOverview(client) {
         ['Last boot', client.last_boot ? `${new Date(client.last_boot).toLocaleString()} <span style="color: var(--text-muted); font-weight: 400;">(${relativeTime(client.last_boot)})</span>` : kvText('', 'Never')],
         ['Boot count', kvText(client.boot_count || 0)],
         ['Bootloader set', kvText(client.bootloader_set, 'Default')],
+        ['Native TFTP boot file', kvText(client.native_tftp_boot_file, 'Disabled')],
         ['Allowed images', kvText((client.allowed_images || client.images || []).length)],
         ['Public images', kvText(client.show_public_images !== false ? 'Shown' : 'Hidden')],
         ['SAN target', san ? `${escapeHtml(san)}${client.boot_from_san ? ' <span class="badge badge-info">default</span>' : ''}` : kvText('', 'None')],
@@ -2302,6 +2303,7 @@ async function editClient(mac) {
             form.querySelector('[name="mac_address"]').value = currentClient.mac_address || mac || '';
             form.querySelector('[name="name"]').value = currentClient.name || '';
             form.querySelector('[name="description"]').value = currentClient.description || '';
+            form.querySelector('[name="native_tftp_boot_file"]').value = currentClient.native_tftp_boot_file || '';
             form.querySelector('[name="enabled"]').checked = currentClient.enabled || false;
             form.querySelector('[name="show_public_images"]').checked = currentClient.show_public_images !== false;
             form.querySelector('[name="proxy_dhcp_no_vendor_option"]').checked = !!currentClient.proxy_dhcp_no_vendor_option;
@@ -3652,6 +3654,7 @@ function setupForms() {
             mac_address: formData.get('mac_address'),
             name: formData.get('name'),
             description: formData.get('description'),
+            native_tftp_boot_file: formData.get('native_tftp_boot_file') || '',
             enabled: formData.get('enabled') === 'on'
         };
 
@@ -3686,6 +3689,7 @@ function setupForms() {
         const updates = {
             name: formData.get('name'),
             description: formData.get('description'),
+            native_tftp_boot_file: formData.get('native_tftp_boot_file') || '',
             enabled: formData.get('enabled') === 'on',
             show_public_images: formData.get('show_public_images') === 'on',
             bootloader_set: formData.get('bootloader_set') || '',
