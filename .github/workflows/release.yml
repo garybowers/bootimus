@@ -1,18 +1,9 @@
 name: Release
 
-# Publishes a release when a version tag is pushed, e.g.:
-#   make bump NEW_VERSION=0.1.73
-#   git commit -am "Release v0.1.73" && git tag v0.1.73 && git push --tags
-#
-# Produces:
-#   * Cross-compiled binaries (linux/windows, amd64/arm64) + SHA256SUMS
-#     attached to a GitHub Release.
-#   * Multi-arch container images pushed to Docker Hub, tagged with the
-#     release version and :latest.
-#
-# The version is derived from the tag (v0.1.73 -> 0.1.73) and stamped into
-# the binary (server.Version) and the embedded *-profiles.json via
-# `make sync-profiles`, mirroring the local Makefile release flow.
+# A maintainer pushes vX.Y.Z or vX.Y.Z-prerelease after merging the version bump.
+# Validate the tag, then run the existing CI suite on this same commit before
+# publishing. Prereleases get versioned images only; stable releases also update
+# Docker's latest tag. See docs/en/releases.md.
 
 on:
   push:
@@ -20,14 +11,45 @@ on:
       - "v*"
 
 permissions:
-  contents: write # create/attach GitHub Releases
+  contents: read
 
 env:
   IMAGE: garybowers/bootimus
 
 jobs:
+  prepare:
+    name: Validate release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      latest: ${{ steps.version.outputs.latest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tag and VERSION
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          metadata="$(scripts/release-metadata.sh "$version")"
+          if [ "$version" != "$(cat VERSION)" ]; then
+            echo 'Tag and VERSION differ. Run make bump and tag the merged version bump.' >&2
+            exit 1
+          fi
+          printf '%s\n' "$metadata" >> "$GITHUB_OUTPUT"
+
+  checks:
+    name: Release checks
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+
   binaries:
     name: Build & attach binaries
+    needs: [prepare, checks]
+    permissions:
+      contents: write # create/attach GitHub Releases
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,12 +59,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Derive version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
       - name: Build binaries
-        run: make binaries VERSION=${{ steps.version.outputs.version }}
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: make binaries
 
       - name: Generate checksums
         run: sha256sum bootimus-* > SHA256SUMS
@@ -50,7 +70,10 @@ jobs:
       - name: Create release and upload artifacts
         uses: softprops/action-gh-release@v2
         with:
-          name: v${{ steps.version.outputs.version }}
+          name: v${{ needs.prepare.outputs.version }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+          make_latest: ${{ needs.prepare.outputs.latest }}
+          fail_on_unmatched_files: true
           generate_release_notes: true
           files: |
             bootimus-*
@@ -58,16 +81,15 @@ jobs:
 
   docker:
     name: Build & push container image
+    needs: [prepare, checks]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Derive version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
       - name: Sync embedded profile versions
-        run: make sync-profiles VERSION=${{ steps.version.outputs.version }}
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: make sync-profiles
 
       - uses: docker/setup-qemu-action@v3
 
@@ -86,9 +108,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            VERSION=${{ steps.version.outputs.version }}
+            VERSION=${{ needs.prepare.outputs.version }}
           tags: |
-            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
-            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ needs.prepare.outputs.version }}
+            ${{ needs.prepare.outputs.latest == 'true' && format('{0}:latest', env.IMAGE) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

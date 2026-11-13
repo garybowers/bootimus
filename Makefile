@@ -59,8 +59,8 @@ help:
 	@echo ""
 	@echo "Publish:"
 	@echo "  make binaries         - Build linux + windows binaries (amd64, arm64)"
-	@echo "  make release          - Build binaries and show upload instructions"
-	@echo "  make docker-push      - Build and push multi-arch images to Docker Hub"
+	@echo "  make release          - Build binaries, push Docker images and show upload instructions"
+	@echo "  make docker-push      - Push multi-arch images (latest only for stable versions)"
 	@echo ""
 	@echo "Website (marketing site -> Google Artifact Registry):"
 	@echo "  make build-website    - Build amd64 image from repo root into GCP AR"
@@ -158,12 +158,14 @@ sync-profiles:
 	@cp distro-profiles.json internal/profiles/distro-profiles.json
 	@cp tools-profiles.json internal/tools/tools-profiles.json
 
+bump: export RELEASE_VERSION = $(NEW_VERSION)
 bump:
-	@test -n "$(NEW_VERSION)" || (echo "Usage: make bump NEW_VERSION=X.Y.Z" && exit 1)
-	@echo "$(NEW_VERSION)" > VERSION
-	@$(MAKE) --no-print-directory sync-profiles VERSION=$(NEW_VERSION)
-	@$(MAKE) --no-print-directory openapi VERSION=$(NEW_VERSION)
-	@echo "Bumped to $(NEW_VERSION): VERSION, profile versions and docs/openapi.json"
+	@test -n "$$RELEASE_VERSION" || (echo "Usage: make bump NEW_VERSION=X.Y.Z" && exit 1)
+	@scripts/release-metadata.sh "$$RELEASE_VERSION" >/dev/null
+	@printf '%s\n' "$$RELEASE_VERSION" > VERSION
+	@$(MAKE) --no-print-directory sync-profiles VERSION="$$RELEASE_VERSION"
+	@$(MAKE) --no-print-directory openapi VERSION="$$RELEASE_VERSION"
+	@echo "Bumped to $$RELEASE_VERSION: VERSION, profile versions and docs/openapi.json"
 
 build: sync-profiles
 	@echo "Building bootimus $(VERSION)..."
@@ -213,13 +215,20 @@ binaries: sync-profiles
 	@echo "Done."
 	@ls -lh bootimus-*
 
+docker-push: export RELEASE_VERSION = $(VERSION)
+docker-push: export RELEASE_IMAGE = $(IMAGE)
 docker-push:
-	docker buildx create --use --name bootimus-builder --driver docker-container 2>/dev/null || docker buildx use bootimus-builder
+	@set -eu; \
+	metadata="$$(scripts/release-metadata.sh "$$RELEASE_VERSION")"; \
+	set -- -t "$$RELEASE_IMAGE:$$RELEASE_VERSION"; \
+	if printf '%s\n' "$$metadata" | grep -qx 'latest=true'; then \
+		set -- "$$@" -t "$$RELEASE_IMAGE:latest"; \
+	fi; \
+	docker buildx create --use --name bootimus-builder --driver docker-container 2>/dev/null || docker buildx use bootimus-builder; \
 	docker buildx build \
 		--platform $(PLATFORMS) \
-		--build-arg VERSION=$(VERSION) \
-		-t $(IMAGE):$(VERSION) \
-		-t $(IMAGE):latest \
+		--build-arg "VERSION=$$RELEASE_VERSION" \
+		"$$@" \
 		--push .
 
 ## Website (marketing site) --------------------------------------------------

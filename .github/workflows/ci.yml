@@ -3,13 +3,14 @@ name: CI
 # Runs once per change: pull requests test the result of merging into the
 # target branch; pushes to main verify the merge itself (and build the
 # container image). Branches without an open PR don't run CI. Tag pushes are
-# handled by release.yml, which stamps the version and pushes the image.
+# handled by release.yml, which calls this workflow before publishing.
 
 on:
   push:
     branches:
       - main
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
