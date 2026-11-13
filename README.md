@@ -147,6 +147,7 @@ $ systemctl start bootimus
 - **[Client Management](docs/en/clients.md)** - MAC-based access control, auto-discovery, next boot
 - **[Multi-Site](docs/en/multi-site.md)** - Read-only branch replicas that mirror a primary
 - **[Disk Imaging](docs/en/disk-imaging.md)** - Capture a client's disk with Clonezilla and deploy it to one client or a whole group
+- **[App Releases](docs/en/releases.md)** - Version preparation, release checks and prerelease publishing
 - **[Deployment Profiles](docs/en/deployment-profiles.md)** - Profiles that bundle image, auto-install file, SAN target, bootloader set and first-boot action, and rules that enrol new machines into them
 - **[Authentication](docs/en/authentication.md)** - JWT auth, LDAP/Active Directory and OIDC single sign-on setup
 - **[Distro Profiles](docs/en/distro-profiles.md)** - Data-driven distro detection and boot params
