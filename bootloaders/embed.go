@@ -7,7 +7,7 @@ import (
 	"path"
 )
 
-//go:embed all:default all:secureboot-official
+//go:embed all:default all:secureboot-official all:secureboot-official-snp
 var Bootloaders embed.FS
 
 const DefaultSet = "default"

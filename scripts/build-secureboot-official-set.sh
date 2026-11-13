@@ -29,7 +29,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BOOTLOADERS_DEFAULT="$ROOT_DIR/bootloaders/default"
-OUT_DIR="$ROOT_DIR/bootloaders/secureboot-official"
+# SNP-only uses the firmware network driver instead of probing native drivers.
+# Keep the existing set and default build unchanged unless explicitly requested.
+IPXE_DRIVER="${IPXE_DRIVER:-ipxe}"
+case "$IPXE_DRIVER" in
+    ipxe) SET_NAME=secureboot-official; ARM64_SHIM_NAME=ipxe-shimaa64.efi ;;
+    snponly) SET_NAME=secureboot-official-snp; ARM64_SHIM_NAME=ipxe-arm64-shim.efi ;;
+    *) echo "IPXE_DRIVER must be ipxe or snponly" >&2; exit 1 ;;
+esac
+OUT_DIR="$ROOT_DIR/bootloaders/$SET_NAME"
 
 # First iPXE release with official Secure Boot signed binaries is v2.0.0.
 IPXE_VERSION="${IPXE_VERSION:-v2.0.0}"
@@ -73,13 +81,15 @@ tar -xzf "$STAGING/ipxeboot.tar.gz" -C "$STAGING/extract"
 # that shim rejects with "Verification failed: (0x1A) Security Violation".
 # shim derives the second-stage name from its own filename:
 # ipxe-shimx64.efi loads ipxe.efi, so the signed binary must keep that name.
-X64_IPXE="$(find "$STAGING/extract" -type f -path '*x86_64-sb*' -name 'ipxe.efi' | head -n1)"
+X64_IPXE="$(find "$STAGING/extract" -type f -path '*x86_64-sb*' -name "$IPXE_DRIVER.efi" | head -n1)"
 if [[ -z "$X64_IPXE" ]]; then
-    echo "Could not find the SIGNED x86_64-sb/ipxe.efi in ipxeboot.tar.gz — archive layout changed?" >&2
+    echo "Could not find the SIGNED x86_64-sb/$IPXE_DRIVER.efi in ipxeboot.tar.gz — archive layout changed?" >&2
     echo "Archive contents:" >&2
     find "$STAGING/extract" -type f >&2
     exit 1
 fi
+# Keep the ipxe.efi name even for SNP-only: some firmware makes shim fall
+# back to /ipxe.efi (ipxe/ipxe#1684). This is safe when this set is global.
 cp "$X64_IPXE" "$STAGING/ipxe.efi"
 
 # Cheap signature sanity check: the signing cert's CN is embedded verbatim in
@@ -89,7 +99,7 @@ if ! grep -aq "iPXE Secure Boot" "$STAGING/ipxe.efi"; then
     exit 1
 fi
 
-ARM64_IPXE="$(find "$STAGING/extract" -type f -path '*arm64-sb*' -name 'ipxe.efi' | head -n1)"
+ARM64_IPXE="$(find "$STAGING/extract" -type f -path '*arm64-sb*' -name "$IPXE_DRIVER.efi" | head -n1)"
 if [[ -n "$ARM64_IPXE" ]] && grep -aq "iPXE Secure Boot" "$ARM64_IPXE"; then
     cp "$ARM64_IPXE" "$STAGING/ipxe-arm64.efi"
 else
@@ -109,7 +119,7 @@ cp "$X64_SHIM" "$STAGING/ipxe-shimx64.efi"
 
 ARM64_SHIM="$(find "$STAGING/extract" -type f -path '*arm64-sb*' -name 'shimaa64.efi' | head -n1)"
 if [[ -n "$ARM64_SHIM" ]]; then
-    cp "$ARM64_SHIM" "$STAGING/ipxe-shimaa64.efi"
+    cp "$ARM64_SHIM" "$STAGING/$ARM64_SHIM_NAME"
 fi
 
 # --- download official wimboot -------------------------------------------------
@@ -125,8 +135,8 @@ rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
 cp "$STAGING/ipxe-shimx64.efi"  "$OUT_DIR/"
-if [[ -f "$STAGING/ipxe-shimaa64.efi" ]]; then
-    cp "$STAGING/ipxe-shimaa64.efi" "$OUT_DIR/"
+if [[ -f "$STAGING/$ARM64_SHIM_NAME" ]]; then
+    cp "$STAGING/$ARM64_SHIM_NAME" "$OUT_DIR/"
 fi
 cp "$STAGING/ipxe.efi"          "$OUT_DIR/"
 if [[ -f "$STAGING/ipxe-arm64.efi" ]]; then
@@ -138,13 +148,13 @@ cp "$BOOTLOADERS_DEFAULT/undionly.kpxe" "$OUT_DIR/"
 
 cat > "$OUT_DIR/manifest.json" <<EOF
 {
-  "name": "secureboot-official",
-  "description": "Zero-enrollment UEFI Secure Boot: release-paired Microsoft-signed shim + official iPXE ${IPXE_VERSION} binaries signed by the iPXE Secure Boot CA. No embedded script — relies on autoexec.ipxe over TFTP (iPXE >= 2.0).",
+  "name": "$SET_NAME",
+  "description": "Zero-enrollment UEFI Secure Boot: release-paired Microsoft-signed shim + official iPXE ${IPXE_VERSION} ${IPXE_DRIVER} binaries signed by the iPXE Secure Boot CA. No embedded script — relies on autoexec.ipxe over TFTP (iPXE >= 2.0).",
   "shim_version": "bundled-${IPXE_VERSION}",
   "bootfiles": {
     "bios": "undionly.kpxe",
     "uefi": "ipxe-shimx64.efi",
-    "arm64": "ipxe-shimaa64.efi"
+    "arm64": "$ARM64_SHIM_NAME"
   }
 }
 EOF
