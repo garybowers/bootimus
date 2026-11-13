@@ -6,6 +6,7 @@ How to netboot machines that have UEFI Secure Boot enabled, without touching the
 
 - [How it works](#how-it-works)
 - [Enabling Secure Boot support](#enabling-secure-boot-support)
+- [Using the firmware network driver](#using-the-firmware-network-driver)
 - [Booting images](#booting-images)
 - [What works and what doesn't](#what-works-and-what-doesnt)
 - [Advanced: self-signed bootloaders for NBD/NFS](#advanced-self-signed-bootloaders-for-nbdnfs)
@@ -44,6 +45,40 @@ Bootimus detects the shim automatically during ISO extraction. The `iseq … ||`
 3. If you run an external DHCP server, change its UEFI bootfile name to `ipxe-shimx64.efi` (and `ipxe-shimaa64.efi` for ARM64 clients). See the [DHCP guide](dhcp.md).
 
 The official iPXE binaries carry no embedded Bootimus script; they rely on iPXE ≥ 2.0 fetching `autoexec.ipxe` over TFTP, which Bootimus serves. Keep UDP port 69 reachable from clients.
+
+## Using the firmware network driver
+
+If iPXE loses network connectivity after the firmware downloads it, try the
+optional `secureboot-official-snp` set. Its signed SNP-only loaders use the
+UEFI network driver on the boot interface instead of probing native NIC drivers.
+This is a candidate for the XCP-ng link failure in [#255](https://github.com/garybowers/bootimus/issues/255);
+confirmation on the affected hypervisor is still needed.
+
+Select it globally on **Bootloaders**, or assign it to a client or group. Built-in
+proxyDHCP honours those assignments. With external DHCP, select the set globally
+and advertise `ipxe-shimx64.efi` for x86_64 or `ipxe-arm64-shim.efi` for ARM64.
+For a per-client DHCP policy, use the full path, for example
+`bootloader-sets/secureboot-official-snp/ipxe-shimx64.efi`; changing a client in
+the admin UI alone does not change an external DHCP server's reply.
+
+Some firmware does not expose the shim's pathname, causing it to fetch
+`/ipxe.efi` from the TFTP root ([upstream report](https://github.com/ipxe/ipxe/issues/1684)).
+For affected x86_64 clients, select the SNP set globally. A per-client or group
+override cannot control that root fallback. ARM64 clients must preserve the
+pathname; the root fallback is the x86_64 loader.
+
+The set contains the unmodified signed `snponly.efi` binaries and matching shims
+from the [official iPXE v2.0.0 archive](https://github.com/ipxe/ipxe/releases/tag/v2.0.0).
+They are stored as `ipxe.efi` (x86_64) and `ipxe-arm64.efi` to match the shim
+filenames. Bootimus supplies `autoexec.ipxe` as usual; no embedded script or local
+signing is needed. BIOS continues to use `undionly.kpxe`. HTTPS trust, password
+character restrictions and the Secure Boot limitations below still apply.
+
+To refresh this optional set:
+
+```sh
+IPXE_DRIVER=snponly scripts/build-secureboot-official-set.sh
+```
 
 ## Booting images
 
