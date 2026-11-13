@@ -21,6 +21,7 @@ type Storage interface {
 	GetClientBootloaderSets(mac string) (clientSet, groupSet string, err error)
 	CreateClient(client *models.Client) error
 	UpdateClient(mac string, client *models.Client) error
+	RecordNativeTFTPBoot(filename, remoteAddr string) (bool, error)
 	DeleteClient(mac string) error
 
 	ListImages() ([]*models.Image, error)

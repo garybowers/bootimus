@@ -510,6 +510,7 @@ func applyClient(dst *models.Client, src models.Client, group, san *uint) {
 	dst.Enabled = src.Enabled
 	dst.ShowPublicImages = src.ShowPublicImages
 	dst.BootloaderSet = src.BootloaderSet
+	dst.NativeTFTPBootFile = src.NativeTFTPBootFile
 	dst.Static = src.Static
 	dst.ClientGroupID = group
 	dst.BMCProtocol = src.BMCProtocol
@@ -528,6 +529,7 @@ func applyClient(dst *models.Client, src models.Client, group, san *uint) {
 }
 
 func clientEqual(a, b models.Client) bool {
+	a.NativeTFTPLastBoot, b.NativeTFTPLastBoot = nil, nil
 	a.UpdatedAt = b.UpdatedAt
 	a.Images, b.Images = nil, nil
 	a.ClientGroup, b.ClientGroup = nil, nil

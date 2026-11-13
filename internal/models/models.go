@@ -132,6 +132,9 @@ type Client struct {
 	EnrolledByRuleID *uint          `gorm:"index" json:"enrolled_by_rule_id,omitempty"`
 	EnrolledAt       *time.Time     `json:"enrolled_at,omitempty"`
 
+	NativeTFTPBootFile string     `gorm:"uniqueIndex:idx_native_tftp_boot_file,where:native_tftp_boot_file <> '' AND deleted_at IS NULL" json:"native_tftp_boot_file,omitempty"`
+	NativeTFTPLastBoot *time.Time `json:"-"`
+
 	BMCProtocol  string `json:"bmc_protocol,omitempty"`
 	IPMIHost     string `json:"ipmi_host,omitempty"`
 	IPMIPort     int    `json:"ipmi_port,omitempty"`
@@ -542,6 +545,7 @@ func IsWindowsDistro(distro string) bool {
 }
 
 type BootLog struct {
+	Source     string    `json:"source,omitempty"`
 	ID         uint      `gorm:"primarykey" json:"id"`
 	CreatedAt  time.Time `json:"created_at"`
 	ClientID   *uint     `json:"client_id,omitempty"`

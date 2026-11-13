@@ -75,8 +75,8 @@ var APISections = []APISection{
 	}},
 	{Tag: "Clients", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/clients", Summary: "List all clients, or one when mac is given.", Params: []APIParam{{Name: "mac", In: "query", Description: "MAC address of a single client"}}, ReadOnly: true},
-		{Method: "POST", Path: "/api/clients", Summary: "Create a static client.", Body: "{mac_address, name, description, auto_install_choices[], enabled, ...}"},
-		{Method: "PUT", Path: "/api/clients", Summary: "Partial update; any client field is accepted.", Params: []APIParam{qMAC("MAC address of the client")}, Body: "{name, description, auto_install_choices[], enabled, ...}"},
+		{Method: "POST", Path: "/api/clients", Summary: "Create a static client.", Body: "{mac_address, name, description, native_tftp_boot_file, auto_install_choices[], enabled, ...}"},
+		{Method: "PUT", Path: "/api/clients", Summary: "Partial update; any client field is accepted.", Params: []APIParam{qMAC("MAC address of the client")}, Body: "{name, description, native_tftp_boot_file, auto_install_choices[], enabled, ...}"},
 		{Method: "DELETE", Path: "/api/clients", Summary: "Delete a client.", Params: []APIParam{qMAC("MAC address of the client")}},
 		{Method: "POST", Path: "/api/clients/wake", Summary: "Send a Wake-on-LAN packet.", Params: []APIParam{qMAC("MAC address of the client")}},
 		{Method: "POST", Path: "/api/clients/next-boot", Summary: "Set a one-shot next-boot image, or san:<id> to boot from a SAN target once.", Params: []APIParam{qMAC("MAC address of the client")}, Body: "{filename}"},

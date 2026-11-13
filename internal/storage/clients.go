@@ -30,7 +30,10 @@ func getClientBootloaderSets(db *gorm.DB, mac string) (clientSet, groupSet strin
 var ErrClientExists = errors.New("client already exists")
 
 func createClient(db *gorm.DB, client *models.Client) error {
-	err := createKeepingZeroValues(db, client, "ShowPublicImages")
+	if err := models.ValidateNativeTFTPBootFile(client.NativeTFTPBootFile); err != nil {
+		return err
+	}
+	err := nativeTFTPWriteError(createKeepingZeroValues(db, client, "ShowPublicImages"))
 	if err == nil {
 		return nil
 	}

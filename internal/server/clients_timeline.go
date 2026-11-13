@@ -184,6 +184,10 @@ func bootLogItem(l models.BootLog) timelineItem {
 	if l.ImageName == "" {
 		title = "Boot attempt"
 	}
+	if l.Source == models.BootSourceNativeTFTP {
+		title = l.ImageName
+		detail = strings.TrimSpace(detail + " (file transferred; OS startup not confirmed)")
+	}
 	sourceID := "boot:" + strconv.FormatUint(uint64(l.ID), 10)
 	return timelineItem{Time: l.CreatedAt, Kind: timelineKindBoot, Title: title, Detail: detail, Status: status, SourceID: sourceID, cursorKey: sourceID}
 }

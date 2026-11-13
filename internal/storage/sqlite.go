@@ -85,10 +85,18 @@ func (s *SQLiteStore) CreateClient(client *models.Client) error {
 }
 
 func (s *SQLiteStore) UpdateClient(mac string, client *models.Client) error {
-	return s.db.Model(&models.Client{}).Where("mac_address = ?", mac).
-		Select("Name", "Description", "Enabled", "ShowPublicImages", "BootloaderSet", "Static", "ClientGroupID",
+	if err := models.ValidateNativeTFTPBootFile(client.NativeTFTPBootFile); err != nil {
+		return err
+	}
+	err := s.db.Model(&models.Client{}).Where("mac_address = ?", mac).
+		Select("Name", "Description", "Enabled", "ShowPublicImages", "BootloaderSet", "NativeTFTPBootFile", "Static", "ClientGroupID",
 			"BMCProtocol", "IPMIHost", "IPMIPort", "IPMIUsername", "IPMIPassword", "IPMIInsecure", "AutoInstallFile", "AutoInstallChoices", "Variables", "ProxyDHCPNoVendorOption", "SANTargetID", "BootFromSAN", "ProfileID", "UpdatedAt").
 		Updates(client).Error
+	return nativeTFTPWriteError(err)
+}
+
+func (s *SQLiteStore) RecordNativeTFTPBoot(filename, remoteAddr string) (bool, error) {
+	return recordNativeTFTPBoot(s.db, filename, remoteAddr, time.Now())
 }
 
 func (s *SQLiteStore) DeleteClient(mac string) error {

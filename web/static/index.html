@@ -1377,6 +1377,11 @@
                     <label>Description</label>
                     <textarea name="description" placeholder="Optional description" rows="3"></textarea>
                 </div>
+                <div class="form-group">
+                    <label for="add-native-tftp-boot-file">Native TFTP boot file (optional)</label>
+                    <input type="text" id="add-native-tftp-boot-file" name="native_tftp_boot_file" maxlength="512" placeholder="ec84083c/kernel7.img" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="add-native-tftp-help">
+                    <small id="add-native-tftp-help" style="color: var(--text-secondary);">For clients that boot without iPXE: enter the exact kernel request path, including a directory unique to this client. A completed transfer counts as a boot attempt; retries within 30 seconds count once. Leave blank to disable.</small>
+                </div>
                 <div class="form-group checkbox-group">
                     <input type="checkbox" name="enabled" checked>
                     <label>Enabled</label>
@@ -1404,6 +1409,11 @@
                 <div class="form-group">
                     <label>Description</label>
                     <textarea name="description" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="edit-native-tftp-boot-file">Native TFTP boot file (optional)</label>
+                    <input type="text" id="edit-native-tftp-boot-file" name="native_tftp_boot_file" maxlength="512" placeholder="ec84083c/kernel7.img" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="edit-native-tftp-help">
+                    <small id="edit-native-tftp-help" style="color: var(--text-secondary);">For clients that boot without iPXE: enter the exact kernel request path, including a directory unique to this client. A completed transfer counts as a boot attempt; retries within 30 seconds count once. Leave blank to disable.</small>
                 </div>
                 <div class="form-group checkbox-group">
                     <input type="checkbox" name="enabled">
