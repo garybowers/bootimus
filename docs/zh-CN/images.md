@@ -451,7 +451,7 @@ ip=dhcp
 | **Ubuntu Desktop** |  是 |  否 | `/casper/vmlinuz` + fetch 优化 |
 | **Ubuntu Server** |  是 |  是 | `/install/vmlinuz` + netboot |
 | **Pop!_OS** |  是 |  否 | `/casper/vmlinuz` |
-| **TrueNAS SCALE** |  是 |  否 | `/vmlinuz` + `/initrd.img`(根目录) |
+| **TrueNAS SCALE** |  是 |  否 | 25.10.2.1：UEFI QEMU 安装及磁盘启动；下载完整 ISO |
 | **Proxmox VE** |  是 |  否 | `/boot/linux26` + `/boot/initrd.img` |
 | **openSUSE** |  是 |  N/A | `/boot/x86_64/loader/linux` |
 | **NixOS** |  N/A |  N/A | Sanboot |
@@ -496,7 +496,14 @@ Bootimus 通过扫描特定文件模式来检测发行版:
 /vmlinuz
 /initrd.img
 /live/filesystem.squashfs
+/TrueNAS-SCALE.update
 ```
+
+Bootimus 通过 `TrueNAS-SCALE.update` 文件识别 SCALE，并选择专用配置文件。照常提取内核/initrd；配置文件会下载完整 ISO，并将其挂载到 `/cdrom` 供安装程序使用。ISO 无需修改，安装程序须包含 systemd 254 或更高版本。
+
+已使用 SCALE 25.10.2.1 在配备 8 GiB 内存的 UEFI QEMU 中验证：安装到新建虚拟磁盘后，从该磁盘启动。安装期间，完整 ISO 保留在内存中。其他版本、物理硬件和 Secure Boot 尚未测试；此配置文件不适用于基于 FreeBSD 的 TrueNAS CORE。
+
+对于此前已提取的镜像，请重新提取以替换旧的 Debian 参数，然后检查自定义启动参数。
 
 **Proxmox VE**:
 ```

@@ -126,3 +126,25 @@ func loadEmbeddedForTest(t *testing.T) []*models.DistroProfile {
 	}
 	return out
 }
+
+func TestTrueNASProfile(t *testing.T) {
+	profiles := loadEmbeddedForTest(t)
+	p, err := matchProfile(profiles, "TrueNAS-SCALE-25.10.2.1.iso")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ProfileID != "truenas-scale" || p.BootMethod != "kernel" {
+		t.Fatalf("incorrect TrueNAS profile: %+v", p)
+	}
+	// The separate update payload is outside filesystem.squashfs, so the
+	// installer needs the complete ISO even after filesystem detection.
+	// Its media scanner skips loop devices, so expose live-boot's ISO mount
+	// at /cdrom and disable the physical-media scanner for this boot.
+	want := "initrd=initrd boot=live ip=dhcp fetch={{BASE_URL}}/isos/{{FILENAME}} systemd.mount-extra=/run/live/medium:/cdrom:none:bind,ro systemd.mask=mount-cd.service"
+	if p.DefaultBootParams != want || p.BootParamsWithSquashfs != "" || p.AutoInstallType != "" {
+		t.Fatalf("TrueNAS must fetch the ISO without Debian preseed settings: %+v", p)
+	}
+	if _, err := matchProfile(profiles, "TrueNAS-13.0-U6.2.iso"); err == nil {
+		t.Fatal("FreeBSD-based CORE must not match the SCALE profile")
+	}
+}
