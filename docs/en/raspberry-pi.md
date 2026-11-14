@@ -66,9 +66,13 @@ To give a specific board different firmware files or a custom `config.txt`, plac
 
 Anything not overridden falls back to the embedded assets. The serial is the 8-hex-digit value from `cat /proc/cpuinfo` on the Pi, and shows up in Bootimus's TFTP logs when the board first tries to netboot.
 
+If UEFI shows `00:00:00:00:00:00` for the network interface, check the TFTP log for the device-tree files and inspect both global and per-board overrides. An old `RPI_EFI_4.fd` or `config.txt` override takes precedence over updated embedded files. Keep a copy before removing an override for a test.
+
 ## Limitations
 
 - **Wired Ethernet only** — the Pi firmware cannot netboot over WiFi.
 - **UEFI settings do not persist.** The netbooted firmware has no writable variable store, so it always boots with pftf defaults — including the 3 GB RAM limit default on Pi 4. If your OS needs all the RAM, build an `RPI_EFI.fd` with the limit disabled and drop it in as an override.
 - **Pi 5 is not supported** until its EDK2 port matures; the same applies to any board without UEFI firmware.
 - The assets are refreshed with `scripts/build-raspberrypi-assets.sh`, which pins and checksum-verifies the [pftf](https://github.com/pftf/RPi4) UEFI releases. The Broadcom boot blobs it bundles are licensed for use with Raspberry Pi devices only (`LICENCE.broadcom.txt` ships alongside).
+
+The embedded releases are Pi 3 v1.52 and Pi 4 v1.53. The build script pins each family separately through `RPI3_VERSION` / `RPI3_SHA256` and `RPI4_VERSION` / `RPI4_SHA256`.
