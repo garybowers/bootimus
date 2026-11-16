@@ -24,9 +24,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/raspberrypi/assets"
 
-PFTF_VERSION="${PFTF_VERSION:-v1.52}"
+RPI3_VERSION="${RPI3_VERSION:-${PFTF_VERSION:-v1.52}}"
+RPI4_VERSION="${RPI4_VERSION:-${PFTF_VERSION:-v1.53}}"
 RPI3_SHA256="${RPI3_SHA256:-20b894d15cdb42e055872a7ee6a850aa9373aedcfefd27f19767d975ce4f7371}"
-RPI4_SHA256="${RPI4_SHA256:-3322ae85b1a74b1e67cb7bcf9e4af65299ae76e2db0af451e4ac6cd007c7a608}"
+RPI4_SHA256="${RPI4_SHA256:-ca9973e2a7a546b3df871cfb7382e656829114b6dfa424f40dc67cc90a217d88}"
 
 verify_sha256() {
     [ -z "$2" ] && return 0
@@ -50,8 +51,12 @@ STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
 
 for family in RPi3 RPi4; do
-    echo "==> Downloading pftf/${family} ${PFTF_VERSION}"
-    url="https://github.com/pftf/${family}/releases/download/${PFTF_VERSION}/${family}_UEFI_Firmware_${PFTF_VERSION}.zip"
+    case "$family" in
+        RPi3) version="$RPI3_VERSION" ;;
+        RPi4) version="$RPI4_VERSION" ;;
+    esac
+    echo "==> Downloading pftf/${family} ${version}"
+    url="https://github.com/pftf/${family}/releases/download/${version}/${family}_UEFI_Firmware_${version}.zip"
     curl -fsSL -o "$STAGING/${family}.zip" "$url"
     case "$family" in
         RPi3) verify_sha256 "$STAGING/${family}.zip" "$RPI3_SHA256" ;;
