@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { dockerImage, applianceImage, tools } from '../../data/manifest';
+import { dockerImage, tools } from '../../data/manifest';
 import { getLatestRelease, deriveArtifact, strV } from '../../lib/github';
 
 export const GET: APIRoute = async () => {
@@ -20,7 +20,6 @@ export const GET: APIRoute = async () => {
       artifacts: [
         dockerImage,
         ...ghArtifacts,
-        applianceImage,
       ],
     },
     tools,

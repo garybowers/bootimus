@@ -3,7 +3,7 @@ import Base from '../../layouts/Base.astro';
 import Nav from '../Nav.astro';
 import Footer from '../Footer.astro';
 import Terminal from '../Terminal.astro';
-import { dockerImage, applianceImage, tools } from '../../data/manifest';
+import { dockerImage, tools } from '../../data/manifest';
 import { getLatestRelease, deriveArtifact, strV } from '../../lib/github';
 import { useTranslations, getLocaleFromUrl } from '../../i18n';
 
@@ -101,17 +101,6 @@ const ghOther = (release?.assets ?? [])
           </div>
         )}
 
-        <a class="art" href={applianceImage.url}>
-          <div class="art-top">
-            <span class="art-kind text-faint">{applianceImage.kind} · {applianceImage.platform}</span>
-            <span class="art-size">{applianceImage.size}</span>
-          </div>
-          <div class="art-label">{applianceImage.label}</div>
-          <div class="art-file text-dim">{applianceImage.filename}</div>
-          <div class="art-notes text-faint">{applianceImage.notes}</div>
-          <div class="art-cta"><span>{t('downloads.get')}</span></div>
-        </a>
-
         {ghChecksums.map((a) => (
           <a class="art art-aux" href={a.url} target="_blank" rel="noopener">
             <div class="art-top">
@@ -165,13 +154,13 @@ const ghOther = (release?.assets ?? [])
           <article class="tool">
             <div class="tool-head">
               <h3>{tool.name}</h3>
-              <span class="tool-v">{tool.version}</span>
+              {tool.version && <span class="tool-v">{tool.version}</span>}
             </div>
             <p class="tool-sum">{tool.summary}</p>
             <div class="tool-foot">
-              <span class="text-faint">{tool.size}</span>
+              {tool.size && <span class="text-faint">{tool.size}</span>}
               <div class="tool-links">
-                <a href={tool.mirror}>{t('downloads.mirror')}</a>
+                {tool.mirror && <a href={tool.mirror}>{t('downloads.mirror')}</a>}
                 <a href={tool.upstream} target="_blank" rel="noopener" class="text-faint">{t('downloads.upstream')}</a>
               </div>
             </div>
@@ -189,10 +178,10 @@ const ghOther = (release?.assets ?? [])
       <Terminal title={t('downloads.apiTitle')}>
         <pre><span class="prompt">$</span> curl -s https://bootimus.com/api/manifest.json | jq '.release.version, (.release.artifacts | length)'
 <span class="ok">"{version ?? '0.0.0'}"</span>
-<span class="ok">{(ghBinaries.length + ghChecksums.length + ghOther.length + 2)}</span>
+<span class="ok">{(ghBinaries.length + ghChecksums.length + ghOther.length + 1)}</span>
 
-<span class="prompt">$</span> curl -s https://bootimus.com/api/manifest.json | jq -r '.tools[] | [.name, .version, .mirror] | @tsv'
-{tools.map(tool => `${tool.name}\t${tool.version}\t${tool.mirror}`).join('\n')}<span class="cursor"></span></pre>
+<span class="prompt">$</span> curl -s https://bootimus.com/api/manifest.json | jq -r '.tools[] | [.name, .upstream] | @tsv'
+{tools.map(tool => `${tool.name}\t${tool.upstream}`).join('\n')}<span class="cursor"></span></pre>
       </Terminal>
     </div>
   </section>

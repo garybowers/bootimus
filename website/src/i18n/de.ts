@@ -5,7 +5,7 @@ const de = {
       'Eigenständiger PXE- und HTTP-Boot-Server. Ein Binary. Keine Konfiguration. 50+ Distros out-of-the-box.',
     downloadsTitle: 'Downloads — Bootimus',
     downloadsDescription:
-      'Lade bootimus-Binaries, Docker-Images, die USB-Appliance und gespiegelte PXE-Tools herunter.',
+      'Lade bootimus-Binaries und Docker-Images herunter, mit Links zu PXE-Tools.',
     docsTitle: 'Dokumentation — Bootimus',
     docsDescription:
       'Bootimus-Dokumentation: Deployment, Image-Verwaltung, DHCP, Authentifizierung, Client-ACLs, Distro-Profile.',
@@ -88,7 +88,7 @@ const de = {
       },
       '08': {
         title: 'Läuft überall',
-        body: 'Multi-Arch-Docker (amd64/arm64), statisches Binary oder ein 2-GB-Appliance-Image auf Alpine-Basis, das du per USB flashen kannst.',
+        body: 'Multi-Arch-Docker (amd64/arm64) oder ein statisches Binary.',
       },
       '09': {
         title: 'Unbeaufsichtigte Installationen',
@@ -190,7 +190,7 @@ const de = {
 
   cta: {
     title: 'Keine Lust mehr, tftpd zu babysitten?',
-    sub: 'Docker, Bare Metal oder flashbarer USB-Stick. Such dir aus, was dir taugt.',
+    sub: 'Docker oder Bare Metal. Such dir aus, was dir taugt.',
     primary: '$ get bootimus',
     secondary: 'zur doku →',
   },
@@ -199,7 +199,7 @@ const de = {
     kicker: '// downloads',
     title: 'Schnapp dir einen Build.',
     lede:
-      'Jedes Release gibt\'s als Docker-Image, als statisches Linux-Binary live aus dem neuesten GitHub-Release, und als 2-GiB-flashbares USB-Appliance-Image (Alpine + bootimus, bootet direkt rein). Tools werden separat gespiegelt, damit das Admin-UI sie ziehen kann, ohne auf Upstream-Ratelimits angewiesen zu sein.',
+      'Jedes Release gibt\'s als Docker-Image und als statisches Linux-Binary live aus dem neuesten GitHub-Release. Tools gibt\'s auf den jeweiligen Upstream-Projektwebsites.',
     badgeStable: 'aktuell · stabil',
     badgePrerelease: 'pre-release',
     badgeNone: 'noch keine releases',
@@ -209,7 +209,7 @@ const de = {
     released: 'veröffentlicht',
     via: 'via',
     sectionArtifacts: 'release-artefakte',
-    sectionTools: 'gespiegelte tools',
+    sectionTools: 'tools',
     sectionApi: 'manifest verwenden',
     emptyTitle: 'Noch keine Binaries veröffentlicht',
     emptyBody:
@@ -218,9 +218,9 @@ const de = {
     verifyTitle: 'verifizieren',
     apiTitle: 'api · manifest.json',
     toolsLede:
-      'Das sind netboot-fertige Images, die das Admin-UI bei Bedarf herunterlädt und als PXE-Menüeinträge ausspielt. Gespiegelt auf dl.bootimus.com — damit du nicht auf die Upstream-Verfügbarkeit angewiesen bist, wenn du gerade einen Rescue-Einsatz fährst. Die Upstream-URLs bleiben die Wahrheit — jede Mirror-URL lässt sich auf der Tools-Seite überschreiben.',
+      'Das sind netboot-fertige Images, die das Admin-UI bei Bedarf herunterlädt und als PXE-Menüeinträge ausspielt. Die Upstream-URLs bleiben die Wahrheit.',
     apiLede:
-      'Das Admin-UI liest /api/manifest.json, um nach Updates zu schauen und verfügbare Tools anzuzeigen. Stabiles Schema — Felder werden ohne Major-Bump nicht umbenannt. Quelle der Wahrheit für Binaries ist die GitHub-Releases-API; dieser Endpoint normalisiert nur und mergt die statischen Stücke (Docker-Tag, Appliance-Image, gespiegelte Tools) mit ein.',
+      'Stabiles Schema — Felder werden ohne Major-Bump nicht umbenannt. Quelle der Wahrheit für Binaries ist die GitHub-Releases-API; dieser Endpoint normalisiert nur und mergt die statischen Stücke (Docker-Tag, Links zu Tool-Projekten) mit ein. Ein leeres mirror-Feld bedeutet, dass kein Mirror verfügbar ist.',
     mirror: 'mirror ↓',
     upstream: 'upstream ↗',
     get: 'holen ↓',
