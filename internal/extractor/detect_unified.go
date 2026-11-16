@@ -12,6 +12,9 @@ import (
 )
 
 func detectDistroNameUnified(reader FileSystemReader, isoPath string) string {
+	if isTrueNASScale(reader.FileExists) {
+		return "truenas-scale"
+	}
 	filename := strings.ToLower(filepath.Base(isoPath))
 
 	distroPatterns := map[string]string{
@@ -54,7 +57,7 @@ func detectDistroNameUnified(reader FileSystemReader, isoPath string) string {
 		"artix":           "arch",
 		"blackarch":       "arch",
 		"parabola":        "arch",
-		"truenas":         "debian",
+		"truenas-scale":   "truenas-scale",
 		"proxmox":         "proxmox",
 		"coreos":          "coreos",
 		"flatcar":         "flatcar",

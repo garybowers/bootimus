@@ -165,6 +165,7 @@ func (e *Extractor) extractViaBsdtar(isoPath string) (*BootFiles, error) {
 		{"casper/vmlinuz", "casper/initrd.lz", "casper/filesystem.squashfs"},
 		{"casper/vmlinuz", "casper/initrd.gz", "casper/filesystem.squashfs"},
 		{"live/vmlinuz", "live/initrd.img", "live/filesystem.squashfs"},
+		{"vmlinuz", "initrd.img", "live/filesystem.squashfs"},
 		{"boot/vmlinuz-linux", "boot/initramfs-linux.img", ""},
 		{"arch/boot/x86_64/vmlinuz-linux", "arch/boot/x86_64/initramfs-linux.img", ""},
 		{"images/pxeboot/vmlinuz", "images/pxeboot/initrd.img", ""},
@@ -207,6 +208,11 @@ func (e *Extractor) extractViaBsdtar(isoPath string) (*BootFiles, error) {
 			}
 
 			distro := detectDistroFromFilename(filename)
+			if isTrueNASScale(func(path string) bool {
+				return fileExistsOnDisk(filepath.Join(extractDir, filepath.FromSlash(strings.TrimPrefix(path, "/"))))
+			}) {
+				distro = "truenas-scale"
+			}
 
 			log.Printf("bsdtar: Found kernel=%s initrd=%s squashfs=%s distro=%s", bp.kernel, bp.initrd, squashfs, distro)
 			return &BootFiles{
@@ -231,7 +237,7 @@ func detectDistroFromFilename(filename string) string {
 		"nixos": "nixos", "opensuse": "opensuse", "alpine": "alpine", "gentoo": "gentoo",
 		"void": "void", "slackware": "slackware", "freebsd": "freebsd",
 		"openbsd": "openbsd", "netbsd": "netbsd",
-		"proxmox": "proxmox", "truenas": "debian", "kali": "kali", "parrot": "parrot",
+		"proxmox": "proxmox", "truenas-scale": "truenas-scale", "kali": "kali", "parrot": "parrot",
 	}
 	for pattern, distro := range patterns {
 		if strings.Contains(lower, pattern) {
@@ -1145,6 +1151,7 @@ func (e *Extractor) detectAndExtractUnified(reader FileSystemReader, isoPath str
 		detector func(FileSystemReader) (*BootFiles, error)
 	}{
 		{"Windows", e.detectWindowsUnified},
+		{"TrueNAS SCALE", e.detectTrueNASUnified},
 		{"Ubuntu/Debian Family", e.detectUbuntuDebianUnified},
 		{"Arch Linux Family", e.detectArchUnified},
 		{"Fedora/RHEL Family", e.detectFedoraRHELUnified},
