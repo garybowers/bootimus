@@ -306,6 +306,8 @@ curl -H "Authorization: Bearer $TOKEN" -X DELETE "http://localhost:8081/api/imag
 
 **自动刷新**:日志通过 SSE (Server-Sent Events) 实时更新
 
+**何时记录引导**:当客户端启动镜像、工具、SAN 目标或磁盘镜像任务时,引导菜单会立即通知 Bootimus,与引导方式无关。集群节点安装在其引导脚本被提供时记录。30 秒内再次报告的同一次引导只计一次。一条记录表示客户端已开始引导,并不表示操作系统已经启动。
+
 **通过 API**:
 ```bash
 # Get last 100 logs (default)

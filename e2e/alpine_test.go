@@ -240,4 +240,11 @@ func (h *harness) alpineStage(b *bootimus) {
 	if pending, _ := client["next_boot_image"].(string); pending != "" {
 		t.Errorf("next-boot image was not cleared after use: %q", pending)
 	}
+	if boots, _ := client["boot_count"].(float64); boots < 1 {
+		t.Errorf("the boot was not counted on the client: boot_count=%v", client["boot_count"])
+	}
+	logs, _ := b.mustAPI(http.MethodGet, "/api/logs?mac="+macAlpine+"&limit=10", nil)["data"].([]any)
+	if len(logs) == 0 {
+		t.Errorf("the boot left no entry in the client's boot history")
+	}
 }

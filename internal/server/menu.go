@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -192,6 +193,7 @@ func (mb *MenuBuilder) buildDiskImagingSection() string {
 	var sb strings.Builder
 	sb.WriteString(":diskimaging\n")
 	sb.WriteString(fmt.Sprintf("echo %s...\n", mb.diskBoot.Label))
+	sb.WriteString(mb.bootEvent("diskimage", "1"))
 	params := mb.diskBoot.Params
 	if !hasInitrdParam(params) {
 		params = strings.TrimSpace("initrd=initrd " + params)
@@ -412,6 +414,7 @@ func (mb *MenuBuilder) buildImageBootSections() string {
 		}
 		sb.WriteString(mb.buildAutoInstallChoiceMenu(&img))
 		sb.WriteString(fmt.Sprintf("echo Booting %s...\n", img.Name))
+		sb.WriteString(mb.bootEvent("image", strconv.FormatUint(uint64(img.ID), 10)))
 
 		encodedFilename := encodePathSegments(img.Filename)
 		cacheDir := encodePathSegments(strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename)))
@@ -464,6 +467,13 @@ func (mb *MenuBuilder) buildImageBootSections() string {
 	}
 
 	return sb.String()
+}
+
+func (mb *MenuBuilder) bootEvent(kind, value string) string {
+	if mb.macAddress == "" || mb.macAddress == "unknown" {
+		return ""
+	}
+	return fmt.Sprintf("chain --autofree http://%s:%d/boot-event?mac=%s&%s=%s ||\n", mb.serverAddr, mb.httpPort, mb.macAddress, kind, value)
 }
 
 func (mb *MenuBuilder) imageSectionReturn(img *models.Image) string {
@@ -671,6 +681,7 @@ func (mb *MenuBuilder) buildFooter() string {
 	for _, t := range mb.enabledTools {
 		sb.WriteString(fmt.Sprintf(":tool-%s\n", t.Name))
 		sb.WriteString(fmt.Sprintf("echo Booting %s...\n", t.DisplayName))
+		sb.WriteString(mb.bootEvent("tool", url.QueryEscape(t.Name)))
 
 		switch t.BootMethod {
 		case "chain":
@@ -822,6 +833,7 @@ func (mb *MenuBuilder) buildSANBootSection() string {
 	var sb strings.Builder
 	sb.WriteString(":san\n")
 	sb.WriteString(fmt.Sprintf("echo Booting from SAN target %s...\n", t.Name))
+	sb.WriteString(mb.bootEvent("san", strconv.FormatUint(uint64(t.ID), 10)))
 	if iqn := t.ResolveInitiatorIQN(mb.macAddress); iqn != "" {
 		sb.WriteString(fmt.Sprintf("set initiator-iqn %s\n", iqn))
 	}

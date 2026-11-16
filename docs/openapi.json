@@ -6406,7 +6406,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 193
+        "x-bootimus-order": 194
       }
     },
     "/boot-auth": {
@@ -6441,7 +6441,74 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 202
+        "x-bootimus-order": 203
+      }
+    },
+    "/boot-event": {
+      "get": {
+        "tags": [
+          "Boot"
+        ],
+        "summary": "Record that a client started booting an image, tool, SAN target or disk imaging job. The generated menu calls it once per boot; pass exactly one of image, tool, san or diskimage. Always answers with an empty iPXE script so a failed record never blocks the boot.",
+        "operationId": "getBootEvent",
+        "parameters": [
+          {
+            "name": "mac",
+            "in": "query",
+            "description": "MAC address of the booting client",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "image",
+            "in": "query",
+            "description": "ID of an enabled image visible to the client",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tool",
+            "in": "query",
+            "description": "Name of an enabled tool",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "san",
+            "in": "query",
+            "description": "ID of a SAN target",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "diskimage",
+            "in": "query",
+            "description": "Set to 1 when the client boots its active disk imaging job",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Response"
+                }
+              }
+            },
+            "description": "Successful response"
+          }
+        },
+        "x-bootimus-public": true,
+        "x-bootimus-readonly": true,
+        "x-bootimus-order": 191
       }
     },
     "/boot-menu-image": {
@@ -6528,7 +6595,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 192
+        "x-bootimus-order": 193
       }
     },
     "/bootenv/{filename}": {
@@ -6563,7 +6630,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 196
+        "x-bootimus-order": 197
       }
     },
     "/diskimage/callback": {
@@ -6623,7 +6690,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 200
+        "x-bootimus-order": 201
       }
     },
     "/diskimage/job": {
@@ -6658,7 +6725,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 199
+        "x-bootimus-order": 200
       }
     },
     "/files/{filename}": {
@@ -6693,7 +6760,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 195
+        "x-bootimus-order": 196
       }
     },
     "/health": {
@@ -6768,7 +6835,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 194
+        "x-bootimus-order": 195
       }
     },
     "/inventory": {
@@ -6838,7 +6905,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 191
+        "x-bootimus-order": 192
       }
     },
     "/logout": {
@@ -6914,7 +6981,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 201
+        "x-bootimus-order": 202
       }
     },
     "/menu.ipxe": {
@@ -7007,7 +7074,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 198
+        "x-bootimus-order": 199
       }
     },
     "/tools/{path}": {
@@ -7042,7 +7109,7 @@
         },
         "x-bootimus-public": true,
         "x-bootimus-readonly": true,
-        "x-bootimus-order": 197
+        "x-bootimus-order": 198
       }
     }
   },

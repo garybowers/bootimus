@@ -30,6 +30,7 @@ func TestBuildCustomBootScriptReplacesGeneratedCommands(t *testing.T) {
 	out := mb.buildImageBootSections()
 	want := `:iso17
 echo Booting Windows PE...
+chain --autofree http://10.0.0.1:8080/boot-event?mac=aa:bb:cc:dd:ee:ff&image=17 ||
 kernel http://10.0.0.1:8080/wimboot
 initrd http://10.0.0.1:8080/boot/windows%20pe/iso/Boot/BCD bcd
 initrd http://10.0.0.1:8080/boot/windows%20pe/iso/Boot/boot.sdi boot.sdi

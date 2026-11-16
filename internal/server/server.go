@@ -1407,6 +1407,7 @@ func (s *Server) startHTTPServer(listener net.Listener) error {
 
 	mux.HandleFunc("/autoinstall/", s.handleAutoInstallScript)
 	mux.HandleFunc("/install/callback", s.handleInstallCallback)
+	mux.HandleFunc("/boot-event", s.handleBootEvent)
 
 	mux.HandleFunc("/machineconfig", s.handleMachineConfig)
 
@@ -2192,8 +2193,26 @@ func (s *Server) recordBootIfNew(mac, path, remoteAddr string) {
 	}
 	imageDir := path[:slash]
 
-	key := mac + "|" + imageDir
+	imageName := imageDir
+	var bootImage *models.Image
+	if images, err := s.config.Storage.ListImages(); err == nil {
+		for _, img := range images {
+			if strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename)) == imageDir {
+				imageName = img.Name
+				bootImage = img
+				break
+			}
+		}
+	}
+	s.recordBoot(mac, imageName, bootImage, remoteAddr)
+}
+
+func (s *Server) recordBoot(mac, imageName string, bootImage *models.Image, remoteAddr string) {
+	key := mac + "|" + imageName
 	s.bootLogDedupMu.Lock()
+	if s.bootLogDedup == nil {
+		s.bootLogDedup = make(map[string]time.Time)
+	}
 	now := time.Now()
 	if last, ok := s.bootLogDedup[key]; ok && now.Sub(last) < 30*time.Second {
 		s.bootLogDedupMu.Unlock()
@@ -2209,25 +2228,12 @@ func (s *Server) recordBootIfNew(mac, path, remoteAddr string) {
 	}
 	s.bootLogDedupMu.Unlock()
 
-	imageName := imageDir
-	var bootImage *models.Image
-	if images, err := s.config.Storage.ListImages(); err == nil {
-		for _, img := range images {
-			if strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename)) == imageDir {
-				imageName = img.Name
-				bootImage = img
-				break
-			}
-		}
-	}
 	metrics.BootAttempts.WithLabelValues(imageName).Inc()
-	go func() {
-		if err := s.config.Storage.LogBootAttempt(mac, imageName, remoteAddr, true, ""); err != nil {
-			log.Printf("Boot log: failed to write for %s: %v", mac, err)
-		}
-		s.config.Storage.UpdateClientBootStats(mac)
-		s.config.Storage.UpdateImageBootStats(imageName)
-	}()
+	if err := s.config.Storage.LogBootAttempt(mac, imageName, remoteAddr, true, ""); err != nil {
+		log.Printf("Boot log: failed to write for %s: %v", mac, err)
+	}
+	s.config.Storage.UpdateClientBootStats(mac)
+	s.config.Storage.UpdateImageBootStats(imageName)
 	clientName := ""
 	var bootClient *models.Client
 	if c, err := s.config.Storage.GetClient(mac); err == nil {
@@ -2408,6 +2414,7 @@ func (s *Server) renderBootMenuWithAccess(macAddress, remoteAddr string, commit 
 				if script, ok := s.provisionInstallScriptFor(client); ok {
 					if commit {
 						s.logAndBroadcast("Client %s: approved cluster node - serving install boot", macAddress)
+						s.recordBoot(macAddress, "Cluster node install", nil, remoteAddr)
 					}
 					result.Kind = "install"
 					result.Script = script

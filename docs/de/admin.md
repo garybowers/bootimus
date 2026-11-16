@@ -306,6 +306,8 @@ Aktuelle Boot-Versuche mit Live-Streaming einsehen:
 
 **Auto-Refresh**: Logs aktualisieren sich in Echtzeit per SSE (Server-Sent Events)
 
+**Wann ein Boot erfasst wird**: Das Boot-Menü meldet Bootimus den Moment, in dem ein Client ein Image, ein Tool, ein SAN-Ziel oder einen Disk-Imaging-Job startet, unabhängig von der Boot-Methode. Installationen von Cluster-Nodes werden erfasst, sobald ihr Boot-Skript ausgeliefert wird. Derselbe Boot, der innerhalb von 30 Sekunden erneut gemeldet wird, zählt einmal. Ein Eintrag bedeutet, dass der Client den Bootvorgang begonnen hat, nicht dass das Betriebssystem gestartet ist.
+
 **Per API**:
 ```bash
 # Letzte 100 Logs holen (Default)
