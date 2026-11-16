@@ -1,6 +1,7 @@
 package wim
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -112,6 +113,60 @@ func (m *Manager) GetImageCount(wimPath string) (int, error) {
 	}
 
 	return count, nil
+}
+
+const wimlibPathMissing = 49
+
+func (m *Manager) CarriesBootFiles(wimPath string, index int) (bool, error) {
+	if index <= 0 {
+		bootIndex, err := m.bootIndex(wimPath)
+		if err != nil {
+			return false, err
+		}
+		index = bootIndex
+	}
+	bcd, err := m.hasPath(wimPath, index, "/Windows/Boot/DVD/PCAT/BCD")
+	if err != nil || !bcd {
+		return false, err
+	}
+	for _, sdi := range []string{"/Windows/Boot/DVD/PCAT/boot.sdi", "/sms/boot/boot.sdi"} {
+		found, err := m.hasPath(wimPath, index, sdi)
+		if err != nil || found {
+			return found, err
+		}
+	}
+	return false, nil
+}
+
+func (m *Manager) bootIndex(wimPath string) (int, error) {
+	output, err := exec.Command(m.wimlibPath, "info", wimPath).CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("read WIM info: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		value, found := strings.CutPrefix(strings.TrimSpace(line), "Boot Index:")
+		if !found {
+			continue
+		}
+		if index, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && index > 0 {
+			return index, nil
+		}
+	}
+	return 1, nil
+}
+
+func (m *Manager) hasPath(wimPath string, index int, path string) (bool, error) {
+	cmd := exec.Command(m.wimlibPath, "dir", wimPath, strconv.Itoa(index), "--path="+path)
+	cmd.Env = append(os.Environ(), "WIMLIB_IMAGEX_IGNORE_CASE=1")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return true, nil
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == wimlibPathMissing {
+		return false, nil
+	}
+	return false, fmt.Errorf("list %s in WIM: %w: %s", path, err, strings.TrimSpace(string(output)))
 }
 
 func (m *Manager) PatchStartnetCmd(wimPath, content string) error {

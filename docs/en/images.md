@@ -10,6 +10,7 @@ Complete guide for managing ISO images, extracting boot files, and handling spec
 - [OpenBSD and NetBSD](#openbsd-and-netbsd)
 - [Windows driver packs](#windows-driver-packs)
 - [WinPE and Rescue Media](#winpe-and-rescue-media)
+- [Custom Boot Script](#custom-boot-script)
 - [Kernel Extraction](#kernel-extraction)
 - [Netboot Support](#netboot-support)
 - [Ubuntu Desktop Optimisation](#ubuntu-desktop-optimisation)
@@ -175,13 +176,54 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json
   "http://localhost:8081/api/images/winpe?filename=WinPE_Strelec.iso"
 ```
 
-**How it boots**: only the selected WIM is sent to the client; wimboot synthesises the BCD and `boot.sdi` itself, which avoids the black screen some media produce when the DVD BCD is used. Boot parameters are limited to wimboot's own options (`rawbcd`, `rawwim`, `gui`, `linear`, `quiet`, `pause`, `index`, `initrdfile`), exactly as for Windows installers.
+**How it boots**: when the selected WIM carries its own `BCD` and `boot.sdi`, as Windows installer media does under `\Windows\Boot\DVD\PCAT`, only that WIM is sent to the client and wimboot takes both files from inside it. This avoids the black screen some media produce when the DVD BCD is used. A WIM without them, such as a WinPE built with the Windows ADK's `MakeWinPEMedia`, is sent together with the `BCD` and `boot.sdi` from the ISO. Bootimus checks the WIM with `wimlib-imagex` when the image is extracted and whenever its properties or WIM selection are saved, so an image extracted by an earlier release is corrected by saving its properties once. Boot parameters are limited to wimboot's own options (`rawbcd`, `rawwim`, `gui`, `linear`, `quiet`, `pause`, `index`, `initrdfile`), exactly as for Windows installers.
 
 **Limitations**:
 
 - Programs that the rescue environment expects to find on its own boot media (for example Strelec's `SSTR` folder of portable tools) are not inside the WIM, so they are missing after a PXE boot unless the environment can fetch them over the network itself. The core WinPE desktop and the tools built into the WIM work.
-- Media that needs its own BCD entries (custom `bootmgr` menus, multi-WIM chooser menus) boots straight into the chosen WIM instead of showing that menu.
+- Media that needs its own BCD entries (custom `bootmgr` menus, multi-WIM chooser menus) boots straight into the chosen WIM instead of showing that menu. A [custom boot script](#custom-boot-script) can load the media's own boot files instead.
 - Bare `.wim` files cannot be uploaded on their own yet; put them on an ISO with a `BCD` and `boot.sdi`, or use a complete rescue ISO.
+
+## Custom Boot Script
+
+Every image can carry its own iPXE commands. When the **Custom Boot Script** field in the image properties is filled in, Bootimus sends those commands instead of the ones it would generate, and ignores the image's boot method, boot parameters, kernel and initrd choices and WIM selection. Clearing the field restores the generated commands.
+
+Bootimus still writes everything around the script: the menu entry, the image's boot password prompt, the answer-file choice menu, and the jump back to the menu when the script ends. Write only the commands that load and start the image, and finish the ones that can fail with `|| goto failed` so the client returns to the menu:
+
+```
+kernel {{BASE_URL}}/wimboot
+initrd {{BASE_URL}}/boot/{{CACHE_DIR}}/iso/Boot/BCD BCD
+initrd {{BASE_URL}}/boot/{{CACHE_DIR}}/iso/Boot/boot.sdi boot.sdi
+initrd {{BASE_URL}}/boot/{{CACHE_DIR}}/iso/sources/boot.wim boot.wim
+boot || goto failed
+```
+
+Placeholders are replaced for each client:
+
+| Placeholder | Value |
+|-------------|-------|
+| `{{BASE_URL}}` | Boot server URL, for example `http://192.168.1.10:8080`. On a replica this is the primary's URL for images the replica has not mirrored |
+| `{{CACHE_DIR}}` | The image's folder under `/boot/`, URL-encoded |
+| `{{FILENAME}}` | The ISO filename as served under `/isos/`, URL-encoded |
+| `{{SERVER_ADDR}}` | Server address without scheme or port |
+| `{{MAC}}` | MAC address of the booting client |
+| `{{SQUASHFS}}` | URL of the extracted squashfs, when the image has one |
+| `{{AUTOINSTALL_URL}}` | URL of the auto-install file rendered for the booting client |
+
+The same field can be set through the API; an empty string clears it:
+
+```bash
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"boot_script":"chain {{BASE_URL}}/isos/{{FILENAME}} || goto failed"}' \
+  "http://localhost:8081/api/images?filename=custom.iso"
+```
+
+Things to know:
+
+- The script can hold up to 16 KiB of text.
+- Auto-install parameters are not added for you. Pass `{{AUTOINSTALL_URL}}` to the installer yourself where the image needs it.
+- Labels you define share the menu's namespace. Give them a distinctive prefix; `start`, `failed`, `local` and names beginning with `iso`, `group` or `tool-` belong to Bootimus.
+- Use **Preview Menu** on a client row to see the script exactly as that client receives it. See [Previewing a Client's Boot Menu](clients.md#previewing-a-clients-boot-menu).
 
 ## Kernel Extraction
 

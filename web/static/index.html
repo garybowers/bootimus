@@ -2452,6 +2452,12 @@
                     <small style="color: var(--text-muted);"><span data-i18n="props.field.boot_params_hint">Leave empty for distro defaults.</span> <span data-i18n="props.field.placeholders_label">Placeholders:</span> <code>{{BASE_URL}}</code> <code>{{CACHE_DIR}}</code> <code>{{FILENAME}}</code> <code>{{SQUASHFS}}</code></small>
                 </div>
 
+                <div class="form-group">
+                    <label for="image-props-boot-script" data-i18n="props.field.boot_script">Custom Boot Script</label>
+                    <textarea id="image-props-boot-script" class="form-control" rows="4" spellcheck="false" style="font-family: monospace; font-size: 12px;" data-i18n-placeholder="props.field.boot_script_placeholder" placeholder="Optional iPXE commands"></textarea>
+                    <small style="color: var(--text-muted);"><span data-i18n="props.field.boot_script_hint">Replaces the generated boot commands for this image; the boot method, parameters and file choices above are then ignored. Leave empty to use the generated commands.</span> <span data-i18n="props.field.placeholders_label">Placeholders:</span> <code>{{BASE_URL}}</code> <code>{{CACHE_DIR}}</code> <code>{{FILENAME}}</code> <code>{{SERVER_ADDR}}</code> <code>{{MAC}}</code> <code>{{AUTOINSTALL_URL}}</code></small>
+                </div>
+
                 <div id="image-props-bootfiles-row" style="display: none;">
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <div class="form-group" style="margin-bottom: 4px;">

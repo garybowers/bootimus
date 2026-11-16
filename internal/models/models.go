@@ -493,6 +493,7 @@ type Image struct {
 	ShimPath              string         `json:"shim_path,omitempty"`
 	KernelOverride        string         `json:"kernel_override,omitempty"`
 	InitrdOverride        string         `json:"initrd_override,omitempty"`
+	BootScript            string         `gorm:"type:text" json:"boot_script,omitempty"`
 	ExtractionError       string         `json:"extraction_error,omitempty"`
 	ExtractedAt           *time.Time     `json:"extracted_at,omitempty"`
 	SanbootCompatible     bool           `gorm:"default:true" json:"sanboot_compatible"`
@@ -520,6 +521,8 @@ type Image struct {
 	WIMFiles              []WIMFile      `gorm:"serializer:json" json:"wim_files,omitempty"`
 	WIMPath               string         `json:"wim_path,omitempty"`
 	WIMIndex              int            `gorm:"default:0" json:"wim_index,omitempty"`
+	BCDPath               string         `json:"bcd_path,omitempty"`
+	BootSDIPath           string         `json:"boot_sdi_path,omitempty"`
 
 	AutoInstallFile    string      `json:"auto_install_file,omitempty"`
 	AutoInstallChoices StringSlice `gorm:"type:text" json:"auto_install_choices,omitempty"`

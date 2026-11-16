@@ -9,6 +9,7 @@
 - [统一内核镜像 (UKI)](#统一内核镜像-uki)
 - [OpenBSD 与 NetBSD](#openbsd-与-netbsd)
 - [WinPE 与救援介质](#winpe-与救援介质)
+- [自定义引导脚本](#自定义引导脚本)
 - [Kernel 提取](#kernel-提取)
 - [Netboot 支持](#netboot-支持)
 - [Ubuntu Desktop 优化](#ubuntu-desktop-优化)
@@ -159,13 +160,54 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json
   "http://localhost:8081/api/images/winpe?filename=WinPE_Strelec.iso"
 ```
 
-**引导方式**:只有所选的 WIM 会发送给客户端;wimboot 自行合成 BCD 和 `boot.sdi`,这避免了某些介质在使用 DVD 的 BCD 时出现的黑屏。引导参数仅限 wimboot 自己的选项(`rawbcd`、`rawwim`、`gui`、`linear`、`quiet`、`pause`、`index`、`initrdfile`),与 Windows 安装程序完全一致。
+**引导方式**:如果所选的 WIM 自带 `BCD` 和 `boot.sdi`(Windows 安装介质位于 `\Windows\Boot\DVD\PCAT` 下),则只把该 WIM 发送给客户端,wimboot 从其中取出这两个文件。这避免了某些介质在使用 DVD 的 BCD 时出现的黑屏。不带这两个文件的 WIM(例如用 Windows ADK 的 `MakeWinPEMedia` 制作的 WinPE)会连同 ISO 中的 `BCD` 和 `boot.sdi` 一起发送。Bootimus 在提取镜像时以及每次保存其属性或 WIM 选择时用 `wimlib-imagex` 检查 WIM,因此由旧版本提取的镜像只需保存一次属性即可修正。引导参数仅限 wimboot 自己的选项(`rawbcd`、`rawwim`、`gui`、`linear`、`quiet`、`pause`、`index`、`initrdfile`),与 Windows 安装程序完全一致。
 
 **限制**:
 
 - 救援环境期望在自己的引导介质上找到的程序(例如 Strelec 的 `SSTR` 便携工具文件夹)不在 WIM 内,因此 PXE 引导后它们会缺失,除非该环境能自行通过网络获取。核心的 WinPE 桌面以及内置于 WIM 中的工具可以正常使用。
-- 需要自带 BCD 条目的介质(自定义的 `bootmgr` 菜单、多 WIM 选择菜单)会直接引导进入所选的 WIM,而不显示那个菜单。
+- 需要自带 BCD 条目的介质(自定义的 `bootmgr` 菜单、多 WIM 选择菜单)会直接引导进入所选的 WIM,而不显示那个菜单。可以改用[自定义引导脚本](#自定义引导脚本)来加载介质自带的引导文件。
 - 目前还不能单独上传裸 `.wim` 文件;请把它们放到带有 `BCD` 和 `boot.sdi` 的 ISO 上,或使用完整的救援 ISO。
+
+## 自定义引导脚本
+
+每个镜像都可以带有自己的 iPXE 命令。填写镜像属性中的 **Custom Boot Script** 字段后,Bootimus 会发送这些命令来代替它本应生成的命令,并忽略该镜像的引导方式、引导参数、kernel 与 initrd 选择以及 WIM 选择。清空该字段即恢复生成的命令。
+
+脚本周围的内容仍由 Bootimus 生成:菜单项、镜像密码提示、应答文件选择菜单,以及脚本结束后返回菜单的跳转。只需编写加载并启动镜像的命令,并在可能失败的命令后加上 `|| goto failed`,这样客户端会返回菜单:
+
+```
+kernel {{BASE_URL}}/wimboot
+initrd {{BASE_URL}}/boot/{{CACHE_DIR}}/iso/Boot/BCD BCD
+initrd {{BASE_URL}}/boot/{{CACHE_DIR}}/iso/Boot/boot.sdi boot.sdi
+initrd {{BASE_URL}}/boot/{{CACHE_DIR}}/iso/sources/boot.wim boot.wim
+boot || goto failed
+```
+
+占位符会针对每个客户端进行替换:
+
+| 占位符 | 值 |
+|--------|----|
+| `{{BASE_URL}}` | 引导服务器的 URL,例如 `http://192.168.1.10:8080`。在副本上,对于副本尚未镜像的镜像,这是主服务器的 URL |
+| `{{CACHE_DIR}}` | 镜像在 `/boot/` 下的文件夹,已做 URL 编码 |
+| `{{FILENAME}}` | 在 `/isos/` 下提供的 ISO 文件名,已做 URL 编码 |
+| `{{SERVER_ADDR}}` | 服务器地址,不含协议和端口 |
+| `{{MAC}}` | 正在引导的客户端的 MAC 地址 |
+| `{{SQUASHFS}}` | 已提取的 squashfs 的 URL(镜像有 squashfs 时) |
+| `{{AUTOINSTALL_URL}}` | 为正在引导的客户端渲染的自动安装文件的 URL |
+
+也可以通过 API 设置同一字段;空字符串会清除它:
+
+```bash
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"boot_script":"chain {{BASE_URL}}/isos/{{FILENAME}} || goto failed"}' \
+  "http://localhost:8081/api/images?filename=custom.iso"
+```
+
+注意事项:
+
+- 脚本最多可包含 16 KiB 文本。
+- 不会自动添加自动安装参数。镜像需要时,请自行把 `{{AUTOINSTALL_URL}}` 传给安装程序。
+- 你定义的标签与菜单共用同一命名空间。请为它们加上有辨识度的前缀;`start`、`failed`、`local` 以及以 `iso`、`group` 或 `tool-` 开头的名称归 Bootimus 使用。
+- 在客户端所在行点击 **Preview Menu**,即可查看该客户端实际收到的脚本。
 
 ## Kernel 提取
 

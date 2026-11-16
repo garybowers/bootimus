@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Bootimus API",
-    "version": "0.1.80",
+    "version": "0.1.81",
     "description": "REST API of the Bootimus PXE and HTTP boot server. Responses are JSON of the form {success, message, error, data}. Endpoints marked x-bootimus-readonly are available to read-only users; all others need an admin token."
   },
   "tags": [
@@ -3530,7 +3530,7 @@
         "tags": [
           "Images"
         ],
-        "summary": "Partial update of an image. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces. boot_menu_exempt bypasses only the global menu password; image passwords and client visibility still apply.",
+        "summary": "Partial update of an image. Omit boot_password to preserve it; an empty string removes it. Setting a password requires HTTPS. Passwords must be at most 72 bytes and cannot contain +, ; or ASCII spaces. boot_menu_exempt bypasses only the global menu password; image passwords and client visibility still apply. boot_script replaces the generated iPXE boot commands for the image; an empty string restores them.",
         "operationId": "putApiImages",
         "parameters": [
           {
@@ -3544,7 +3544,7 @@
           }
         ],
         "requestBody": {
-          "description": "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, auto_install_choices[], kernel_override, initrd_override, boot_password?, boot_menu_exempt?}",
+          "description": "{name, description, enabled, public, group_id, order, boot_method, distro, boot_params, auto_install_file, auto_install_choices[], kernel_override, initrd_override, boot_script, boot_password?, boot_menu_exempt?}",
           "required": true,
           "content": {
             "application/json": {
