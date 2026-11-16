@@ -306,6 +306,8 @@ Visualiza los intentos de arranque recientes con streaming en vivo:
 
 **Auto-refresco**: Los logs se actualizan en tiempo real vía SSE (Server-Sent Events)
 
+**Cuándo se registra un arranque**: el menú de arranque avisa a Bootimus en el momento en que un cliente inicia una imagen, una herramienta, un destino SAN o un trabajo de imagen de disco, sea cual sea el método de arranque. Las instalaciones de nodos de clúster se registran cuando se sirve su script de arranque. El mismo arranque notificado de nuevo en menos de 30 segundos cuenta una sola vez. Una entrada significa que el cliente empezó a arrancar, no que el sistema operativo se haya iniciado.
+
 **Vía API**:
 ```bash
 # Get last 100 logs (default)

@@ -306,6 +306,8 @@ Visualise les tentatives de boot récentes avec streaming live :
 
 **Auto-refresh** : les logs se mettent à jour en temps réel via SSE (Server-Sent Events)
 
+**Quand un boot est enregistré** : le menu de boot prévient Bootimus au moment où un client lance une image, un outil, une cible SAN ou une tâche d'imagerie disque, quelle que soit la méthode de boot. Les installations de nœuds de cluster sont enregistrées quand leur script de boot est servi. Le même boot signalé à nouveau dans les 30 secondes ne compte qu'une fois. Une entrée signifie que le client a commencé à démarrer, pas que le système d'exploitation a démarré.
+
 **Via l'API** :
 ```bash
 # Get last 100 logs (default)

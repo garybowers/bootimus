@@ -180,3 +180,24 @@ func TestTalosInstallScriptFor(t *testing.T) {
 		t.Error("expected no install script without a token")
 	}
 }
+
+func TestClusterNodeInstallBootIsRecordedOnceServed(t *testing.T) {
+	srv, store := newTalosTestServer(t)
+	mac := "aa:bb:cc:dd:ee:07"
+	setupApprovedNode(t, store, mac, "", "good-token")
+
+	if preview := srv.renderBootMenuWithAccess(mac, "192.0.2.7:4011", false, bootMenuAccess{}); preview.Kind != "install" {
+		t.Fatalf("expected the preview to show the node install boot, got %q", preview.Kind)
+	}
+	if logs, err := store.GetBootLogsByMAC(mac, 10); err != nil || len(logs) != 0 {
+		t.Fatalf("a preview must not record a boot, got %+v (%v)", logs, err)
+	}
+
+	if served := srv.renderBootMenuWithAccess(mac, "192.0.2.7:4011", true, bootMenuAccess{}); served.Kind != "install" {
+		t.Fatalf("expected the node install boot to be served, got %q", served.Kind)
+	}
+	logs, err := store.GetBootLogsByMAC(mac, 10)
+	if err != nil || len(logs) != 1 || logs[0].ImageName != "Cluster node install" {
+		t.Fatalf("expected the node install boot in the history, got %+v (%v)", logs, err)
+	}
+}

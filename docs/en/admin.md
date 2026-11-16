@@ -310,6 +310,8 @@ View recent boot attempts with live streaming:
 
 **Auto-refresh**: Logs update in real-time via SSE (Server-Sent Events)
 
+**When a boot is recorded**: the boot menu reports to Bootimus the moment a client starts an image, a tool, a SAN target or a disk imaging job, whatever the boot method. Cluster node installs are recorded when their boot script is served. The same boot reported again within 30 seconds counts once. An entry means the client started booting, not that the operating system came up.
+
 **Via API**:
 ```bash
 # Get last 100 logs (default)
