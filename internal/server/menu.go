@@ -416,6 +416,13 @@ func (mb *MenuBuilder) buildImageBootSections() string {
 		encodedFilename := encodePathSegments(img.Filename)
 		cacheDir := encodePathSegments(strings.TrimSuffix(img.Filename, filepath.Ext(img.Filename)))
 
+		if img.BootScript != "" {
+			sb.WriteString(mb.expandPlaceholders(&img, img.BootScript, mb.assetBase(&img), encodedFilename, cacheDir))
+			sb.WriteString("\n")
+			sb.WriteString(mb.imageSectionReturn(&img))
+			continue
+		}
+
 		switch img.BootMethod {
 		case "nbd":
 			sb.WriteString("echo Using NBD (Network Block Device) mount...\n")
@@ -453,16 +460,20 @@ func (mb *MenuBuilder) buildImageBootSections() string {
 			sb.WriteString(fmt.Sprintf("sanboot --no-describe --drive 0x80 %s/isos/%s?mac=%s\n", mb.assetBase(&img), encodedFilename, mb.macAddress))
 		}
 
-		if mb.bootAccess.imageID != 0 {
-			sb.WriteString("exit\n")
-		} else if img.GroupID != nil {
-			sb.WriteString(fmt.Sprintf("goto group%d\n", *img.GroupID))
-		} else {
-			sb.WriteString("goto start\n")
-		}
+		sb.WriteString(mb.imageSectionReturn(&img))
 	}
 
 	return sb.String()
+}
+
+func (mb *MenuBuilder) imageSectionReturn(img *models.Image) string {
+	if mb.bootAccess.imageID != 0 {
+		return "exit\n"
+	}
+	if img.GroupID != nil {
+		return fmt.Sprintf("goto group%d\n", *img.GroupID)
+	}
+	return "goto start\n"
 }
 
 func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename, cacheDir string) string {
@@ -509,9 +520,10 @@ func (mb *MenuBuilder) buildKernelBootSection(img *models.Image, encodedFilename
 		} else if mb.autoInstallTypes[img.ID] == "autounattend" {
 			sb.WriteString(fmt.Sprintf("initrd --name AutoUnattend.xml %s/autoinstall/%s?mac=%s AutoUnattend.xml || goto failed\n", localURL, encodedFilename, mb.macAddress))
 		}
-		// Ship only boot.wim and let wimboot synthesize the ramdisk BCD +
-		// boot.sdi (the documented minimal setup). Feeding the ISO's DVD BCD
-		// hangs 24H2/25H2 media on a black screen after the loading bar.
+		if img.BCDPath != "" && img.BootSDIPath != "" {
+			sb.WriteString(fmt.Sprintf("initrd --name BCD %s/boot/%s/iso/%s BCD || goto failed\n", baseURL, cacheDir, encodePathSegments(img.BCDPath)))
+			sb.WriteString(fmt.Sprintf("initrd --name boot.sdi %s/boot/%s/iso/%s boot.sdi || goto failed\n", baseURL, cacheDir, encodePathSegments(img.BootSDIPath)))
+		}
 		if img.WIMPath != "" {
 			sb.WriteString(fmt.Sprintf("initrd --name boot.wim %s/boot/%s/iso/%s boot.wim\n", baseURL, cacheDir, encodePathSegments(img.WIMPath)))
 		} else {
@@ -620,17 +632,22 @@ func (mb *MenuBuilder) resolveBootParams(img *models.Image, baseURL, encodedFile
 		params = fmt.Sprintf("iso-url=%s/isos/%s ip=dhcp", baseURL, encodedFilename)
 	}
 
-	params = strings.ReplaceAll(params, "{{BASE_URL}}", baseURL)
-	params = strings.ReplaceAll(params, "{{CACHE_DIR}}", cacheDir)
-	params = strings.ReplaceAll(params, "{{FILENAME}}", encodedFilename)
-	params = strings.ReplaceAll(params, "{{IMAGE_FILENAME}}", encodedFilename)
-	params = strings.ReplaceAll(params, "{{SERVER_ADDR}}", mb.serverAddr)
-	params = strings.ReplaceAll(params, "{{MAC}}", mb.macAddress)
+	return mb.expandPlaceholders(img, params, baseURL, encodedFilename, cacheDir)
+}
+
+func (mb *MenuBuilder) expandPlaceholders(img *models.Image, text, baseURL, encodedFilename, cacheDir string) string {
+	text = strings.ReplaceAll(text, "{{BASE_URL}}", baseURL)
+	text = strings.ReplaceAll(text, "{{CACHE_DIR}}", cacheDir)
+	text = strings.ReplaceAll(text, "{{FILENAME}}", encodedFilename)
+	text = strings.ReplaceAll(text, "{{IMAGE_FILENAME}}", encodedFilename)
+	text = strings.ReplaceAll(text, "{{SERVER_ADDR}}", mb.serverAddr)
+	text = strings.ReplaceAll(text, "{{MAC}}", mb.macAddress)
+	text = strings.ReplaceAll(text, "{{AUTOINSTALL_URL}}", fmt.Sprintf("http://%s:%d/autoinstall/%s?mac=%s", mb.serverAddr, mb.httpPort, encodedFilename, mb.macAddress))
 	if img.SquashfsPath != "" {
-		params = strings.ReplaceAll(params, "{{SQUASHFS}}", fmt.Sprintf("%s/boot/%s/%s", baseURL, cacheDir, img.SquashfsPath))
+		text = strings.ReplaceAll(text, "{{SQUASHFS}}", fmt.Sprintf("%s/boot/%s/%s", baseURL, cacheDir, img.SquashfsPath))
 	}
 
-	return params
+	return text
 }
 
 func (mb *MenuBuilder) buildFooter() string {

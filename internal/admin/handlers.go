@@ -1137,6 +1137,22 @@ func (h *Handler) UpdateImage(w http.ResponseWriter, r *http.Request) {
 		}
 		image.InitrdOverride = resolved
 	}
+	if value, exists := updates["boot_script"]; exists {
+		script, ok := value.(string)
+		if !ok {
+			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: "boot_script must be a string; use an empty string to clear it"})
+			return
+		}
+		normalised, err := models.NormaliseBootScript(script)
+		if err != nil {
+			h.sendJSON(w, http.StatusBadRequest, Response{Success: false, Error: fmt.Sprintf("Invalid boot script: %v", err)})
+			return
+		}
+		image.BootScript = normalised
+	}
+	if image.Extracted {
+		h.refreshMediaBootFiles(image)
+	}
 
 	if err := h.storage.UpdateImage(filename, image); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: err.Error()})
@@ -1650,6 +1666,7 @@ func (h *Handler) extractImageFiles(filename string, image *models.Image) (*extr
 			image.WIMPath = filepath.ToSlash(rel)
 		}
 	}
+	h.refreshMediaBootFiles(image)
 
 	if models.IsWindowsDistro(bootFiles.Distro) {
 		h.discardStaleBootWimBackup(filename)
@@ -2149,6 +2166,7 @@ func (h *Handler) SetWinPEWIM(w http.ResponseWriter, r *http.Request) {
 	}
 	image.WIMPath = wimPath
 	image.WIMIndex = req.WIMIndex
+	h.refreshMediaBootFiles(image)
 	if err := h.storage.UpdateImage(filename, image); err != nil {
 		h.sendJSON(w, http.StatusInternalServerError, Response{Success: false, Error: "Failed to update image"})
 		return

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -181,4 +182,77 @@ func atomicCopyFile(source, target string) error {
 		return err
 	}
 	return os.Rename(temporary.Name(), target)
+}
+
+func (h *Handler) refreshMediaBootFiles(image *models.Image) {
+	if !models.IsWindowsDistro(image.Distro) || image.WIMPath == "" {
+		image.BCDPath = ""
+		image.BootSDIPath = ""
+		return
+	}
+	manager, err := wim.NewManager()
+	if err != nil {
+		return
+	}
+	extractedDir := filepath.Join(h.isoDir, strings.TrimSuffix(image.Filename, filepath.Ext(image.Filename)), "iso")
+	selfContained, err := manager.CarriesBootFiles(filepath.Join(extractedDir, filepath.FromSlash(image.WIMPath)), image.WIMIndex)
+	if err != nil {
+		log.Printf("windows boot files: cannot inspect %s of %s: %v", image.WIMPath, image.Filename, err)
+		return
+	}
+	image.BCDPath = ""
+	image.BootSDIPath = ""
+	if selfContained {
+		return
+	}
+	image.BCDPath, image.BootSDIPath = mediaBootFiles(extractedDir, image.KernelPath, image.InitrdPath)
+	if image.BCDPath == "" {
+		log.Printf("windows boot files: %s of %s carries no BCD and boot.sdi, and the media has none to send", image.WIMPath, image.Filename)
+		return
+	}
+	log.Printf("windows boot files: %s of %s carries no BCD and boot.sdi, sending %s and %s from the media", image.WIMPath, image.Filename, image.BCDPath, image.BootSDIPath)
+}
+
+func mediaBootFiles(extractedDir, bcdPath, sdiPath string) (string, string) {
+	bcd, bcdErr := filepath.Rel(extractedDir, bcdPath)
+	sdi, sdiErr := filepath.Rel(extractedDir, sdiPath)
+	if bcdErr != nil || sdiErr != nil || !filepath.IsLocal(bcd) || !filepath.IsLocal(sdi) {
+		return "", ""
+	}
+	if !strings.EqualFold(filepath.Base(bcd), "bcd") || !strings.EqualFold(filepath.Base(sdi), "boot.sdi") {
+		return "", ""
+	}
+	bcd = extractedPathOnDisk(extractedDir, bcd)
+	sdi = extractedPathOnDisk(extractedDir, sdi)
+	if bcd == "" || sdi == "" {
+		return "", ""
+	}
+	return bcd, sdi
+}
+
+func extractedPathOnDisk(extractedDir, relative string) string {
+	resolved := ""
+	current := extractedDir
+	for _, part := range strings.Split(filepath.ToSlash(relative), "/") {
+		entries, err := os.ReadDir(current)
+		if err != nil {
+			return ""
+		}
+		match := ""
+		for _, entry := range entries {
+			if entry.Name() == part {
+				match = part
+				break
+			}
+			if match == "" && strings.EqualFold(entry.Name(), part) {
+				match = entry.Name()
+			}
+		}
+		if match == "" {
+			return ""
+		}
+		resolved = path.Join(resolved, match)
+		current = filepath.Join(current, match)
+	}
+	return resolved
 }

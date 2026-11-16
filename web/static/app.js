@@ -6463,6 +6463,7 @@ async function showImagePropertiesModal(filename, opts) {
     } catch (e) {}
 
     document.getElementById('image-props-boot-params').value = img.boot_params || getDefaultBootParams(img) || '';
+    document.getElementById('image-props-boot-script').value = img.boot_script || '';
     document.getElementById('image-props-redetect-btn').style.display = img.extracted ? '' : 'none';
     document.getElementById('image-props-enabled').checked = img.enabled;
     document.getElementById('image-props-public').checked = img.public;
@@ -6687,7 +6688,7 @@ function applyBootParamsWindowsLock(distro) {
     input.disabled = isWindows;
     input.style.opacity = isWindows ? '0.5' : '';
     input.style.cursor = isWindows ? 'not-allowed' : '';
-    input.title = isWindows ? 'Windows boots via wimboot — kernel parameters are not used' : '';
+    input.title = isWindows ? 'Windows boots via wimboot, so kernel parameters are not used. Use a custom boot script to change the boot commands.' : '';
     if (isWindows) redetect.style.display = 'none';
 }
 
@@ -6952,6 +6953,7 @@ async function saveImageProperties(opts) {
         boot_method: bootMethod,
         distro: distro,
         boot_params: bootParams,
+        boot_script: document.getElementById('image-props-boot-script').value,
         enabled: enabled,
         public: isPublic,
         auto_install_file: autoInstallFile,

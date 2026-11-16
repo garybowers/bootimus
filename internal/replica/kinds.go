@@ -185,6 +185,7 @@ func copyImageMetadata(dst *models.Image, src models.Image, groupID *uint, bootP
 	dst.BootParams = src.BootParams
 	dst.KernelOverride = src.KernelOverride
 	dst.InitrdOverride = src.InitrdOverride
+	dst.BootScript = src.BootScript
 	dst.SanbootCompatible = src.SanbootCompatible
 	dst.SanbootHint = src.SanbootHint
 	dst.NetbootRequired = src.NetbootRequired
@@ -197,6 +198,8 @@ func copyImageMetadata(dst *models.Image, src models.Image, groupID *uint, bootP
 	dst.WIMPath = src.WIMPath
 	dst.WIMIndex = src.WIMIndex
 	dst.WIMFiles = src.WIMFiles
+	dst.BCDPath = src.BCDPath
+	dst.BootSDIPath = src.BootSDIPath
 	dst.SquashfsPath = src.SquashfsPath
 	dst.ShimPath = src.ShimPath
 	dst.InstallWimPath = src.InstallWimPath

@@ -26,6 +26,7 @@ I've used Claude CLI to help with some parts of this project - mostly making the
 - **Built-in diagnostic tools**: GParted, Clonezilla, Memtest86+, SystemRescue, ShredOS, Netboot.xyz - one-click download and enable from the admin UI
 - **Custom tools**: Add your own PXE-bootable tools with configurable boot methods (kernel, chain, memdisk)
 - **WinPE and rescue media**: Boot Strelec, Active@ Boot Disk and other wimboot-compatible ISOs, choosing which WIM to load
+- **Custom boot script**: Replace the generated iPXE commands for any image with your own script when an image needs special handling
 - **Checksums and update notices**: Downloads from the catalogue are verified against SHA-256 checksums, and images and tools show a badge when a newer release is available
 - **Per-client access control**: Assign specific images per MAC address, toggle public image visibility per client
 - **Deployment profiles**: Bundle an image, auto-install file, SAN target, bootloader set and a first-boot action, assign the bundle to clients or groups, and it is resolved at every boot
