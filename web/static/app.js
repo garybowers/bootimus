@@ -6631,7 +6631,7 @@ function navigateToSettings() {
 }
 
 async function saveAndRepatchFromProperties() {
-    await saveImageProperties({ skipClose: true });
+    if (!await saveImageProperties({ skipClose: true })) return;
     await patchSmbFromProperties();
 }
 
@@ -6940,10 +6940,12 @@ async function saveImageProperties(opts) {
     // Auto-install: presence of a selected file = enabled. No separate
     // checkbox / script type / inline script from the image panel — those
     // are managed in the Auto-Install section.
-    const autoInstallFile = document.getElementById('image-props-autoinstall-file').value;
-    const autoInstallEnabled = autoInstallFile !== '';
-    const autoInstallType = '';
-    const autoInstallScript = '';
+    const autoInstallSelect = document.getElementById('image-props-autoinstall-file');
+    if (autoInstallSelect.dataset.loaded !== 'true') {
+        showNotification('Auto-install files have not loaded. Reopen image properties before saving.', 'error');
+        return false;
+    }
+    const autoInstallFile = autoInstallSelect.value;
 
     const updates = {
         name: displayName,
@@ -8035,18 +8037,28 @@ function updateAnswerFileVisibility() {
 async function populateImageAutoInstallFileDropdown(img) {
     const sel = document.getElementById('image-props-autoinstall-file');
     if (!sel) return;
+    const current = img.auto_install_file || '';
+    sel.dataset.loaded = 'false';
+    sel.disabled = true;
     sel.innerHTML = '<option value="">(None — use inline script below)</option>';
+    // Preserve the assignment while loading, even if the file was moved,
+    // deleted or belongs to another distro folder.
+    if (current) sel.add(new Option(current, current, true, true));
     try {
         const res = await authFetch(`${API_BASE}/autoinstall-files`);
         const data = await res.json();
-        if (!data.success) return;
+        if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load auto-install files');
         const all = data.data || [];
         const matching = img.distro ? all.filter(f => f.distro === img.distro) : all;
         for (const f of matching) {
-            const sel_attr = (img.auto_install_file === f.path) ? 'selected' : '';
-            sel.innerHTML += `<option value="${escapeHtml(f.path)}" ${sel_attr}>${escapeHtml(f.filename)}</option>`;
+            if (f.path !== current) sel.add(new Option(f.filename, f.path));
         }
-    } catch (e) {}
+        sel.value = current;
+        sel.dataset.loaded = 'true';
+        sel.disabled = false;
+    } catch (e) {
+        showNotification('Could not load auto-install files. Reopen image properties before saving.', 'error');
+    }
 }
 
 async function showAutoInstallFileEditor(file) {

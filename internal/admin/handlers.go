@@ -119,11 +119,9 @@ func (h *Handler) computeSMBPatchFingerprint(img *models.Image) string {
 	if img == nil {
 		return ""
 	}
-	autoInstallContent := ""
-	if img.AutoInstallEnabled {
-		autoInstallContent = h.resolveImageAutoInstallContent(img)
-	}
+	autoInstallContent := h.staticWindowsAutoInstallContent(img)
 	hasher := sha256.New()
+	fmt.Fprintln(hasher, "answer_delivery=wimboot-rendered-v1")
 	fmt.Fprintf(hasher, "share=%s\n", smb.ShareName(img.Filename))
 	fmt.Fprintf(hasher, "addr=%s\nfile=%s\nai_enabled=%v\nai_file=%s\nai_content=", h.serverAddr, img.Filename, img.AutoInstallEnabled, img.AutoInstallFile)
 	hasher.Write([]byte(autoInstallContent))
@@ -184,17 +182,15 @@ func (h *Handler) patchWindowsBootWimAt(isoFilename, target string) bool {
 		log.Printf("windows smb: cannot register share: %v", err)
 		return false
 	}
-	autoInstall := false
-	if img, err := h.storage.GetImage(isoFilename); err == nil && img != nil && img.AutoInstallEnabled {
-		if content := h.resolveImageAutoInstallContent(img); content != "" {
-			xmlPath := filepath.Join(sharePath, "AutoUnattend.xml")
-			if err := os.WriteFile(xmlPath, []byte(content), 0644); err != nil {
-				log.Printf("Windows SMB: failed to stage autounattend.xml on share: %v", err)
-			} else {
-				autoInstall = true
-				log.Printf("Windows SMB: staged autounattend.xml on share for %s (%d bytes)", isoFilename, len(content))
-			}
-		}
+	img, err := h.storage.GetImage(isoFilename)
+	if err != nil {
+		log.Printf("Windows SMB: cannot read image configuration for %s: %v", isoFilename, err)
+		return false
+	}
+	autoInstall, err := h.stageWindowsAutoInstall(sharePath, img)
+	if err != nil {
+		log.Printf("Windows SMB: cannot update the answer file for %s: %v", isoFilename, err)
+		return false
 	}
 	script := buildStartnetScript(h.serverAddr, shareName, h.smbPort, h.httpPort, isoFilename, autoInstall)
 	if err := wimMgr.PatchStartnetCmd(bootWimPath, script); err != nil {
@@ -207,6 +203,35 @@ func (h *Handler) patchWindowsBootWimAt(isoFilename, target string) bool {
 	}
 	log.Printf("Windows SMB: boot.wim patched for %s (share: %s)", isoFilename, shareName)
 	return true
+}
+
+// Only static answers can be shared. Templates are rendered for each client
+// by /autoinstall and injected by wimboot into the WinPE RAM disk.
+func (h *Handler) stageWindowsAutoInstall(sharePath string, img *models.Image) (bool, error) {
+	content := h.staticWindowsAutoInstallContent(img)
+	xmlPath := filepath.Join(sharePath, "AutoUnattend.xml")
+	if content == "" {
+		if err := os.Remove(xmlPath); err != nil && !os.IsNotExist(err) {
+			return false, fmt.Errorf("remove stale AutoUnattend.xml: %w", err)
+		}
+		return false, nil
+	}
+	if err := os.WriteFile(xmlPath, []byte(content), 0644); err != nil {
+		return false, fmt.Errorf("stage AutoUnattend.xml: %w", err)
+	}
+	return true, nil
+}
+
+func (h *Handler) staticWindowsAutoInstallContent(img *models.Image) string {
+	if img == nil || !img.AutoInstallEnabled {
+		return ""
+	}
+	content := h.resolveImageAutoInstallContent(img)
+	_, placeholders := autoinstall.Render(content, nil)
+	if len(placeholders) > 0 {
+		return ""
+	}
+	return content
 }
 
 func (h *Handler) resolveImageAutoInstallContent(img *models.Image) string {

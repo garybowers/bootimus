@@ -250,7 +250,7 @@ When a file is saved from the editor or uploaded, Bootimus checks it for well-fo
 
 Every placeholder is replaced with a harmless dummy value first, so `hostname: {{HOSTNAME}}` passes even though a bare `{{HOSTNAME}}` is not valid YAML on its own. A failure answers `400` with the parser's message and, where the parser provides it, the line number; the editor shows it inline under the content and offers **Save anyway** for the cases where you know better than the parser (for instance a file that is deliberately a fragment). Over the API, pass `"force": true` in the save body or `force=true` as a multipart field on upload to skip the check.
 
-Substitution happens on the auto-install endpoint, so it applies to every format. Windows `autounattend.xml` is rendered for the booting client too, because wimboot fetches it from that endpoint at boot (see [Windows Notes](#windows-notes)); only the unrendered SMB fallback copy described there bypasses it.
+Substitution happens on the auto-install endpoint, so it applies to every format. Windows `autounattend.xml` is rendered for the booting client too, because wimboot fetches it from that endpoint at boot (see [Windows Notes](#windows-notes)). Templates containing placeholders are never staged as shared SMB fallback files.
 
 ## Examples
 
@@ -558,7 +558,9 @@ Windows images boot through [wimboot](https://ipxe.org/wimboot), which injects e
 
 Because the file is resolved and rendered per client, per-client and per-group overrides and placeholders such as `{{HOSTNAME}}` work for Windows just as they do elsewhere. Boot parameters are still passed to wimboot; avoid `rawwim`, which turns file injection off.
 
-**SMB fallback.** When `boot.wim` is patched for an image that has an autounattend file attached at image level, Bootimus also stages that file, unrendered, as `AutoUnattend.xml` on the image's SMB share. `startnet.cmd` only copies it to `X:\AutoUnattend.xml` when wimboot injected nothing, for example when the client booted the patched `boot.wim` by some route other than the Bootimus iPXE menu. The fallback carries no placeholder substitution and no per-client or per-group overrides: placeholders in it reach Setup literally.
+**SMB fallback.** Patching stages an image's answer file as `AutoUnattend.xml` on its SMB share only when it contains no placeholders. `startnet.cmd` uses that static copy only if wimboot injected no answer file. Templates such as `{{HOSTNAME}}` or `{{VAR.role}}` must go through the per-client endpoint; re-patching removes any old shared copy. Disabling or clearing the image's answer file also removes the old copy on the next patch.
+
+After upgrading, use **Images → Patch SMB** once for existing Windows SMB images to remove old template copies. Later edits to a template take effect on the next boot without re-patching. Static fallback changes still require a re-patch.
 
 Without an autounattend file at any level, Setup runs interactively as before.
 
@@ -664,7 +666,7 @@ The remastered ISO fetches from the exact URL baked in by `prepare-iso`. Check t
 - An autounattend file must resolve for the booting client: attach one to the image (image properties → Auto-Install), to the client, or to its group.
 - Preview the client's boot menu and confirm the Windows section contains the `initrd .../autoinstall/<iso>?mac=<mac> AutoUnattend.xml` line. If it doesn't, no autounattend file resolved for that MAC.
 - Make sure the image's boot parameters don't include `rawwim`; it stops wimboot injecting files into WinPE.
-- Re-patch `boot.wim` after upgrading Bootimus so `startnet.cmd` knows to look for the injected file: **Images** → **Patch SMB** (or it re-patches automatically on next boot).
+- Re-patch `boot.wim` after upgrading Bootimus so `startnet.cmd` knows to look for the injected file: **Images** → **Patch SMB**.
 - Confirm the SMB share is reachable from the client (`net view \\<server>` from WinPE); the installer itself still comes from the share.
 
 ### "AutoUnattend.xml neither injected by wimboot nor staged on the share, running interactive setup"
