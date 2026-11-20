@@ -400,6 +400,7 @@ func applyClientGroup(dst *models.ClientGroup, src models.ClientGroup, san *uint
 	dst.Enabled = src.Enabled
 	dst.AllowedImages = src.AllowedImages
 	dst.BootloaderSet = src.BootloaderSet
+	dst.ProxyDHCPNoVendorOption = src.ProxyDHCPNoVendorOption
 	dst.WOLBroadcastAddr = src.WOLBroadcastAddr
 	dst.StaggerDelayMillis = src.StaggerDelayMillis
 	dst.BMCProtocol = src.BMCProtocol

@@ -1956,7 +1956,7 @@ function renderClientDetailOverview(client) {
         ['SAN target', san ? `${escapeHtml(san)}${client.boot_from_san ? ' <span class="badge badge-info">default</span>' : ''}` : kvText('', 'None')],
         ['Auto-install file', kvText(client.auto_install_file, 'None')],
         ['BMC', client.ipmi_host ? `${escapeHtml(client.bmc_protocol || 'redfish')} · ${escapeHtml(client.ipmi_host)}${client.ipmi_port ? ':' + client.ipmi_port : ''}` : kvText('', 'Not configured')],
-        ['proxyDHCP option 43', kvText(client.proxy_dhcp_no_vendor_option ? 'Omitted' : 'Sent')],
+        ['proxyDHCP option 43', kvText(client.proxy_dhcp_no_vendor_option ? 'Omit for this client' : 'Use group or server setting')],
         ['Created', kvText(client.created_at ? new Date(client.created_at).toLocaleString() : '')],
         ['Updated', kvText(client.updated_at ? new Date(client.updated_at).toLocaleString() : '')],
     ];
@@ -7514,6 +7514,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 name: fd.get('name'),
                 description: fd.get('description') || '',
                 enabled: fd.get('enabled') === 'on',
+                proxy_dhcp_no_vendor_option: fd.get('proxy_dhcp_no_vendor_option') === 'on',
             };
             try {
                 const res = await authFetch(`${API_BASE}/client-groups`, {
@@ -7548,6 +7549,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 name: fd.get('name'),
                 description: fd.get('description') || '',
                 enabled: fd.get('enabled') === 'on',
+                proxy_dhcp_no_vendor_option: fd.get('proxy_dhcp_no_vendor_option') === 'on',
                 wol_broadcast_addr: fd.get('wol_broadcast_addr') || '',
                 stagger_delay_millis: parseInt(fd.get('stagger_delay_millis') || '0', 10),
                 bootloader_set: fd.get('bootloader_set') || '',
@@ -7690,6 +7692,7 @@ async function showEditClientGroupModal(id) {
         form.elements.name.value = g.name;
         form.elements.description.value = g.description || '';
         form.elements.enabled.checked = !!g.enabled;
+        form.elements.proxy_dhcp_no_vendor_option.checked = !!g.proxy_dhcp_no_vendor_option;
         form.elements.wol_broadcast_addr.value = g.wol_broadcast_addr || '';
         form.elements.stagger_delay_millis.value = g.stagger_delay_millis || 0;
         form.elements.bmc_protocol.value = g.bmc_protocol || 'redfish';

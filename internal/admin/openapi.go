@@ -115,9 +115,9 @@ var APISections = []APISection{
 	}},
 	{Tag: "Client Groups", Endpoints: []APIEndpoint{
 		{Method: "GET", Path: "/api/client-groups", Summary: "List all client groups.", ReadOnly: true},
-		{Method: "POST", Path: "/api/client-groups", Summary: "Create a client group.", Body: "{name, description, auto_install_choices[], ...}"},
+		{Method: "POST", Path: "/api/client-groups", Summary: "Create a client group.", Body: "{name, description, proxy_dhcp_no_vendor_option, auto_install_choices[], ...}"},
 		{Method: "GET", Path: "/api/client-groups/get", Summary: "Get one client group.", Params: []APIParam{qID("Group ID")}, ReadOnly: true},
-		{Method: "PUT", Path: "/api/client-groups/update", Summary: "Update a client group.", Params: []APIParam{qID("Group ID")}, Body: "{name, description, auto_install_choices[], ...}"},
+		{Method: "PUT", Path: "/api/client-groups/update", Summary: "Update a client group.", Params: []APIParam{qID("Group ID")}, Body: "{name, description, proxy_dhcp_no_vendor_option, auto_install_choices[], ...}"},
 		{Method: "DELETE", Path: "/api/client-groups/delete", Summary: "Delete a client group.", Params: []APIParam{qID("Group ID")}},
 		{Method: "POST", Path: "/api/client-groups/membership", Summary: "Set the members of a client group.", Body: "{group_id, client_macs[]}"},
 		{Method: "POST", Path: "/api/client-groups/wake", Summary: "Wake all members of a group.", Params: []APIParam{qID("Group ID")}},

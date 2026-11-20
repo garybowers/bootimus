@@ -389,6 +389,8 @@ type ClientGroup struct {
 	StaggerDelayMillis int            `gorm:"default:0" json:"stagger_delay_millis"`
 	Clients            []Client       `gorm:"foreignKey:ClientGroupID" json:"clients,omitempty"`
 
+	ProxyDHCPNoVendorOption bool `gorm:"default:false" json:"proxy_dhcp_no_vendor_option"`
+
 	BMCProtocol  string `json:"bmc_protocol,omitempty"`
 	IPMIPort     int    `json:"ipmi_port,omitempty"`
 	IPMIUsername string `json:"ipmi_username,omitempty"`

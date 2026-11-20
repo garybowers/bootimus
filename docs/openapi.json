@@ -862,7 +862,7 @@
         "summary": "Create a client group.",
         "operationId": "postApiClientGroups",
         "requestBody": {
-          "description": "{name, description, auto_install_choices[], ...}",
+          "description": "{name, description, proxy_dhcp_no_vendor_option, auto_install_choices[], ...}",
           "required": true,
           "content": {
             "application/json": {
@@ -1105,7 +1105,7 @@
           }
         ],
         "requestBody": {
-          "description": "{name, description, auto_install_choices[], ...}",
+          "description": "{name, description, proxy_dhcp_no_vendor_option, auto_install_choices[], ...}",
           "required": true,
           "content": {
             "application/json": {
