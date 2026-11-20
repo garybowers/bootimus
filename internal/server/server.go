@@ -486,7 +486,14 @@ func (s *Server) proxyDHCPOmitVendorOption(mac net.HardwareAddr) bool {
 		return false
 	}
 	client, err := s.config.Storage.GetClient(strings.ToLower(mac.String()))
-	return err == nil && client != nil && client.ProxyDHCPNoVendorOption
+	if err != nil || client == nil {
+		return false
+	}
+	if client.ProxyDHCPNoVendorOption {
+		return true
+	}
+	group := s.clientGroupOf(client)
+	return group != nil && group.Enabled && group.ProxyDHCPNoVendorOption
 }
 
 // proxyDHCPBootfiles returns the bootfile names proxyDHCP should advertise.

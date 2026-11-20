@@ -1005,6 +1005,7 @@ func (s *PostgresStore) CreateClientGroup(group *models.ClientGroup) error {
 		existing.Enabled = group.Enabled
 		existing.AllowedImages = group.AllowedImages
 		existing.BootloaderSet = group.BootloaderSet
+		existing.ProxyDHCPNoVendorOption = group.ProxyDHCPNoVendorOption
 		existing.WOLBroadcastAddr = group.WOLBroadcastAddr
 		existing.StaggerDelayMillis = group.StaggerDelayMillis
 		existing.Variables = group.Variables
@@ -1020,7 +1021,7 @@ func (s *PostgresStore) CreateClientGroup(group *models.ClientGroup) error {
 
 func (s *PostgresStore) UpdateClientGroup(id uint, group *models.ClientGroup) error {
 	return s.db.Model(&models.ClientGroup{}).Where("id = ?", id).
-		Select("Name", "Description", "Enabled", "AllowedImages", "BootloaderSet", "WOLBroadcastAddr", "StaggerDelayMillis",
+		Select("Name", "Description", "Enabled", "AllowedImages", "BootloaderSet", "ProxyDHCPNoVendorOption", "WOLBroadcastAddr", "StaggerDelayMillis",
 			"BMCProtocol", "IPMIPort", "IPMIUsername", "IPMIPassword", "IPMIInsecure", "AutoInstallFile", "AutoInstallChoices", "Variables", "SANTargetID", "BootFromSAN", "ProfileID", "UpdatedAt").
 		Updates(group).Error
 }

@@ -44,7 +44,7 @@ func newFakePrimary(t *testing.T) (*fakePrimary, *httptest.Server) {
 				{ID: 11, Name: "Debian 12", Filename: "debian-12.iso", Size: 42, Enabled: true, Public: true, GroupID: &group, BootMethod: "sanboot", Description: "stable"},
 				{ID: 12, Name: "Disabled", Filename: "old.iso", Size: 5, Enabled: false, BootMethod: "sanboot"},
 			},
-			"/api/client-groups": []models.ClientGroup{{ID: 5, Name: "rack-1", Enabled: true, SANTargetID: &san, IPMIPassword: "grp"}},
+			"/api/client-groups": []models.ClientGroup{{ID: 5, Name: "rack-1", Enabled: true, ProxyDHCPNoVendorOption: true, SANTargetID: &san, IPMIPassword: "grp"}},
 			"/api/clients": []models.Client{
 				{MACAddress: "AA:BB:CC:DD:EE:01", Name: "node-1", Enabled: true, Static: true, ShowPublicImages: true, AllowedImages: models.StringSlice{"debian-12.iso"}, IPMIHost: "10.0.0.50", IPMIPassword: "secret"},
 				{MACAddress: "aa:bb:cc:dd:ee:02", Name: "node-2", Enabled: true, Static: true, SANTargetID: &san, BootFromSAN: true},
@@ -214,6 +214,9 @@ func TestSyncMirrorsEveryKind(t *testing.T) {
 	cg, err := e.store.GetClientGroupByName("rack-1")
 	if err != nil || cg.SANTargetID == nil || *cg.SANTargetID != targets[0].ID || cg.IPMIPassword != "grp" {
 		t.Fatalf("client group not mirrored: %+v %v", cg, err)
+	}
+	if !cg.ProxyDHCPNoVendorOption {
+		t.Fatal("replica lost group proxyDHCP option 43 setting")
 	}
 	c1, err := e.store.GetClient("aa:bb:cc:dd:ee:01")
 	if err != nil || c1.Name != "node-1" || c1.IPMIPassword != "secret" {

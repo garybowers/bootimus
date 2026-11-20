@@ -1435,7 +1435,7 @@
                         <input type="checkbox" name="proxy_dhcp_no_vendor_option" id="edit-client-no-vendor-option">
                         <label for="edit-client-no-vendor-option">Omit PXE vendor option (43) from proxyDHCP offers</label>
                     </div>
-                    <small style="color: var(--text-secondary);">Some UEFI firmware (for example Intel I219-V) ignores proxyDHCP offers that carry option 43. Tick this if this machine never requests a bootfile.</small>
+                    <small style="color: var(--text-secondary);">Some UEFI firmware (for example Intel I219-V) ignores proxyDHCP offers that carry option 43. Leave unticked to use the group or server setting.</small>
                 </div>
                 <div class="form-group">
                     <label>Client Group</label>
@@ -2764,6 +2764,10 @@
                     <input type="checkbox" name="enabled" checked>
                     <label>Enabled</label>
                 </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="proxy_dhcp_no_vendor_option" id="add-cg-no-vendor-option">
+                    <label for="add-cg-no-vendor-option">Omit PXE vendor option (43) from proxyDHCP offers</label>
+                </div>
                 <button type="submit" class="btn btn-primary">Create Group</button>
                 <button type="button" class="btn" onclick="closeModal('add-client-group-modal')">Cancel</button>
             </form>
@@ -2807,6 +2811,10 @@
                     <select name="bootloader_set" id="cg-bootloader-select">
                         <option value="">Default (global setting)</option>
                     </select>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="proxy_dhcp_no_vendor_option" id="cg-no-vendor-option">
+                    <label for="cg-no-vendor-option">Omit PXE vendor option (43) from proxyDHCP offers</label>
                 </div>
                 <div class="form-group">
                     <label>Auto-Install File</label>
