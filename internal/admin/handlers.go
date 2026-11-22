@@ -121,7 +121,7 @@ func (h *Handler) computeSMBPatchFingerprint(img *models.Image) string {
 	}
 	autoInstallContent := h.staticWindowsAutoInstallContent(img)
 	hasher := sha256.New()
-	fmt.Fprintln(hasher, "answer_delivery=wimboot-rendered-v1")
+	fmt.Fprintln(hasher, "answer_delivery=wimboot-rendered-v2")
 	fmt.Fprintf(hasher, "share=%s\n", smb.ShareName(img.Filename))
 	fmt.Fprintf(hasher, "addr=%s\nfile=%s\nai_enabled=%v\nai_file=%s\nai_content=", h.serverAddr, img.Filename, img.AutoInstallEnabled, img.AutoInstallFile)
 	hasher.Write([]byte(autoInstallContent))
@@ -396,7 +396,11 @@ if not exist !SETUP! (
 if exist x:\drivers set SETUP_ARGS=!SETUP_ARGS! /installdrivers x:\drivers
 
 set UNATTEND=
-if exist X:\Windows\System32\AutoUnattend.xml set UNATTEND=X:\Windows\System32\AutoUnattend.xml
+if exist X:\Windows\System32\AutoUnattend.xml (
+	set "UNATTEND=X:\Windows\System32\AutoUnattend.xml"
+	rem Some windowsPE scripts locate the answer file through this registry value.
+	reg add HKLM\SYSTEM\Setup /v UnattendFile /t REG_SZ /d "!UNATTEND!" /f >nul
+)
 {{- if .AutoInstall }}
 if not defined UNATTEND if exist Z:\AutoUnattend.xml (
 	copy /Y Z:\AutoUnattend.xml X:\AutoUnattend.xml >nul

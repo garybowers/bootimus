@@ -21,12 +21,22 @@ func TestBuildStartnetScriptUnattendLookup(t *testing.T) {
 			if script == "" {
 				t.Fatal("expected a rendered startnet.cmd")
 			}
-			injected := `if exist X:\Windows\System32\AutoUnattend.xml set UNATTEND=X:\Windows\System32\AutoUnattend.xml`
+			injected := `if exist X:\Windows\System32\AutoUnattend.xml (`
+			register := `reg add HKLM\SYSTEM\Setup /v UnattendFile /t REG_SZ /d "!UNATTEND!" /f`
 			fallback := `if not defined UNATTEND if exist Z:\AutoUnattend.xml (`
 			apply := `if defined UNATTEND set SETUP_ARGS=!SETUP_ARGS! /unattend:!UNATTEND!`
 
-			if !strings.Contains(script, injected) {
-				t.Errorf("expected the wimboot-injected AutoUnattend.xml check:\n%s", script)
+			_, block, ok := strings.Cut(script, injected)
+			if !ok {
+				t.Fatal("missing check for the wimboot-injected file")
+			}
+			block, _, ok = strings.Cut(block, "\n)")
+			if !ok {
+				t.Fatal("missing end of the injected-file check")
+			}
+			assign := strings.Index(block, `set "UNATTEND=X:\Windows\System32\AutoUnattend.xml"`)
+			if assign < 0 || strings.Index(block, register) <= assign || strings.Count(script, "/v UnattendFile ") != 1 {
+				t.Fatalf("register only the injected answer file, after selecting its path:\n%s", block)
 			}
 			if got := strings.Contains(script, fallback); got != c.wantShare {
 				t.Errorf("SMB fallback present=%v, want %v:\n%s", got, c.wantShare, script)
