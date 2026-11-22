@@ -113,7 +113,7 @@ func TestResetClientEnrollment(t *testing.T) {
 		t.Errorf("expected unmanaged state, got %q", client.EnrollmentState)
 	}
 	if client.ClusterID != nil || client.ClusterRole != "" || client.EnrollmentToken != "" || client.ApprovedAt != nil {
-		t.Error("expected all enrollment fields to clear on reset")
+		t.Error("expected all enrolment fields to clear on reset")
 	}
 }
 

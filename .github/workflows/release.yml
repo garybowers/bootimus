@@ -67,7 +67,7 @@ jobs:
       - name: Generate checksums
         run: sha256sum bootimus-* > SHA256SUMS
 
-      - name: Create release and upload artifacts
+      - name: Create release and upload artefacts
         uses: softprops/action-gh-release@v2
         with:
           name: v${{ needs.prepare.outputs.version }}

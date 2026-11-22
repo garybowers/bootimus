@@ -122,7 +122,7 @@ cp "$CERT_PATH"                 "$OUT_DIR/bootimus-signing.crt"
 cat > "$OUT_DIR/manifest.json" <<EOF
 {
   "name": "secureboot",
-  "description": "UEFI Secure Boot via ipxe/shim ${SHIM_VERSION}. Requires one-time MOK enrollment of bootimus-signing.crt per machine.",
+  "description": "UEFI Secure Boot via ipxe/shim ${SHIM_VERSION}. Requires one-time MOK enrolment of bootimus-signing.crt per machine.",
   "shim_version": "${SHIM_VERSION}",
   "bootfiles": {
     "bios": "undionly.kpxe",

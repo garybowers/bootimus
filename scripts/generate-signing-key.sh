@@ -35,6 +35,6 @@ Next steps:
   2. Set environment variables before running build-secureboot-set.sh:
        export BOOTIMUS_SIGNING_KEY=/path/to/bootimus-signing.key
        export BOOTIMUS_SIGNING_CERT=/path/to/bootimus-signing.crt
-  3. The .crt file should be checked into a public location so users can verify
-     and MOK-enroll it.
+  3. The .crt file should be checked into a public location so users can verify it
+     and enrol it as a Machine Owner Key (MOK).
 EOF
