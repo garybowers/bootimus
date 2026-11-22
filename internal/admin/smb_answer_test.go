@@ -61,8 +61,9 @@ func TestSMBPatchStagesOnlyStaticAnswers(t *testing.T) {
 					t.Fatalf("unsafe or stale answer remains on share: %q (error %v)", content, err)
 				}
 				startup := testWimCommand(t, "extract", wimPath, "2", "/Windows/System32/startnet.cmd", "--to-stdout")
-				if !strings.Contains(startup, `if exist X:\Windows\System32\AutoUnattend.xml set UNATTEND=`) {
-					t.Fatal("patched WIM lost the rendered answer lookup")
+				if !strings.Contains(startup, `set "UNATTEND=X:\Windows\System32\AutoUnattend.xml"`) ||
+					!strings.Contains(startup, `reg add HKLM\SYSTEM\Setup /v UnattendFile /t REG_SZ /d "!UNATTEND!" /f`) {
+					t.Fatal("patched WIM does not register the rendered answer file")
 				}
 				if got := strings.Contains(startup, `if not defined UNATTEND if exist Z:\AutoUnattend.xml (`); got != tc.wantShare {
 					t.Fatalf("share fallback = %v, want %v", got, tc.wantShare)

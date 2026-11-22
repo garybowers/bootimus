@@ -25,6 +25,8 @@ func TestGetImageMarksLegacySMBPatchesForRepatch(t *testing.T) {
 	fmt.Fprintf(sharedTemplateHash, "share=%s\n", smb.ShareName(image.Filename))
 	fmt.Fprintf(sharedTemplateHash, "addr=%s\nfile=%s\nai_enabled=%v\nai_file=%s\nai_content=", handler.serverAddr, image.Filename, image.AutoInstallEnabled, image.AutoInstallFile)
 	sharedTemplateFingerprint := hex.EncodeToString(sharedTemplateHash.Sum(nil))
+	previousPatch := fmt.Sprintf("answer_delivery=wimboot-rendered-v1\nshare=%s\naddr=%s\nfile=%s\nai_enabled=false\nai_file=\nai_content=", smb.ShareName(image.Filename), handler.serverAddr, image.Filename)
+	previousFingerprint := fmt.Sprintf("%x", sha256.Sum256([]byte(previousPatch)))
 	currentFingerprint := handler.computeSMBPatchFingerprint(image)
 	if currentFingerprint == legacyFingerprint {
 		t.Fatal("changed share names did not invalidate the patch fingerprint")
@@ -40,6 +42,7 @@ func TestGetImageMarksLegacySMBPatchesForRepatch(t *testing.T) {
 		{"missing fingerprint", "", true},
 		{"legacy fingerprint", legacyFingerprint, true},
 		{"shared template fingerprint", sharedTemplateFingerprint, true},
+		{"before WinPE registry lookup", previousFingerprint, true},
 		{"current fingerprint", currentFingerprint, false},
 	}
 	for _, testcase := range cases {

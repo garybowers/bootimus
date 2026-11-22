@@ -554,13 +554,13 @@ Windows images boot through [wimboot](https://ipxe.org/wimboot), which injects e
 1. When the booting client resolves to an autounattend file (through the usual [resolution order](#resolution-order): client, then group, then image), the generated iPXE boot section adds `initrd http://<server>:<port>/autoinstall/<iso>?mac=<mac> AutoUnattend.xml` before `boot.wim`.
 2. The auto-install endpoint renders the file with the client's placeholders, exactly as it does for Linux installers.
 3. wimboot places the file at `X:\Windows\System32\AutoUnattend.xml` inside WinPE.
-4. The patched `startnet.cmd` finds it there and launches `setup.exe /unattend:X:\Windows\System32\AutoUnattend.xml`.
+4. The patched `startnet.cmd` records that path in `HKLM\SYSTEM\Setup\UnattendFile` for scripts that look up the answer file in WinPE, then launches `setup.exe /unattend:X:\Windows\System32\AutoUnattend.xml`.
 
 Because the file is resolved and rendered per client, per-client and per-group overrides and placeholders such as `{{HOSTNAME}}` work for Windows just as they do elsewhere. Boot parameters are still passed to wimboot; avoid `rawwim`, which turns file injection off.
 
 **SMB fallback.** Patching stages an image's answer file as `AutoUnattend.xml` on its SMB share only when it contains no placeholders. `startnet.cmd` uses that static copy only if wimboot injected no answer file. Templates such as `{{HOSTNAME}}` or `{{VAR.role}}` must go through the per-client endpoint; re-patching removes any old shared copy. Disabling or clearing the image's answer file also removes the old copy on the next patch.
 
-After upgrading, use **Images → Patch SMB** once for existing Windows SMB images to remove old template copies. Later edits to a template take effect on the next boot without re-patching. Static fallback changes still require a re-patch.
+After upgrading, use **Images → Patch SMB** once for existing Windows SMB images to update `startnet.cmd` and remove old template copies. Later edits to a template take effect on the next boot without re-patching. Static fallback changes still require a re-patch.
 
 Without an autounattend file at any level, Setup runs interactively as before.
 
