@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Builds the "secureboot-official" bootloader set — the zero-enrollment
+# Builds the "secureboot-official" bootloader set — the zero-enrolment
 # UEFI Secure Boot chain:
 #   - Microsoft-signed shim taken from the SAME iPXE release archive as the
 #     iPXE binaries it verifies (shim build and signing certs must be a
@@ -10,7 +10,7 @@ set -euo pipefail
 #   - Stock iPXE binaries signed by the iPXE project's own Secure Boot CA
 #   - Official wimboot release binary (Microsoft-signed) for Windows images
 #
-# Nothing is signed locally and no per-machine cert enrollment is needed:
+# Nothing is signed locally and no per-machine cert enrolment is needed:
 # firmware trusts the Microsoft-signed shim, shim trusts the iPXE Secure Boot
 # CA baked into it as vendor certificate.
 #
@@ -23,7 +23,7 @@ set -euo pipefail
 #     hardware; prefer the newest v2.0.x point release via IPXE_VERSION.
 #   - NBD/NFS image boots still fail under Secure Boot: the Bootimus boot
 #     environment kernel is unsigned and no public CA will sign it. Those
-#     methods need the "secureboot" set + cert enrollment, or Secure Boot off.
+#     methods need the "secureboot" set + cert enrolment, or Secure Boot off.
 #
 # Requirements on the host: curl, tar
 
@@ -149,7 +149,7 @@ cp "$BOOTLOADERS_DEFAULT/undionly.kpxe" "$OUT_DIR/"
 cat > "$OUT_DIR/manifest.json" <<EOF
 {
   "name": "$SET_NAME",
-  "description": "Zero-enrollment UEFI Secure Boot: release-paired Microsoft-signed shim + official iPXE ${IPXE_VERSION} ${IPXE_DRIVER} binaries signed by the iPXE Secure Boot CA. No embedded script — relies on autoexec.ipxe over TFTP (iPXE >= 2.0).",
+  "description": "Zero-enrolment UEFI Secure Boot: release-paired Microsoft-signed shim + official iPXE ${IPXE_VERSION} ${IPXE_DRIVER} binaries signed by the iPXE Secure Boot CA. No embedded script — relies on autoexec.ipxe over TFTP (iPXE >= 2.0).",
   "shim_version": "bundled-${IPXE_VERSION}",
   "bootfiles": {
     "bios": "undionly.kpxe",
@@ -160,7 +160,7 @@ cat > "$OUT_DIR/manifest.json" <<EOF
 EOF
 
 echo
-echo "Done. Zero-enrollment secureboot set in $OUT_DIR:"
+echo "Done. Zero-enrolment secureboot set in $OUT_DIR:"
 ls -lh "$OUT_DIR"
 echo
 echo "Verify signatures before deploying (sbsigntool provides sbverify):"

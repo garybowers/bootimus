@@ -35,7 +35,7 @@ help:
 	@echo "Local (binary):"
 	@echo "  make build            - Build binary for current platform"
 	@echo "  make run              - Build and run locally"
-	@echo "  make clean            - Remove build artifacts"
+	@echo "  make clean            - Remove build artefacts"
 	@echo "  make test             - Run unit tests"
 	@echo "  make test-integration - Run integration tests against a throwaway OIDC provider (needs Docker)"
 	@echo "  make test-postgres    - Run storage, server and admin tests against a throwaway PostgreSQL (needs Docker, pg_dump, psql)"

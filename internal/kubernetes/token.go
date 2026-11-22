@@ -14,9 +14,9 @@ import (
 const DefaultTokenTTL = 24 * time.Hour
 
 var (
-	ErrNotApproved  = errors.New("client not approved for enrollment")
-	ErrTokenInvalid = errors.New("invalid enrollment token")
-	ErrTokenExpired = errors.New("enrollment token expired")
+	ErrNotApproved  = errors.New("client not approved for enrolment")
+	ErrTokenInvalid = errors.New("invalid enrolment token")
+	ErrTokenExpired = errors.New("enrolment token expired")
 	ErrUUIDMismatch = errors.New("hardware uuid mismatch")
 )
 
